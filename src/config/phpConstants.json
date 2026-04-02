@@ -1,0 +1,2435 @@
+{
+  "source": "C:\\xampp\\htdocs\\bms\\application\\config\\constants.php",
+  "generated_at": "2026-04-01T07:10:05+02:00",
+  "constants": {
+    "MONTHS": {
+      "1": "January",
+      "2": "February",
+      "3": "March",
+      "4": "April",
+      "5": "May",
+      "6": "June",
+      "7": "July",
+      "8": "August",
+      "9": "September",
+      "10": "October",
+      "11": "November",
+      "12": "December"
+    },
+    "NEXT_MONTHS": [
+      "January",
+      "February",
+      "March"
+    ],
+    "BRIDGE_IN_GRADE": {
+      "Yes": "Yes",
+      "No": "No"
+    },
+    "BRIDGE_RAILING_TYPE": {
+      "": "Select Railing Type",
+      "parapet_wall": "Parapet wall",
+      "railing": "Railing",
+      "crash_barrier": "Crash barrier",
+      "not_available": "Not available"
+    },
+    "BRIDGE_RAILING_MATERIAL": {
+      "": "Select Railing Material",
+      "Concrete": "Concrete",
+      "Steel": "Steel",
+      "Timber": "Timber",
+      "Others": "Others"
+    },
+    "SHOULDER_MATERIAL": {
+      "": "Select Shoulder Material",
+      "paved": "Paved",
+      "unpaved": "Unpaved"
+    },
+    "BANK_PROTECTION_AND_TYPE": {
+      "": "Select Bank Protection Type",
+      "Bank Protected With Boulder Stone": "Bank Protected With Boulder Stone",
+      "Bank protected with cement concrete": "Bank protected with cement concrete",
+      "No Bank Protection provided": "No Bank Protection provided"
+    },
+    "FLOOR_TYPE": {
+      "": "Select Floor Type",
+      "Floor protected with Stone": "Floor protected with Stone",
+      "Floor Protected with Cement concrete": "Floor Protected with Cement concrete",
+      "No floor protection provided": "No floor protection provided"
+    },
+    "IS_THE_BRIDGE_LOCATED_IN_THE_BACK_WATER": {
+      "Yes": "Yes",
+      "No": "No"
+    },
+    "WHETHER_GUARD_RAIL_CASH_BARRIER": {
+      "Guard rail": "Guard rail",
+      "Crash Barrier": "Crash Barrier",
+      "Parapets Wall/head wall": "Parapets Wall/head wall",
+      "Not Available": "Not Available"
+    },
+    "WHETHER_GUARD_RAIL_CASH_BARRIER_DETAILS": {
+      "RCC": "RCC",
+      "Steel": "Steel",
+      "Metal": "Metal"
+    },
+    "TYPE_OF_TERRAIN": {
+      "": "Select Type Of Terrain",
+      "Plain Terrain": "Plain Terrain",
+      "Valley Terrain": "Valley Terrain",
+      "Desert Terrain": "Desert Terrain",
+      "Hilly Terrain": "Hilly Terrain"
+    },
+    "TYPE_OF_APPROACH": {
+      "": "Select Type Of Approach",
+      "Retaining/Return wall": "Retaining/Return wall",
+      "Embankment": "Embankment",
+      "Re Wall": "Re Wall",
+      "Masonry": "Masonry"
+    },
+    "MATERIAL_OF_APPROACH": {
+      "": "Select Material Of Approach",
+      "RCC": "RCC",
+      "PSC": "PSC",
+      "Brick/Stone": "Brick/Stone",
+      "Soil/Earthen": "Soil/Earthen"
+    },
+    "APPROACH_GEOMETRICS": {
+      "": "Select Approach Geometrics",
+      "Straight": "Straight",
+      "Curvilinear": "Curvilinear"
+    },
+    "PAVEMENT_SURFACE": {
+      "": "Select Pavement Surface",
+      "Good": "Pavement is in Good Condition, No Distress Observed",
+      "MinorFlexible": "Minor Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding",
+      "MajorFlexible": "Major Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding",
+      "MinorRigid": "Minor Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture",
+      "MajorRigid": "Major Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture"
+    },
+    "SIDE_SLOPES": {
+      "": "Select Side Slopes",
+      "Pitched Slope, but there is no sign of slope failure": "Pitched Slope, but there is no sign of slope failure",
+      "Pitched Slope, but there is a sign of slope failure": "Pitched Slope, but there is a sign of slope failure",
+      "Un-pitched slope & there is a sign of slope failure": "Un-pitched slope & there is a sign of slope failure",
+      "Un-Pitched Slope but there is no sign of slope failure": "Un-Pitched Slope but there is no sign of slope failure"
+    },
+    "APPROACH_SLAB": {
+      "": "Select Approach Slab",
+      "Settlement observed": "Settlement observed",
+      "Cracks observed": "Cracks observed",
+      "Movement observed": "Movement observed",
+      "Good in condition": "Good in condition"
+    },
+    "SLIT_AND_DEBRIS": {
+      "": "Select Slit And Debris",
+      "Silt and debris is accumulated": "Silt and debris is accumulated",
+      "No silt and debris are accumulated": "No silt and debris are accumulated"
+    },
+    "TYPE": {
+      "": "Select Type",
+      "Around Abutments protected with riprap": "Around Abutments protected with riprap",
+      "Around abutments protected with cement concrete": "Around abutments protected with cement concrete",
+      "No protection provided around abutments": "No protection provided around abutments",
+      "Others": "Not Applicable"
+    },
+    "SLOPE_PITICHING_APRON_ANDTOE_WALLS": {
+      "": "Select Slope",
+      "damage Found in slope pitching/apron/toe walls": "damage Found in slope pitching/apron/toe walls",
+      "damage not Found in slope pitching/apron/toe walls": "damage not Found in slope pitching/apron/toe walls",
+      "Not Applicable": "Not Applicable"
+    },
+    "FLOOR_PROTECTION_WORKS": {
+      "": "Select Floor Protection Work",
+      "Damage Found in floor Protection works": "Damage Found in floor Protection works",
+      "Damage not Found in floor Protection works": "Damage not Found in floor Protection works",
+      "Not Applicable": "Not Applicable"
+    },
+    "SCOUR_FOR_ABUTMENTS": {
+      "": "Select Scour For Abutments",
+      "Scour observed at Abutments": "Scour observed at Abutments",
+      "Scour not observed at Abutments": "Scour not observed at Abutments",
+      "Not Applicable": "Not Applicable"
+    },
+    "SCOUR_FOR_PIERS": {
+      "": "Select Scour For Piers",
+      "Scour observed at Piers": "Scour observed at Piers",
+      "Scour not observed at Piers": "Scour not observed at Piers",
+      "Not Applicable": "Not Applicable"
+    },
+    "RESERVE_STORE_MATERIAL": {
+      "": "Select Reserve Stone Material",
+      "Yes, Reserve store material is Present/Available": "Yes, Reserve store material is Present/Available",
+      "No, Reserve store material is not Present/Available": "No, Reserve store material is not Present/Available"
+    },
+    "CHECK_PRESENCE_OF_OBSTRUCTION": {
+      "": "Select Presence Of Obstruction",
+      "Yes, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed": "Yes, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed",
+      "No, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed": "No, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed",
+      "Not Applicable": "Not Applicable"
+    },
+    "FLOW_PATTERN": {
+      "": "Select Flow Pattern",
+      "Flow Pattern is Normal": "Flow Pattern is Normal",
+      "Flow Pattern is abnormal": "Flow Pattern is abnormal",
+      "Not Applicable": "Not Applicable"
+    },
+    "TYPE_BRIDGE": {
+      "": "Select Type",
+      "Well Foundation": "Well Foundation",
+      "Open Foundation": "Open Foundation",
+      "Pile Foundation": "Pile Foundation",
+      "Raft Foundation": "Raft Foundation",
+      "Spread Foundation": "Spread Foundation",
+      "Isolated Foundation": "Isolated Foundation",
+      "Foundation is not visible, Data to be referred from design document/as-built drawing": "Foundation is not visible, Data to be referred from design document/as-built drawing"
+    },
+    "FOUNDATION_MATERIAL": {
+      "": "Select Material",
+      "Brick": "Brick",
+      "RCC": "RCC",
+      "Foundation is not visible, Data to be referred from design document/as-built drawing": "Foundation is not visible, Data to be referred from design document/as-built drawing"
+    },
+    "CONDITION_OF_FOUNDATION": {
+      "": "Select Condition Of Foundation",
+      "Settlement Observed": "Settlement Observed",
+      "Abnormal Scour Observed": "Abnormal Scour Observed",
+      "Tilting Observed": "Tilting Observed",
+      "Good in Condition": "Good in Condition",
+      "Foundation Not Visible": "Foundation Not Visible"
+    },
+    "FLOATING_BODIES": {
+      "NA": "NA",
+      "No damage Observed": "No damage Observed",
+      "Damage Observed": "Damage Observed"
+    },
+    "TYPE_A1": {
+      "NA": "NA",
+      "Solid masonry wall type": "Solid masonry wall type",
+      "Solid RCC wall type": "Solid RCC wall type",
+      "Circular pier with Hammer Head": "Circular pier with Hammer Head",
+      "Square pier with Hammer Head": "Square pier with Hammer Head",
+      "Rectangular pier with Hammer Head": "Rectangular pier with Hammer Head",
+      "Rigid frame or portal pier": "Rigid frame or portal pier",
+      "Trestle Pier or Trestle Bent": "Trestle Pier or Trestle Bent"
+    },
+    "TYPE_A2": {
+      "NA": "NA",
+      "Solid masonry wall type": "Solid masonry wall type",
+      "Solid RCC wall type": "Solid RCC wall type",
+      "Circular pier with Hammer Head": "Circular pier with Hammer Head",
+      "Square pier with Hammer Head": "Square pier with Hammer Head",
+      "Rectangular pier with Hammer Head": "Rectangular pier with Hammer Head",
+      "Rigid frame or portal pier": "Rigid frame or portal pier",
+      "Trestle Pier or Trestle Bent": "Trestle Pier or Trestle Bent"
+    },
+    "MATERIAL_A1": {
+      "NA": "NA",
+      "Brick Stone Masonry": "Brick Stone Masonry",
+      "CRS Stone Masonry": "CRS Stone Masonry",
+      "Stone Masonry": "Stone Masonry",
+      "Reinforced cement concrete": "Reinforced cement concrete",
+      "Masonry": "Masonry",
+      "Other": "Other"
+    },
+    "MATERIAL_A2": {
+      "NA": "NA",
+      "Brick Stone Masonry": "Brick Stone Masonry",
+      "CRS Stone Masonry": "CRS Stone Masonry",
+      "Stone Masonry": "Stone Masonry",
+      "Reinforced cement concrete": "Reinforced cement concrete",
+      "Masonry": "Masonry",
+      "Other": "Other"
+    },
+    "CONDITION_A1": {
+      "NA": "NA",
+      "Abutment is in good condition": "Abutment is in good condition",
+      "Abutment is not in good condition enter observed distress": "Abutment is not in good condition enter observed distress"
+    },
+    "CONDITION_A2": {
+      "NA": "NA",
+      "Abutment is in good condition": "Abutment is in good condition",
+      "Abutment is not in good condition enter observed distress": "Abutment is not in good condition enter observed distress"
+    },
+    "EFFICIENCY_OF_DRAINAGE_A1": {
+      "NA": "NA",
+      "Weep holes functioning good and no evidence of moisture on abutment faces": "Weep holes functioning good and no evidence of moisture on abutment faces",
+      "Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed": "Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed",
+      "weep holes functioning good and shows the evidence of moisture": "weep holes functioning good and shows the evidence of moisture",
+      "Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed": "Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed"
+    },
+    "EFFICIENCY_OF_DRAINAGE_A2": {
+      "NA": "NA",
+      "Weep holes functioning good and no evidence of moisture on abutment faces": "Weep holes functioning good and no evidence of moisture on abutment faces",
+      "Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed": "Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed",
+      "weep holes functioning good and shows the evidence of moisture": "weep holes functioning good and shows the evidence of moisture",
+      "Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed": "Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed"
+    },
+    "PIER_CONDITION": {
+      "": "Select Pier Condition",
+      "Pier is in good condition": "Pier is in good condition",
+      "Pier is not in good condition enter observed distress": "Pier is not in good condition enter observed distress"
+    },
+    "LARGE_EXCAVATIONS_DONE": {
+      "Not Applicable": "Not Applicable",
+      "Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct": "Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct",
+      "No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct": "No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct"
+    },
+    "DAMAGES_TO_PROTECTIVE_MEASURES": {
+      "Not Applicable": "Not Applicable",
+      "Yes, damages to protective measures to piers and abutments": "Yes, damages to protective measures to piers and abutments",
+      "No, damages to protective measures to piers and abutments": "No, damages to protective measures to piers and abutments"
+    },
+    "DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT": {
+      "Not Applicable": "Not Applicable",
+      "Yes, damages to protective coating or paint": "Yes, damages to protective coating or paint",
+      "No, damages to protective coating or paint": "No, damages to protective coating or paint"
+    },
+    "TYPE_AND_ALLOWABLE_MOVEMENTS_BEARING": {
+      "NA": "NA",
+      "No bearing is presented": "No bearing is presented",
+      "Elastomeric Bearing": "Elastomeric Bearing",
+      "Pot Bearing": "Pot Bearing",
+      "Single roller bearing": "Single roller bearing",
+      "Multi roller bearing": "Multi roller bearing",
+      "Rocker Bearing": "Rocker Bearing",
+      "Disk Bearing": "Disk Bearing",
+      "Spherical Bearing": "Spherical Bearing",
+      "Pin Bearing": "Pin Bearing",
+      "Knuckle Pin Bearing": "Knuckle Pin Bearing"
+    },
+    "TYPE_AND_ALLOWABLE_MOVEMENTS_PEDESTAL": {
+      "NA": "NA",
+      "No pedestal is presented": "No pedestal is presented",
+      "Rectangular reinforced cement concrete": "Rectangular reinforced cement concrete",
+      "Rectangular steel": "Rectangular steel",
+      "Rectangular masonry": "Rectangular masonry"
+    },
+    "MATERIAL_BEARING": {
+      "NA": "NA",
+      "No bearing is presented": "No bearing is presented",
+      "Elastomeric": "Elastomeric",
+      "Polytetrafluoroet hylene": "Polytetrafluoroet hylene",
+      "Steel": "Steel"
+    },
+    "MATERIAL_PEDESTAL": {
+      "NA": "NA",
+      "No pedestal is presented": "No pedestal is presented",
+      "Reinforced cement concrete": "Reinforced cement concrete",
+      "Steel": "Steel",
+      "Masonry": "Masonry"
+    },
+    "GENERAL_CONDITION_BEARING": {
+      "NA": "NA",
+      "Rusting": "Rusting",
+      "Cleanliness": "Cleanliness",
+      "Seizing of plates silting": "Seizing of plates silting",
+      "Accumulations of dirt": "Accumulations of dirt"
+    },
+    "GENERAL_CONDITION_PEDESTAL": {
+      "NA": "NA",
+      "Rusting": "Rusting",
+      "Cleanliness": "Cleanliness",
+      "Seizing of plates silting": "Seizing of plates silting",
+      "Accumulations of dirt": "Accumulations of dirt"
+    },
+    "FUNCTIONING_BEARING": {
+      "NA": "NA",
+      "No Bearing is Presented": "No Bearing is Presented",
+      "Excessive movement": "Excessive movement",
+      "Tilting": "Tilting",
+      "Jumping off guides": "Jumping off guides"
+    },
+    "FUNCTIONING_PEDESTAL": {
+      "NA": "NA",
+      "No pedestal is Presented": "No pedestal is Presented",
+      "Excessive movement": "Excessive movement",
+      "Tilting": "Tilting",
+      "Jumping off guides": "Jumping off guides"
+    },
+    "TYPE_OF_SPAN": {
+      "T-Beam": "T-Beam",
+      "I-Girder": "I-Girder",
+      "Slab": "Slab",
+      "Box – Girder": "Box – Girder",
+      "Arche": "Arche"
+    },
+    "STRUCTURAL_SYSTEM": {
+      "Simply Supported": "Simply Supported",
+      "Continuous": "Continuous",
+      "Over Hanging": "Over Hanging",
+      "Balance Cantilever": "Balance Cantilever"
+    },
+    "TYPE_OF_MATERIAL": {
+      "Simply Supported": "Simply Supported",
+      "Continuous": "Continuous",
+      "Over Hanging": "Over Hanging",
+      "Balance Cantilever": "Balance Cantilever"
+    },
+    "EXPANSION_TYPE_A1": {
+      "NA": "NA",
+      "Buried joint": "Buried joint",
+      "Filler joint": "Filler joint",
+      "Asphaltic plug joint": "Asphaltic plug joint",
+      "Compression seal joint": "Compression seal joint",
+      "Single strip/box seal joint": "Single strip/box seal joint",
+      "Reinforced elastomeric joints": "Reinforced elastomeric joints",
+      "Modular strip/box seal joint": "Modular strip/box seal joint",
+      "Finger joints": "Finger joints",
+      "Reinforced coupled elastomeric joint": "Reinforced coupled elastomeric joint"
+    },
+    "EXPANSION_TYPE_A2": {
+      "NA": "NA",
+      "Buried joint": "Buried joint",
+      "Filler joint": "Filler joint",
+      "Asphaltic plug joint": "Asphaltic plug joint",
+      "Compression seal joint": "Compression seal joint",
+      "Single strip/box seal joint": "Single strip/box seal joint",
+      "Reinforced elastomeric joints": "Reinforced elastomeric joints",
+      "Modular strip/box seal joint": "Modular strip/box seal joint",
+      "Finger joints": "Finger joints",
+      "Reinforced coupled elastomeric joint": "Reinforced coupled elastomeric joint"
+    },
+    "EXPANSION_CONDITION_A1": {
+      "NA": "NA",
+      "Misalignment of joint , debris, Accumulation of soil/ dirt are observed": "Misalignment of joint , debris, Accumulation of soil/ dirt are observed",
+      "Misalignment of joint is observed": "Misalignment of joint is observed",
+      "debris is observed": "debris is observed",
+      "Accumulation of soil/ dirt is observed": "Accumulation of soil/ dirt is observed",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer"
+    },
+    "EXPANSION_CONDITION_A2": {
+      "NA": "NA",
+      "Misalignment of joint , debris, Accumulation of soil/ dirt are observed": "Misalignment of joint , debris, Accumulation of soil/ dirt are observed",
+      "Misalignment of joint is observed": "Misalignment of joint is observed",
+      "debris is observed": "debris is observed",
+      "Accumulation of soil/ dirt is observed": "Accumulation of soil/ dirt is observed",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer"
+    },
+    "FUNCTIONING_A1": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Type of distress observed": "Type of distress observed",
+      "Not Applicable": "Not Applicable"
+    },
+    "FUNCTIONING_A2": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Type of distress observed": "Type of distress observed",
+      "Not Applicable": "Not Applicable"
+    },
+    "SEALING_MATERIAL_A1": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Sealing material damaged": "Sealing material damaged",
+      "Not Applicable": "Not Applicable"
+    },
+    "SEALING_MATERIAL_A2": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Sealing material damaged": "Sealing material damaged",
+      "Not Applicable": "Not Applicable"
+    },
+    "CHECK_SECURENESS_OF_THE_JOINTS_A1": {
+      "NA": "NA",
+      "Secured": "Secured",
+      "Unsecured": "Unsecured",
+      "Not Visible": "Not Visible",
+      "Not Applicable": "Not Applicable"
+    },
+    "CHECK_SECURENESS_OF_THE_JOINTS_A2": {
+      "NA": "NA",
+      "Secured": "Secured",
+      "Unsecured": "Unsecured",
+      "Not Visible": "Not Visible",
+      "Not Applicable": "Not Applicable"
+    },
+    "TOP_SLIDING_PLATE_A1": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Type of distress observed": "Type of distress observed",
+      "Not Visible": "Not Visible",
+      "Not Applicable": "Not Applicable"
+    },
+    "TOP_SLIDING_PLATE_A2": {
+      "NA": "NA",
+      "Good in condition": "Good in condition",
+      "Type of distress observed": "Type of distress observed",
+      "Not Visible": "Not Visible",
+      "Not Applicable": "Not Applicable"
+    },
+    "LOCKING_OF_JOINTS_A1": {
+      "NA": "NA",
+      "Interlocked": "Interlocked",
+      "Joint Is improperly locked as Locking Teeth is Damaged": "Joint Is improperly locked as Locking Teeth is Damaged",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Not Applicable": "Not Applicable"
+    },
+    "LOCKING_OF_JOINTS_A2": {
+      "NA": "NA",
+      "Interlocked": "Interlocked",
+      "Joint Is improperly locked as Locking Teeth is Damaged": "Joint Is improperly locked as Locking Teeth is Damaged",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Not Applicable": "Not Applicable"
+    },
+    "DERBIS_IN_JOINTS_A1": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Debris observed in joints": "Debris observed in joints",
+      "No debris observed in joints": "No debris observed in joints"
+    },
+    "DERBIS_IN_JOINTS_A2": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Debris observed in joints": "Debris observed in joints",
+      "No debris observed in joints": "No debris observed in joints"
+    },
+    "REPORT_RATTLING_A1": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Rattling is audible": "Rattling is audible",
+      "Rattling is not audible": "Rattling is not audible"
+    },
+    "REPORT_RATTLING_A2": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "Rattling is audible": "Rattling is audible",
+      "Rattling is not audible": "Rattling is not audible"
+    },
+    "DRAINAGE_FROM_EXPANSION_JOINT_A1": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "No drainage from expansion joint": "No drainage from expansion joint",
+      "Drainage from expansion joint is observed": "Drainage from expansion joint is observed"
+    },
+    "DRAINAGE_FROM_EXPANSION_JOINT_A2": {
+      "NA": "NA",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer",
+      "No drainage from expansion joint": "No drainage from expansion joint",
+      "Drainage from expansion joint is observed": "Drainage from expansion joint is observed"
+    },
+    "ALIGNMENT_AND_CLEARANCE_A1": {
+      "NA": "NA",
+      "Proper alignment and clearance is Observed/Notice": "Proper alignment and clearance is Observed/Notice",
+      "No Proper alignment and clearance is Observed/Noticed": "No Proper alignment and clearance is Observed/Noticed",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer"
+    },
+    "ALIGNMENT_AND_CLEARANCE_A2": {
+      "NA": "NA",
+      "Proper alignment and clearance is Observed/Notice": "Proper alignment and clearance is Observed/Notice",
+      "No Proper alignment and clearance is Observed/Noticed": "No Proper alignment and clearance is Observed/Noticed",
+      "Expansion joint is buried with bituminous layer": "Expansion joint is buried with bituminous layer"
+    },
+    "WEARING_COAT_MATERIAL": {
+      "": "Select Material",
+      "Bituminous": "Bituminous",
+      "Cement Concrete": "Cement Concrete"
+    },
+    "SURFACE_CONDITION": {
+      "": "Select Surface Condition",
+      "GoodPavement": "Pavement is in Good Condition, No Distress Observed",
+      "MinorFlexible": "Minor Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding",
+      "MajorFlexible": "Major Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding",
+      "MinorRigid": "Minor Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture",
+      "MajorRigid": "Major Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture"
+    },
+    "CLOGGING_DETERIORATION_LHS": {
+      "NA": "NA",
+      "Driange spouts is clogged": "Driange spouts is clogged",
+      "No drainage spouts clogged": "No drainage spouts clogged"
+    },
+    "CLOGGING_DETERIORATION_RHS": {
+      "NA": "NA",
+      "Driange spouts is clogged": "Driange spouts is clogged",
+      "No drainage spouts clogged": "No drainage spouts clogged"
+    },
+    "PROJECTION_OF_SPOUT_LHS": {
+      "NA": "NA",
+      "No structural member is affected": "No structural member is affected",
+      "No drainage spouts are clogged": "No drainage spouts are clogged",
+      "Structural member being affected on the underside due to inadequate projection": "Structural member being affected on the underside due to inadequate projection",
+      "Projection to be provide": "Projection to be provide"
+    },
+    "PROJECTION_OF_SPOUT_RHS": {
+      "NA": "NA",
+      "No structural member is affected": "No structural member is affected",
+      "No drainage spouts are clogged": "No drainage spouts are clogged",
+      "Structural member being affected on the underside due to inadequate projection": "Structural member being affected on the underside due to inadequate projection",
+      "Projection to be provide": "Projection to be provide"
+    },
+    "ADEQUACY_THEROF_LHS": {
+      "NA": "NA",
+      "Adequate": "Adequate",
+      "In- adequate": "In- adequate"
+    },
+    "ADEQUACY_THEROF_RHS": {
+      "NA": "NA",
+      "Adequate": "Adequate",
+      "In- adequate": "In- adequate"
+    },
+    "REPORT_ABOUT_ADEQUACY_LHS": {
+      "NA": "NA",
+      "Not applicable because structure is not subway": "Not applicable because structure is not subway",
+      "Adeqaute Drainage and pumping arrangement are found": "Adeqaute Drainage and pumping arrangement are found"
+    },
+    "REPORT_ABOUT_ADEQUACY_RHS": {
+      "NA": "NA",
+      "Not applicable because structure is not subway": "Not applicable because structure is not subway",
+      "Adeqaute Drainage and pumping arrangement are found": "Adeqaute Drainage and pumping arrangement are found"
+    },
+    "ABSENCE_OF_DRAINAGE_SPOUTS_LHS": {
+      "NA": "NA",
+      "There is no absence of drainage spouts": "There is no absence of drainage spouts",
+      "Absence of drainage spouts are observed": "Absence of drainage spouts are observed",
+      "Others": "Others"
+    },
+    "ABSENCE_OF_DRAINAGE_SPOUTS_RHS": {
+      "NA": "NA",
+      "There is no absence of drainage spouts": "There is no absence of drainage spouts",
+      "Absence of drainage spouts are observed": "Absence of drainage spouts are observed",
+      "Others": "Others"
+    },
+    "CHOKING_OF_DRAINAGE_HOLES_LHS": {
+      "NA": "NA",
+      "Drainage spouts choked in the bottom booms": "Drainage spouts choked in the bottom booms",
+      "No drainage holes choked in the bottom booms": "No drainage holes choked in the bottom booms",
+      "Others": "Others"
+    },
+    "CHOKING_OF_DRAINAGE_HOLES_RHS": {
+      "NA": "NA",
+      "Drainage spouts choked in the bottom booms": "Drainage spouts choked in the bottom booms",
+      "No drainage holes choked in the bottom booms": "No drainage holes choked in the bottom booms",
+      "Others": "Others"
+    },
+    "MATERIAL_LHS": {
+      "": "Select Material",
+      "RCC": "RCC",
+      "Steel": "Steel",
+      "Timber": "Timber",
+      "Masonary": "Masonary"
+    },
+    "MATERIAL_RHS": {
+      "": "Select Material",
+      "RCC": "RCC",
+      "Steel": "Steel",
+      "Timber": "Timber",
+      "Masonary": "Masonary"
+    },
+    "CONDITION_LHS": {
+      "": "Select Condition",
+      "Hand Rail , parapets and Crash barriers is in Good Condition": "Hand Rail , parapets and Crash barriers is in Good Condition",
+      "Hand Rail , parapets and Crash barriers is Not in good Condition": "Hand Rail , parapets and Crash barriers is Not in good Condition",
+      "Hand Rail , parapets and Crash barriers is not present": "Hand Rail , parapets and Crash barriers is not present"
+    },
+    "CONDITION_RHS": {
+      "": "Select Condition",
+      "Hand Rail , parapets and Crash barriers is in Good Condition": "Hand Rail , parapets and Crash barriers is in Good Condition",
+      "Hand Rail , parapets and Crash barriers is Not in good Condition": "Hand Rail , parapets and Crash barriers is Not in good Condition",
+      "Hand Rail , parapets and Crash barriers is not present": "Hand Rail , parapets and Crash barriers is not present"
+    },
+    "EXPANSION_JOINT_GAP_LHS": {
+      "": "Select Expansion Joint Gap",
+      "Expansion joint gaps observed": "Expansion joint gaps observed",
+      "No expansion joint gaps found": "No expansion joint gaps found"
+    },
+    "EXPANSION_JOINT_GAP_RHS": {
+      "": "Select Expansion Joint Gap",
+      "Expansion joint gaps observed": "Expansion joint gaps observed",
+      "No expansion joint gaps found": "No expansion joint gaps found"
+    },
+    "INSPECTION_GALLERY_LADDER_PLATFORM_LHS": {
+      "": "Select Gallery Ladder Platform",
+      "MBIU": "MBIU",
+      "Ladder": "Ladder",
+      "Man Lift": "Man Lift",
+      "Other": "Other"
+    },
+    "INSPECTION_GALLERY_LADDER_PLATFORM_RHS": {
+      "": "Select Gallery Ladder Platform",
+      "MBIU": "MBIU",
+      "Ladder": "Ladder",
+      "Man Lift": "Man Lift",
+      "Other": "Other"
+    },
+    "FOOTPATH_MATERIAL_LHS": {
+      "": "select material",
+      "NA": "NA",
+      "Concrete": "Concrete",
+      "Masonary": "Masonary",
+      "Timber": "Timber",
+      "Others": "Others"
+    },
+    "FOOTPATH_MATERIAL_RHS": {
+      "": "select material",
+      "NA": "NA",
+      "Concrete": "Concrete",
+      "Masonary": "Masonary",
+      "Timber": "Timber",
+      "Others": "Others"
+    },
+    "FOOTPATH_CONDITION_LHS": {
+      "": "select condition",
+      "NA": "NA",
+      "Footpath observed to be in good condition": "Footpath observed to be in good condition",
+      "Footpath is not in good condition": "Footpath is not in good condition",
+      "Others": "Others"
+    },
+    "FOOTPATH_CONDITION_RHS": {
+      "": "select condition",
+      "NA": "NA",
+      "Footpath observed to be in good condition": "Footpath observed to be in good condition",
+      "Footpath is not in good condition": "Footpath is not in good condition",
+      "Others": "Others"
+    },
+    "TYPE_OF_UTILITY_LHS": {
+      "": "Select Utility Type",
+      "Drainage Pipe lines": "Drainage Pipe lines",
+      "Electrical Lines": "Electrical Lines",
+      "Telephonic lines": "Telephonic lines",
+      "Gas Pipe Lines": "Gas Pipe Lines",
+      "Lighting Facilities": "Lighting Facilities",
+      "Water Pipe Lines": "Water Pipe Lines",
+      "Others": "Others",
+      "No utilities Found": "No utilities Found"
+    },
+    "TYPE_OF_UTILITY_RHS": {
+      "": "Select Utility Type",
+      "Drainage Pipe lines": "Drainage Pipe lines",
+      "Electrical Lines": "Electrical Lines",
+      "Telephonic lines": "Telephonic lines",
+      "Gas Pipe Lines": "Gas Pipe Lines",
+      "Lighting Facilities": "Lighting Facilities",
+      "Water Pipe Lines": "Water Pipe Lines",
+      "Others": "Others",
+      "No utilities Found": "No utilities Found"
+    },
+    "TYPE_OF_ENCROACHMENT_LHS": {
+      "": "Select Encroachment Under The Bridge",
+      "Yes": "Yes",
+      "No": "No",
+      "Other": "Other"
+    },
+    "TYPE_OF_ENCROACHMENT_RHS": {
+      "": "Select Encroachment Under The Bridge",
+      "Yes": "Yes",
+      "No": "No",
+      "Other": "Other"
+    },
+    "BRIDGE_RATING": {
+      "overall_bridge_rating": {
+        "1": {
+          "label": "1 - Excellent",
+          "details": {
+            "Condition:-": "Sound structural condition; component do not individually or as a whole impair the strength, stability, traffic safety, durability and serviceability of the structure.",
+            "Extent & Severity of Distress:-": "Only constructional deficiencies may be present. Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low.",
+            "Type of Maintenance:-": "No need of repair except routine maintenance."
+          }
+        },
+        "2": {
+          "label": "2 - Good",
+          "details": {
+            "Condition:-": "More than satisfactory structural condition; component do not individually or as a whole impair strength/stability; traffic safety, durability and/or serviceability of the structure might be impaired slightly in the long term.",
+            "Extent & Severity of Distress:-": "Extent of deficiencies is minor; Severity of deficiencies is low.",
+            "Type of Maintenance:-": "Specialized maintenance and repairs may be needed at convenience."
+          }
+        },
+        "3": {
+          "label": "3 - Fair",
+          "details": {
+            "Condition:-": "Satisfactory structural condition; strength, stability and traffic safety of the structure is assured however considerable reduction is possible in the long term; serviceability and durability is reduced and durability of the structure might be impaired considerably in the long term.",
+            "Extent & Severity of Distress:-": "Extent of deficiencies is major; Severity of deficiencies is medium.",
+            "Type of Maintenance:-": "Specialized maintenance and repairs needed soon."
+          }
+        },
+        "4": {
+          "label": "4 - Poor",
+          "details": {
+            "Condition:-": "Structurally deficient bridge; strength/stability/traffic safety no longer assured; durability may be affected in short term; monitoring is required; restriction of use of the bridge may be needed.",
+            "Extent & Severity of Distress:-": "Extent of deficiencies is large; Severity of deficiencies is high.",
+            "Type of Maintenance:-": "Rehabilitation/replacement on program basis is needed; measures for reconstruction or warning signs may be necessary in the short term; detailed investigations and economic analysis required."
+          }
+        },
+        "5": {
+          "label": "5 - Critical",
+          "details": {
+            "Condition:-": "Weak structural condition; partial failure or risk of total failure of the component or as a whole; durability of the structure is no longer ensured; immediate propping and closing may be required.",
+            "Extent & Severity of Distress:-": "Extent of deficiencies is very large/expensive; Severity of deficiencies is very high.",
+            "Type of Maintenance:-": "Repair/rehabilitation/replacement is required immediately; design strength, expected serviceability and desired remaining service life can no longer be achieved economically."
+          }
+        }
+      }
+    },
+    "RM_MEASUREMENT_MAP": {
+      "Clearing and Grubbing Around Structures": {
+        "item_no": 1,
+        "title": "Clearing and Grubbing Around Structures",
+        "sub": "(Including RE Panels, Walls, and Medians)",
+        "unit": ""
+      },
+      "Dismantling of Existing Concrete Structures": {
+        "item_no": 2,
+        "title": "Dismantling of Existing Concrete Structures",
+        "sub": "(Hand Rail)",
+        "unit": ""
+      },
+      "Construction of Subgrade": {
+        "item_no": 3,
+        "title": "Construction of Subgrade",
+        "sub": "",
+        "unit": ""
+      },
+      "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill": {
+        "item_no": 4,
+        "title": "Repair of Eroded Side Slopes near Structures",
+        "sub": "(Quarter Coning Areas) Using Select Fill",
+        "unit": ""
+      },
+      "Application of Cement Paint on Concrete Handrails / Crash Barrier": {
+        "item_no": 5,
+        "title": "Application of Cement Paint on Concrete Handrails / Crash Barrier",
+        "sub": "",
+        "unit": ""
+      },
+      "Temporary Double Steel Scaffolding with Safety Features": {
+        "item_no": 6,
+        "title": "Providing and fixing temporary double steel scaffolding system with safety features.",
+        "sub": "(Quarter Coning Areas) Using Select Fill",
+        "unit": ""
+      },
+      "Extra Reinforcement with Zinc-Rich Epoxy Coating": {
+        "item_no": 7,
+        "title": "Extra Reinforcement with Zinc-Rich Epoxy Coating",
+        "sub": "",
+        "unit": ""
+      },
+      "Jacketing of Structural Members with M-40 Concrete (150mm to 175mm Thick)": {
+        "item_no": 8,
+        "title": "Jacketing of Structural Members with M-40 Concrete",
+        "sub": "(150 mm to 175mm Thick)",
+        "unit": ""
+      },
+      "Lifting of Superstructure Span by Hydraulic Jacking (up to 50m Span)": {
+        "item_no": 9,
+        "title": "Lifting of Superstructure Span by Hydraulic Jacking",
+        "sub": "(Span Length up to 50m)",
+        "unit": ""
+      },
+      "Replacement with POT-PTFE Bearings Including Pedestal Preparation": {
+        "item_no": 10,
+        "title": "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling",
+        "sub": "",
+        "unit": ""
+      },
+      "Replacement with Elastomeric Bearings": {
+        "item_no": 11,
+        "title": "Replacement of Existing Bearing with New Elastomeric Bearing",
+        "sub": "",
+        "unit": ""
+      },
+      "Cutting of Metallic Bearing Locks": {
+        "item_no": 12,
+        "title": "Cutting of Metallic Bearing Locks Using Electric Grinder",
+        "sub": "",
+        "unit": ""
+      },
+      "Rust Removal and Zinc Painting on Bearings": {
+        "item_no": 13,
+        "title": "Rust Removal and Anti-Corrosive Zinc Painting on Bearings",
+        "sub": "(As per MoRTH Specifications)",
+        "unit": ""
+      },
+      "Greasing of Steel Bearings": {
+        "item_no": 14,
+        "title": "Greasing of Steel Bearings",
+        "sub": "(Roller-cum-Rocker and Pin & Roller Types)",
+        "unit": ""
+      },
+      "Reconstruction of Damaged Return Wall (RCC up to 4m)": {
+        "item_no": 15,
+        "title": "Reconstruction of Damaged Return Wall",
+        "sub": "(Cast-in-situ RCC up to 4m Height)",
+        "unit": ""
+      },
+      "Stone Pitching near Culverts/Bridges": {
+        "item_no": 16,
+        "title": "Stone Pitching on Side Slopes near Culverts/Bridges for Embankment Protection",
+        "sub": "",
+        "unit": ""
+      },
+      "Expansion Joints and Related Works": {
+        "item_no": 17,
+        "title": "Expansion Joints and Related Works",
+        "sub": "(MoRTH Clause 2600)",
+        "unit": ""
+      },
+      "Expansion Joint Assembly - Filler Type": {
+        "item_no": 17.1,
+        "title": "Providing New Expansion Joint Assembly – Filler Type",
+        "sub": "",
+        "unit": ""
+      },
+      "Strip Seal Expansion Joint": {
+        "item_no": 17.2,
+        "title": "New Expansion Joint – Strip Seal Type",
+        "sub": "",
+        "unit": ""
+      },
+      "Seal for Strip Seal Expansion Joint": {
+        "item_no": 17.3,
+        "title": "Providing Seal for Strip Seal Expansion Joint",
+        "sub": "",
+        "unit": ""
+      },
+      "Reconstruction of RCC Crash Barrier": {
+        "item_no": 18,
+        "title": "Reconstruction of RCC Crash Barrier",
+        "sub": "(Post Dismantling)",
+        "unit": ""
+      },
+      "Drainage Spouts and Appurtenances": {
+        "item_no": 19,
+        "title": "Drainage Spouts and Appurtenances",
+        "sub": "(MoRTH Clause 2705)",
+        "unit": ""
+      },
+      "Drainage Spout Assembly Replacement/Providing": {
+        "item_no": 19.1,
+        "title": "Replacement/Providing of Drainage Spout Assembly",
+        "sub": "",
+        "unit": ""
+      },
+      "MS Grating over Drainage Spouts": {
+        "item_no": 19.2,
+        "title": "Provision of Missing MS Grating over Drainage Spouts",
+        "sub": "",
+        "unit": ""
+      },
+      "Replacing Missing/Damaged PVC Down Take Pipe": {
+        "item_no": 19.3,
+        "title": "Replacement of Missing/Damaged Down Take Pipe (PVC)",
+        "sub": "",
+        "unit": ""
+      },
+      "PVC Runner Pipe": {
+        "item_no": 20,
+        "title": "PVC Runner Pipe",
+        "sub": "",
+        "unit": ""
+      },
+      "Crack Sealing using V-Groove & Epoxy Mortar": {
+        "item_no": 21,
+        "title": "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar",
+        "sub": "",
+        "unit": ""
+      },
+      "Installation of Grouting Nipples (NRV Type)": {
+        "item_no": 22,
+        "title": "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures",
+        "sub": "(using Non-return Valve (NRV) Nipples)",
+        "unit": ""
+      },
+      "Epoxy Pressure Injection Grouting (NRV Type)": {
+        "item_no": 23,
+        "title": "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members",
+        "sub": "(using Non-return valve (NRV) nipples)",
+        "unit": ""
+      },
+      "PMM Repair up to 50mm": {
+        "item_no": 24,
+        "title": "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM Mortar) up to 50mm Thickness",
+        "sub": "",
+        "unit": ""
+      },
+      "Polymer Cement Grout Injection (4 kg/cm²)": {
+        "item_no": 25,
+        "title": "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure using NRV Nipples",
+        "sub": "",
+        "unit": ""
+      },
+      "Carbon Fibre Wrapping": {
+        "item_no": 26,
+        "title": "Carbon Fibre Wrapping for Strengthening of Structural Members",
+        "sub": "",
+        "unit": ""
+      },
+      "Micro-concrete Works": {
+        "item_no": 27,
+        "title": "Providing and Laying of Micro-concrete for Structural Repairs",
+        "sub": "",
+        "unit": ""
+      },
+      "Approach Slab Mud Jacketing": {
+        "item_no": 28,
+        "title": "Approach Slab Mud Jacketing",
+        "sub": "(Void Filling Beneath Slab by Pressure Grouting)",
+        "unit": ""
+      },
+      "MS Lining Plates (8mm thick)": {
+        "item_no": 29,
+        "title": "Providing and fixing of Mild Steel (MS) lining plates (8mm thick) for jacketing and structural strengthening of pedestals",
+        "sub": "",
+        "unit": ""
+      },
+      "Shotcreting": {
+        "item_no": 30,
+        "title": "Shotcreting",
+        "sub": "",
+        "unit": ""
+      },
+      "Mortar Sealing and Pointing": {
+        "item_no": 31,
+        "title": "Mortar Sealing and Pointing",
+        "sub": "",
+        "unit": ""
+      },
+      "Concrete Supply / Placing": {
+        "item_no": 32,
+        "title": "Concrete Supply / Placing",
+        "sub": "",
+        "unit": ""
+      },
+      "MBCB": {
+        "item_no": 33,
+        "title": "MBCB",
+        "sub": "",
+        "unit": ""
+      },
+      "Cross Bracing (Whole Parts)": {
+        "item_no": 34,
+        "title": "Cross Bracing /Whole Parts",
+        "sub": "",
+        "unit": ""
+      },
+      "Cross Bracing (Partial Parts)": {
+        "item_no": 35,
+        "title": "Cross Bracing /Partial Parts",
+        "sub": "",
+        "unit": ""
+      },
+      "Anti-Corrosive Epoxy Paint (Girder)": {
+        "item_no": 36,
+        "title": "Anti Corrosive Epoxy Paint(Girder)",
+        "sub": "",
+        "unit": ""
+      },
+      "Soil Nailing": {
+        "item_no": 37,
+        "title": "Soil Nailing (Each nail)",
+        "sub": "",
+        "unit": ""
+      },
+      "Wearing Coat": {
+        "item_no": 38.3,
+        "title": "Wearing Coat",
+        "sub": "",
+        "unit": ""
+      },
+      "Wearing Coat Dismantling": {
+        "item_no": 38.1,
+        "title": "Wearing Coat Dismantling",
+        "sub": "",
+        "unit": ""
+      },
+      "Tack Coat": {
+        "item_no": 38.2,
+        "title": "Tack coat",
+        "sub": "",
+        "unit": ""
+      },
+      "APP Membrane Deck Waterproofing": {
+        "item_no": 38.4,
+        "title": "Deck Waterproofing - APP membrane",
+        "sub": "",
+        "unit": ""
+      },
+      "Elastomeric Concrete": {
+        "item_no": 39,
+        "title": "Elastomeric Concerte",
+        "sub": "",
+        "unit": ""
+      },
+      "Approach Slab Dismantling": {
+        "item_no": 40,
+        "title": "Dismanteling of Approch Slab",
+        "sub": "",
+        "unit": ""
+      },
+      "Wearing Coat Raft Concrete": {
+        "item_no": 41,
+        "title": "Wearing Coat Raft Concrete",
+        "sub": "",
+        "unit": ""
+      },
+      "Reinforcement": {
+        "item_no": 41.1,
+        "title": "Reinforcement",
+        "sub": "",
+        "unit": ""
+      },
+      "RT Wall": {
+        "item_no": 42,
+        "title": "RT Wall",
+        "sub": "",
+        "unit": ""
+      },
+      "Anti-Carbonation Treatment": {
+        "item_no": 43,
+        "title": "Anti Carbonation",
+        "sub": "",
+        "unit": ""
+      },
+      "Missing Bolts": {
+        "item_no": 44,
+        "title": "Missing Bolts",
+        "sub": "",
+        "unit": ""
+      },
+      "Modular Strip Seal": {
+        "item_no": 45,
+        "title": "Modular Strip Seal",
+        "sub": "",
+        "unit": ""
+      }
+    },
+    "BOQ_Items": {
+      "Clearing and Grubbing Around Structures": {
+        "item_no": 1,
+        "title": "Clearing and Grubbing Around Structures (Including RE Panels, Walls, and Medians)",
+        "sub": "Clearing and grubbing debris spilled over structures including removal of vegetation,\n                bushes, grass, shrubs, and trees up to 300 mm girth, along with extraction of stumps\n                and cutting around RE panels, walls, and medians. The work includes disposal of \n                unserviceable material and stacking of serviceable items as per instructions, with \n                all necessary leads and lifts. The activity shall be executed in line with MoRTH Clause \n                201 and the detailed methodology outlined in the approved Scope document.\n                The quoted rate shall include all costs necessary to complete the work in accordance with\n                the specifications, drawings and directions of the Engineer-in-Charge, including but not \n                limited to the cost of all labour, materials, machinery, tools, plants, transportation, \n                handling, testing, safety arrangements, temporary works and site clearance, whether \n                specifically mentioned or implied.",
+        "short_name": "Clearing and Grubbing Around Structures (Including RE Panels, Walls, and Medians)",
+        "unit": ""
+      },
+      "Dismantling of Existing Concrete Structures": {
+        "item_no": 2,
+        "title": "Dismantling of Existing Concrete Structures (Hand Rail)",
+        "sub": "Dismantling of existing concrete structure(Hand rail ) including breaking and removal\n                of concrete, cutting and removal of embedded reinforcement, clearing the site, and\n                transportation and disposal of debris to an approved disposal site, all as directed\n                by the Engineer-in-Charge. The work shall be executed using appropriate equipment\n                and safety measures to prevent any damage to adjoining structures. The activity \n                shall be executed in accordance with the methodology provided in the approved Scope \n                document and relevant specifications.\n                The quoted rate shall include all costs necessary to complete the work in accordance\n                with the specifications, drawings and directions of the Engineer-in-Charge, including\n                but not limited to the cost of all labour, materials, machinery, tools, plants,\n                transportation, handling, testing, safety arrangements, temporary works and site clearance,\n                whether specifically mentioned or implied.",
+        "short_name": "Dismantling of Existing Concrete Structures",
+        "unit": ""
+      },
+      "Construction of Subgrade": {
+        "item_no": 3,
+        "title": "Construction of Subgrade",
+        "sub": "Construction of subgrade with approved material obtained from borrow pits, transported\n                with all lifts and leads, including royalty, and spread in uniform layers of not more than\n                250 mm thickness. The material shall meet the quality requirements specified in MoRTH Clause\n                305, ensuring compliance with gradation, plasticity, and moisture content parameters.\n                Compaction of the subgrade shall achieve a minimum of 97% of Maximum Dry Density (MDD) as \n                per IS 2720 (Part 8) using mechanical equipment. Grading shall be performed to ensure the\n                required slope, alignment, and stability, with final finishing to the levels specified \n                in the approved drawings. The work includes surface dressing, preparation of shoulders \n                for proper drainage, and all necessary field and laboratory tests, such as field density \n                and moisture content tests, to verify compliance with Table 300-2 of MoRTH specifications. \n                The item covers all costs for material procurement, royalty, transportation, labor, machinery, \n                and incidental works. Safety measures and environmental compliance shall be ensured \n                during execution. The final surface shall be stable, durable, and suitable for traffic \n                loading, conforming to project specifications and ensuring proper integration with \n                adjacent structures.",
+        "short_name": "Subgrade",
+        "unit": ""
+      },
+      "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill": {
+        "item_no": 4,
+        "title": "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill",
+        "sub": "The work includes all activities related to restoring eroded or damaged side slopes\n               (quarter coning) around culverts, bridges, and other road structures using approved select\n               earth fill along with required stones. The scope involves removing loose debris, dressing \n               the existing slope profile, placing select earth material in layers, and compacting each \n               layer by hand-ramming or light mechanical tamping to ensure slope stability. The final slope \n               shall be dressed to match the original embankment geometry (typically 2H:1V or as directed),\n               ensuring uniformity and adequate drainage. The material used shall be free of organic matter,\n               roots, or oversized clods, and sourced from an approved borrow area or designated stack. \n               No stone pitching or turfing is included in this item.\n               Rate includes all charges for removing debris, spreading and levelling of approved earth,\n               stones,hand compaction, dressing of slope, transportation of material within lead, and all\n               manpower, material, and incidental costs as per MoRTH Clause 305 & 306 and as directed by the\n               Engineer-in-Charge. Measurement shall be done in square metres of slope surface restored.\n               (Including Toe wall Construction , Filter media)",
+        "short_name": "Repair and Restoration of Quarter Coning",
+        "unit": ""
+      },
+      "Application of Cement Paint on Concrete Handrails / Crash Barrier": {
+        "item_no": 5,
+        "title": "Application of Cement Paint on Concrete Handrails / Crash Barrier",
+        "sub": "Providing and applying two coats of water-based cement paint on unplastered concrete \n                surfaces of handrails / crash barrier after thorough surface preparation as per IS 2395 \n                (Part 1): 1994 and IS 5410:1992. The surface shall be cleaned of all dirt, dust, grease, \n                oil, efflorescence, and loose particles by wire brushing and water jetting, followed by drying.\n                No primer is required if the surface is rough and porous; however, in case of smooth or dense\n                surfaces, a compatible cement-based primer may be applied to ensure proper adhesion. \n                The paint shall be applied at a coverage of 1 litre for every 2 sqm in each coat, \n                ensuring uniform thickness, shade, and finish. All painting shall be carried out using \n                appropriate tools such as brushes or rollers in two coats with sufficient drying time \n                between coats as per manufacturer’s instructions and relevant IS standards.\n                The quoted rate shall include all costs necessary to complete the work in accordance with \n                the specifications, drawings and directions of the Engineer-in-Charge, including but not \n                limited to the cost of all labour, materials, machinery, tools, plants, transportation, \n                handling, testing, safety arrangements, temporary works and site clearance, whether \n                specifically mentioned or implied.",
+        "short_name": "Application of Cement Paint on Concrete Handrails / Crash Barrier",
+        "unit": ""
+      },
+      "Temporary Double Steel Scaffolding with Safety Features": {
+        "item_no": 6,
+        "title": "Providing and fixing temporary double steel scaffolding system with safety features.",
+        "sub": "Providing, erecting, maintaining, and removing temporary engineered double steel \n                tubular scaffolding system or suspended platforms for safe access to elevated structures \n                for all heights, conforming to IS 3696 and MoRTH Section 1500. The scaffolding shall \n                include standards, ledgers, bracings, runners, toe boards, guardrails, and working \n                platforms as per approved design. It shall be securely anchored, adequately stiffened, \n                and safely accessible, ensuring structural stability throughout its use. Suspended platforms, \n                if used, shall be supported with ropes, pulleys, counterweights, and non-slip decking, \n                equipped with proper anchorage and fall protection systems.\n                All scaffolding shall be designed and erected by trained personnel, inspected before use, \n                and maintained regularly, including after adverse weather. Safety measures such as PPE, \n                safety harness anchorage points, debris netting, and temporary barriers near traffic zones \n                shall be ensured. Post-use dismantling shall be carried out in a controlled manner.\n                The quoted rate shall include all costs necessary to complete the work in accordance with \n                the specifications, drawings and directions of the Engineer-in-Charge, including but not \n                limited to the cost of all labour, materials, machinery, tools, plants, transportation, \n                handling, testing, safety arrangements, temporary works and site clearance, whether \n                specifically mentioned or implied.",
+        "short_name": "Providing and fixing temporary double steel scaffolding system with safety features.",
+        "unit": ""
+      },
+      "Extra Reinforcement with Zinc-Rich Epoxy Coating": {
+        "item_no": 7,
+        "title": "Extra Reinforcement with Zinc-Rich Epoxy Coating",
+        "sub": "All charges for providing and laying extra reinforcement wherever required for \n                rehabilitation and strengthening work, including surface preparation and application of two \n                coats of Zinc-rich epoxy primer (such as CICO Zincilate 500 or equivalent), ensuring uniform\n                coverage and anti-corrosive protection. The coating shall be carried out as per manufacturer’s\n                recommendations and MoRTH Specifications Clause 1600. The work shall include cleaning of steel\n                surfaces, proper drying, application with brush or spray, and curing, complete in all respects.\n                The quoted rate shall include all costs necessary to complete the work in accordance with the\n                specifications, drawings, and directions of the Engineer-in-Charge, including but not limited \n                to the cost of all labour, materials, machinery, tools, plants, transportation, handling, \n                testing, safety arrangements, temporary works, and site clearance, whether specifically \n                mentioned or implied.",
+        "short_name": "Extra Reinforcement with Zinc-Rich Epoxy Coating",
+        "unit": ""
+      },
+      "Jacketing with M-40 Concrete (150mm to 175mm)": {
+        "item_no": 8,
+        "title": "Jacketing of Structural Members with M-40 Concrete (150 mm to 175mm Thick)",
+        "sub": "All charges for structural jacketing of beams, columns, or piers using M-40 grade concrete\n                of 150 mm to 175mm thickness, executed as part of rehabilitation/strengthening of deteriorated\n                members, including complete removal of loose or damaged concrete, surface roughening, exposure \n                of existing reinforcement, cleaning of rebars using wire brush/sandblasting/high-pressure water\n                jet, and applying anti-corrosive coating (Zinc-rich epoxy or equivalent) to existing reinforcement\n                wherever required. The item includes supplying, cutting, bending, and fixing of new 12 mm diameter\n                reinforcement bars @ 150 mm c/c both ways (or as per design) with proper lapping, anchorage, and\n                tying with old rebars. All work shall be carried out with adequate surface preparation to ensure\n                full bond between old and new concrete, including fixing of leak-proof formwork/shuttering,\n                placement of M-40 grade concrete using conventional, pumpable or self-compacting concrete as per\n                design requirement, proper compaction with vibrators or suitable means, finishing of exposed\n                surfaces, and curing by approved methods for the prescribed period.\n                The quoted rate shall include all costs necessary to complete the work in accordance with the\n                specifications, drawings, and directions of the Engineer-in-Charge, including but not limited to\n                labour, materials, machinery, shuttering, reinforcement, anti-corrosive treatment, curing, surface\n                preparation, and all safety arrangements. No extra payment shall be made for working at any height,\n                in congested zones, night work, or difficult access conditions. The work shall conform to MoRTH\n                Specifications Section 1700 & 2800, IRC-SP:84, and relevant IS Codes.",
+        "short_name": "Jacketing of Structural Members with M-40 Concrete (150 mm to 175mm Thick)",
+        "unit": ""
+      },
+      "Lifting of Superstructure Span by Hydraulic Jacking (up to 50m Span)": {
+        "item_no": 9,
+        "title": "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)",
+        "sub": "All-inclusive charges for safe and controlled lifting of the superstructure span (up to 50m \n                in length) by hydraulic jacking from below, i.e. by placing synchronized hydraulic jacks on pier or \n                abutment caps, to facilitate the replacement of bearings or other structural interventions. The\n                work includes detailed pre-inspection of lifting points, design of jacking system, staging and \n                positioning of jacks, synchronized and monitored lifting, stabilization, and controlled lowering \n                after completion of intervention works.\n                The lifting shall be executed using synchronized hydraulic jacks, load cells, and associated\n                lifting frames or beams to ensure uniform vertical movement without causing differential stresses,\n                distortion, or misalignment of the girder. Temporary supports/staging shall be provided to secure\n                the girder during operations. The contractor shall ensure deployment of qualified structural\n                engineers, supervisors, and jacking specialists at site.\n                All equipment (hydraulic jacks, pressure gauges, sensors, spreader beams) shall be calibrated and\n                certified. The operation shall comply with MoRTH guidelines, IRC standards, IS codes, and approved\n                method statements, with complete documentation and risk assessment submitted prior to execution.\n                The quoted rate shall include all costs necessary to complete the work in accordance with the\n                specifications, drawings, and instructions of the Engineer-in-Charge, including but not limited to\n                supply of lifting equipment, manpower, safety barricading, PPEs, communication systems,\n                environmental compliance, temporary support systems, and all incidental works. No extra payment \n                shall be made for night work, space constraints, safety arrangements, risk assessment preparation,\n                or multiple jacking attempts, if required for completion of the task.",
+        "short_name": "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)",
+        "unit": ""
+      },
+      "Replacement with POT-PTFE Bearings Including Pedestal Preparation": {
+        "item_no": 10,
+        "title": "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling",
+        "sub": "All charges for replacing the existing bearing with a new POT-PTFE bearing of equivalent \n                load-carrying capacity, including removal and disposal of old bearing, thorough cleaning of the\n                bearing pedestal, levelling using epoxy levelling pad (3 mm to 10 mm thick), and accurate\n                positioning, alignment, and installation of the new bearing. The bearing shall conform to IRC:83 \n                Part 3, and the epoxy resin used for levelling shall comply with ASTM C881 or equivalent approved\n                standard. The installation shall conform to MoRTH Clauses 2000 & 2200, IRC:83 Part 3, and the\n                approved drawings. Work under this item shall commence only after the superstructure is lifted \n                under a separate item.\n                The scope includes:\n                a) Mechanical cleaning and preparation of the concrete pedestal surface\n                b) Application and curing of high-strength epoxy levelling pad\n                c) Positioning and alignment of new bearing with reference to structure’s longitudinal and transverse axes\n                d) Application of epoxy adhesive, where specified\n                e) Grouting of anchor bolt pockets using non-shrink grout conforming to IS 4031 / ASTM C1107\n                f) Ensuring correct orientation, specified clearances, and uniform seating\n                g) Final inspection, verification of bearing position, and submission of compliance records\n\n                The quoted rate shall include complete cost of bearing (supply of  POT-PTFE bearing conforming \n                to IRC:83 (Part 3)), and installation), epoxy materials, non-shrink grout, tools, equipment,\n                manpower, alignment instruments, specifically required for bearing replacement work. No extra shall\n                be payable for dismantling or disposal of existing bearing, pedestal cleaning, or staging. Lifting\n                of superstructure is excluded and covered under a separate item.",
+        "short_name": "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling",
+        "unit": ""
+      },
+      "Replacement with Elastomeric Bearings": {
+        "item_no": 11,
+        "title": "Replacement of Existing Bearing with New Elastomeric Bearing",
+        "sub": "All charges for replacing the existing bearing with a new elastomeric bearing of equivalent \n                load-carrying capacity, including complete cleaning and levelling of the pedestal using epoxy\n                levelling pad (3 mm to 10 mm thick), and proper positioning and alignment of the new bearing. \n                The elastomeric bearing shall conform to IRC:83 (Part 2), and the epoxy resin shall conform to \n                ASTM C881 or equivalent. The work shall be executed only after lifting of the superstructure has\n                been completed under a separate payable item.\n                The scope includes removal and disposal of the existing bearing, mechanical cleaning of the bearing\n                pedestal, preparation of surface, application and curing of epoxy levelling pad to achieve\n                uniformity, accurate placement of elastomeric bearing as per approved drawings, and verification of\n                alignment and seating. As elastomeric bearings are typically unanchored, anti-skid arrangements or\n                recessed pedestals shall be used where specified. Bearings shall be positioned with proper\n                orientation, ensuring even contact pressure and adequate clearances in all directions. \n                The quoted rate shall include cost of supply of elastomeric bearing conforming to IRC:83 (Part 2),\n                epoxy levelling pad, labour, tools, equipment, alignment instruments, all required for execution of\n                the bearing replacement work. No extra payment shall be made for surface preparation, or disposal\n                of removed bearings. Lifting of the superstructure is excluded and shall be paid under a separate\n                item.",
+        "short_name": "Replacement of Existing Bearing with New Elastomeric Bearing",
+        "unit": ""
+      },
+      "Cutting of Metallic Bearing Locks": {
+        "item_no": 12,
+        "title": "Cutting of Metallic Bearing Locks Using Electric Grinder",
+        "sub": "All charges for cutting and removal of existing metallic bearing locks on both sides of the\n                bearing using electric grinder, without causing any damage to the bearing, including careful\n                marking, controlled cutting, shielding of bearing surfaces, and disposal of dismantled metallic \n                parts as per the direction of the Engineer-in-Charge. The work shall be executed using suitable \n                angle grinders with abrasive or diamond-tipped discs, ensuring vibration-free and spark-controlled \n                cutting. Necessary protective covers such as fire-resistant blankets or metallic shields shall be \n                used to prevent any impact on the bearing housing.\n                The quoted rate shall include the cost of all labour, cutting equipment, grinders, blades and \n                discs, supervision, safety PPE, protective shielding required for safe access, and collection and\n                disposal of all dismantled metallic pieces from the site. No extra payment shall be made for\n                consumables, tools, safety arrangements, temporary working platforms or for any precautionary\n                measures adopted to protect the existing bearings during the cutting operation.",
+        "short_name": "Cutting of Metallic Bearing Locks Using Electric Grinder",
+        "unit": ""
+      },
+      "Rust Removal and Zinc Painting on Bearings": {
+        "item_no": 13,
+        "title": "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)",
+        "sub": "All charges for removing rust from bearing surfaces and applying anti-corrosive zinc-based\n                protective coating, including necessary access arrangements such as erection and removal of\n                scaffolding, as per MoRTH Specifications Clause 2006 and as per the direction of Engineer-in-Charge\n                at site. The work shall involve thorough cleaning of the bearing surfaces by manual or mechanical\n                wire brushing, emerying or grit blasting wherever required, to remove rust, dust, oil, grease, and\n                loose particles. After surface preparation to near white metal finish (Sa 2½), the protective \n                painting system shall be applied in accordance with manufacturer’s recommendations and as per \n                technical specifications.\n                The painting system shall consist of two coats of epoxy primer enriched with metallic zinc,\n                followed by one intermediate coat of high-build epoxy paint reinforced with Micaceous Iron Oxide \n                (MIO), and finished with one coat of high-performance epoxy topcoat. The total dry film thickness \n                (DFT) of the entire system shall not be less than 160 microns, conforming to MoRTH Clause 2006(xv).\n                All safety precautions during scaffolding, surface preparation, and painting shall be strictly\n                adhered to.\n                Rate includes the cost of all labour, materials, tools, access arrangements, safety gear, surface\n                preparation, cleaning, and application of the complete anti-corrosive coating system as specified,\n                as well as all incidental works necessary to execute the job in a safe and workmanlike manner to\n                the satisfaction of the Engineer-in-Charge. The contractor shall be fully responsible for making\n                all necessary arrangements to access the bearings, including over rivers, high piers, or confined\n                spaces.",
+        "short_name": "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)",
+        "unit": ""
+      },
+      "Greasing of Steel Bearings": {
+        "item_no": 14,
+        "title": "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)",
+        "sub": "The work includes the thorough cleaning and application of approved quality grease to\n                mechanical steel bearings, including roller-cum-rocker and pin & roller bearings, as per MoRTH\n                Specifications Clause 2003.1.7 and as directed by the Engineer-in-Charge. The scope involves\n                cleaning of bearing components such as rollers, pins, saddles, and contact surfaces using\n                appropriate manual or mechanical means to remove dust, rust flakes, hardened grease, and other \n                contaminants. After cleaning, high-quality lithium-based or calcium-based waterproof grease \n                conforming to IS: 7623 or equivalent international standards shall be applied to all moving and \n                mating surfaces to ensure smooth functioning and prevention of corrosion.\n                The rate includes the cost of all labour, materials (including grease and cleaning agents), tools,\n                equipment, safety gear, access arrangements or working platforms, and all incidental works\n                necessary to complete the job in a safe, workmanlike manner. All operations shall be carried out \n                with proper traffic and structural safety precautions and to the satisfaction of the \n                Engineer-in-Charge. Vetting or approval of the activity is under the client’s scope.",
+        "short_name": "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)",
+        "unit": ""
+      },
+      "Reconstruction of Damaged Return Wall (RCC up to 4m)": {
+        "item_no": 15,
+        "title": "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)",
+        "sub": "All-inclusive charges for dismantling the existing damaged return wall and casting of new\n                return wall up to 4.0 m height using cast-in-situ M35 grade reinforced cement concrete (or as\n                specified), including site clearance, disposal of dismantled material, excavation (if applicable),\n                surface preparation, fabrication and fixing of steel reinforcement as per design, fixing of \n                shuttering/formwork, mixing, placing, compacting and curing of concrete, and achieving required\n                surface finish as per drawings and MoRTH specifications. The item includes the supply of all \n                materials (cement, aggregates, water, reinforcement bars, shuttering materials, binding wires, \n                cover blocks, curing compounds), all labour, tools, plant & equipment required for the execution.\n                The work shall also include proper alignment, verticality, and plumb of the wall, maintaining \n                construction joints (if any), provision of weep holes, waterstops or expansion joint materials (if\n                required), and removal of formwork after achieving initial setting time. All works shall conform to\n                relevant IS codes and MoRTH Specifications under the supervision and direction of the \n                Engineer-in-Charge.\n                The quoted rate shall include all costs necessary to complete the work in accordance with the \n                specifications, drawings, and instructions of the Engineer-in-Charge, including but not limited to \n                procurement and royalty of materials, transportation, loading/unloading, labour charges, use of \n                machinery, safety measures (PPE, barricading, signage), environmental compliance, and disposal of \n                waste. No extra payment shall be made for working in constrained areas, night work, site-specific \n                difficulties, water arrangement, curing arrangement, or any incidental work required to complete \n                the job in all respects.",
+        "short_name": "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)",
+        "unit": ""
+      },
+      "Stone Pitching near Culverts/Bridges": {
+        "item_no": 16,
+        "title": "Stone Pitching on Side Slopes near Culverts/Bridges for Embankment Protection(As per MoRTH Clause 2504)",
+        "sub": "The item involves providing stone pitching on earthen or embankment slopes near culverts,\n                bridges, or other road structures to prevent erosion and ensure long-term stability. The scope \n                includes dressing and preparing the slope surface to the required lines and gradient. A 75 mm thick\n                granular filter layer shall be laid over the slope if required, using clean, well-graded sand or\n                stone aggregate (as per MoRTH specifications), to facilitate drainage and prevent soil migration.\n                Subsequently, hand-packed stone pitching shall be done using approved hard stones (nominal size \n                150–250 mm), properly wedged with spalls to ensure interlocking and stability. The stones shall be\n                sound, durable, and angular in shape.\n                The slope surface shall be dressed and compacted prior to laying the granular filter and stone\n                pitching, it shall be carried out manually or by light mechanical means. The finished surface shall\n                be neat, uniform, and to the required slope.\n                Adequate temporary precautions shall be taken during the monsoon or on steep slopes, such as bunds,\n                diversion drains, or tarpaulin covers, to prevent damage to the executed work until permanent \n                protections like turfing or toe walls are constructed (which are payable under separate items).\n                Rate includes the cost of all labour, material (stone, filter media, spalls), transportation,\n                dressing, packing, wedging, temporary protection, and all incidental works. Measurement shall be in \n                square metres (Sqm) of actual surface area pitched. Work shall conform to MoRTH Clause 2504 and be\n                executed as per the approved drawing and as directed by the Engineer-in-Charge.",
+        "short_name": "Stone Pitching",
+        "unit": ""
+      },
+      "Expansion Joints and Related Works": {
+        "item_no": 17,
+        "title": "Expansion Joints and Related Works (MoRTH Clause 2600)",
+        "sub": "This item includes all charges related to the provision, replacement, and rectification of\n                expansion joints and associated components for bridges, in accordance with MoRTH Specifications\n                Clause 2600 and as directed by the Engineer-in-charge. The scope is further elaborated in the \n                following sub-items.",
+        "short_name": "Expansion Joints",
+        "unit": ""
+      },
+      "Expansion Joint Assembly - Filler Type": {
+        "item_no": 17.1,
+        "title": "Providing New Expansion Joint Assembly – Filler Type",
+        "sub": "Providing and fixing new expansion joint assembly of filler type conforming to MoRTH Clause\n                2600 (Clauses 2602 to 2607) and IRC:SP:69, including all operations necessary for ensuring proper\n                functionality of the joint. The work includes marking the location of the joint, removal of damaged\n                or deteriorated joint material (if any), groove cutting, thorough cleaning, and surface\n                preparation. Pre-moulded compressible filler board (bitumen impregnated fibreboard or closed-cell\n                polymer board) of approved thickness and depth shall be fixed into the cleaned joint gap. Edge\n                protection angles of mild steel/galvanized steel shall be fixed on both sides using dowels embedded\n                in epoxy grout. Backer rod, primer and approved elastomeric or polysulphide sealant shall be \n                applied to seal the joint, ensuring water-tightness and flexibility. Work shall include all labour,\n                tools, equipment, safety measures, traffic control, and environmental compliance, and shall be \n                executed as per drawings and direction of Engineer-in-Charge.\n                The rate shall include cost of all materials, cutting, cleaning, surface preparation, fixing,\n                sealing, curing, waste disposal, safety arrangements, and incidental charges for completing the\n                work in all respects.",
+        "short_name": "Providing New Expansion Joint Assembly – Filler Type",
+        "unit": ""
+      },
+      "Strip Seal Expansion Joint": {
+        "item_no": 17.2,
+        "title": "New Expansion Joint – Strip Seal Type (Loop Plate)",
+        "sub": "Providing and fixing strip seal type expansion joint assembly (Loop Plate type), including\n                dismantling and removal of the existing joint (if any), complete with the supply and installation\n                of new expansion joint components comprising steel edge beams conforming to IS 2062 Grade B, 12 mm\n                thick gusset plates with 16 mm Ø loops spaced at 250 mm c/c, and an elastomeric sealing element \n                made of chloroprene rubber. The joint shall be fixed using high-strength micro-concrete with \n                adequate reinforcement, as per the approved design and manufacturer’s instructions.\n                The scope of work includes groove cutting, surface preparation and cleaning, precise alignment and\n                placement of anchorages and edge beams, embedding in micro-concrete, and installation of the \n                elastomeric strip seal using a manufacturer-approved fixing system to ensure proper compression and\n                water-tight sealing. The sealing element shall be resistant to fatigue, wear, ultraviolet \n                radiation, and chemical exposure.\n                All materials and workmanship shall conform to MoRTH Specification Clause 2607, and relevant\n                provisions of IRC:SP:69, IRC:SP:73, IRC:83 (Part II), and IS 12118:1987. All installation works \n                shall be in accordance with approved technical drawings and as directed by the Engineer-in-Charge.\n                Rate includes the cost of all materials, dismantling and disposal of existing joint components,\n                site preparation, groove cutting, anchorage and beam placement, sealing, testing, and all labour\n                and equipment required to complete the work to specification.",
+        "short_name": "New Expansion Joint – Strip Seal Type",
+        "unit": ""
+      },
+      "Seal for Strip Seal Expansion Joint": {
+        "item_no": 17.3,
+        "title": "Providing Seal for Strip Seal Expansion Joint",
+        "sub": "Providing and fixing elastomeric sealing element (seal only) in existing strip seal expansion\n                joint assembly as per Clause 2600 of MoRTH Specifications and IRC 83 (Part II). The work includes \n                removal of old seal (if any), thorough cleaning of seal grooves using air compressor/wire brush, \n                application of adhesive/primer if required, and inserting new approved elastomeric seal ensuring \n                uniform compression. \n                Rate includes all labour, equipment, cleaning, sealant, primer, installation of sealing strip, \n                quality checks, and disposal of removed material in compliance with environmental guidelines. Seal\n                shall be UV and fatigue resistant, suitable for repeated vehicular movements, and capable of \n                withstanding temperature variations.\n                MoRTH Ref: Clause 2607\n                Relevant Codes: IRC 83 Part II, IS 12118:1987",
+        "short_name": "Providing Seal for Strip Seal Expansion Joint",
+        "unit": ""
+      },
+      "Reconstruction of RCC Crash Barrier": {
+        "item_no": 18,
+        "title": "Reconstruction of RCC Crash Barrier (Post Dismantling)",
+        "sub": "Construction of new RCC crash barrier in place of a damaged/dismantled barrier, including\n                preparation of base surface, layout marking, supplying and fixing steel reinforcement conforming to\n                IS:1786, fixing dowel bars/anchor rebars (wherever required) by core drilling and grouting with \n                approved resin-based compound, providing and fixing steel formwork, and placing M40 grade concrete\n                using mechanical/manual methods. Scope includes proper compaction by needle vibrators, finishing, \n                curing for minimum 7 days, de-shuttering, and surface rectification, all in line with approved \n                drawings and site requirements.\n                This work shall be carried out as per MoRTH Specifications Sections 1700 (Concrete), 1500 \n                (Formwork), 1600 (Reinforcement), and Section 2703 (for crash barrier dimensions and geometry). \n                The contractor shall take utmost care to ensure proper jointing with existing structure and \n                reinforcement continuity for safety performance.\n                Rate includes all materials, labour, equipment, safety barriers, curing, site cleaning, and \n                incidental works. No extra payment shall be made for dowel fixing, formwork over uneven base, or \n                working in restricted locations. Finished barrier shall be true in line and level, with uniform \n                cross-section and surface finish.",
+        "short_name": "Reconstruction of RCC Crash Barrier (Post Dismantling)",
+        "unit": ""
+      },
+      "Drainage Spouts and Appurtenances": {
+        "item_no": 19,
+        "title": "Drainage Spouts and Appurtenances (MoRTH Clause 2705)",
+        "sub": "This item includes all charges towards provision, replacement, or rectification of drainage \n                spouts and their associated components as per MoRTH Specifications Clause 2705 and as directed by\n                the Engineer-in-charge. Detailed scope is covered under the following sub-items:",
+        "short_name": "Drainage spout",
+        "unit": ""
+      },
+      "Drainage Spout Assembly Replacement/Providing": {
+        "item_no": 19.1,
+        "title": "Replacement/Providing of Drainage Spout Assembly",
+        "sub": "The work includes providing and fixing new drainage spout assemblies or replacing damaged/\n                non-functional ones to ensure effective deck drainage of bridge superstructures. The scope covers \n                supply, fabrication, and installation of spout assemblies as per MoRTH Specifications Clause 2705,\n                including spout body, MS grating, connecting down take pipe, brackets, fasteners, and protective \n                coatings. The spouts shall be made of mild steel conforming to IS:2062, hot-dip galvanized or \n                epoxy-painted for corrosion resistance, and of dimensions suitable for ensuring proper drainage as \n                per site conditions. The assembly shall be fixed by drilling through the deck wearing coat and \n                securely embedding into the drainage recess using approved sealants and fasteners. All loose \n                concrete shall be repaired prior to fixing, and proper alignment and slope shall be ensured. This\n                item includes removal of debris, disposal of old/damaged components, reinstatement of wearing coat \n                around the spout, and restoration of any surface affected during work. The contractor shall supply\n                all men, materials, and machinery required and carry out the work with proper safety, traffic \n                control, and due diligence under the guidance of the Engineer-in-charge.\n                Rate includes the cost of all materials (spout body, grating, down take pipe, fasteners, sealants),\n                fabrication, protective coatings, transportation, skilled and unskilled labour, machinery, surface \n                preparation, disposal of dismantled material, and all incidental works required for completing the\n                job in accordance with MoRTH specifications and direction of Engineer-in-charge.",
+        "short_name": "Replacement/Providing of Drainage Spout Assembly",
+        "unit": ""
+      },
+      "MS Grating over Drainage Spouts": {
+        "item_no": 19.2,
+        "title": "Provision of Missing MS Grating over Drainage Spouts",
+        "sub": "This item includes providing and fixing MS grating over existing drainage spouts wherever \n                missing, as per MoRTH Clause 2705. The grating shall be fabricated from mild steel flats of\n                adequate strength and spacing to allow unimpeded flow of water and to prevent debris ingress. The \n                size and configuration of the grating shall suit the existing spout mouth and shall be fixed \n                securely either by welding or bolting as per site condition and as directed by the \n                Engineer-in-charge. The MS grating shall be hot-dip galvanized or epoxy painted to prevent \n                corrosion and ensure long life. If any reshaping or cleaning of the spout mouth is required before \n                installation, it shall be done carefully. This item also includes removal of rust or scaling from \n                the existing spout where necessary, and surface preparation before fixing the grating. The \n                contractor shall be responsible for the supply of all required men, materials, and tools, and shall \n                ensure that work is carried out with proper traffic safety, without disturbing the drainage system, \n                and with due diligence as per standard specifications.\n                Rate includes cost of fabrication, galvanization/painting, transportation, welding/bolting, labour, \n                surface cleaning, minor chipping, rust removal, site preparation, safety arrangements, and all other\n                accessories and tools required to complete the work as per the specifications and direction of the \n                Engineer-in-charge.",
+        "short_name": "Provision of Missing MS Grating over Drainage Spouts",
+        "unit": ""
+      },
+      "Replacing Missing/Damaged PVC Down Take Pipe": {
+        "item_no": 19.3,
+        "title": "Replacement of Missing/Damaged Down Take Pipe (PVC)",
+        "sub": "This item includes supplying and fixing missing or damaged down take pipes connected to \n                drainage spouts, as per MoRTH Clause 2705. The down take pipe shall be made of PVC (Polyvinyl\n                Chloride), conforming to IS:4985 or other relevant standards, with a suitable diameter as per the \n                design requirements. The pipe shall be properly anchored to the substructure using clamps or \n                brackets, the alignment and slope are adequate for the drainage system to function without leakage \n                or water splashing.In case the previous pipe or clamps were embedded, necessary chipping and \n                re-concreting shall be done to restore the original position and strength of the system. The work\n                includes cutting, jointing, and sealing the pipe with approved PVC solvent cement or adhesive to\n                ensure a leak-proof connection. The joints must be sealed to prevent water leakage, and all\n                necessary measures shall be undertaken to avoid damage during the replacement process.\n                All necessary scaffolding, working platforms, safety harnesses, and protective measures shall be\n                ensured during the execution of this work. The contractor shall deploy skilled manpower, quality\n                materials, and required machinery, and complete the work as per standard practices, ensuring \n                compliance with the specifications to the satisfaction of the Engineer-in-charge.\n                The rate includes the cost of PVC pipes, clamps, fasteners, brackets, fabrication, adhesives, \n                sealants,cutting, jointing, labour, disposal of old pipes, tools, and all incidentals necessary to \n                complete the work in a safe and workmanlike manner, as per MoRTH specifications and as directed by \n                the Engineer-in-charge.",
+        "short_name": "Replacement of Missing/Damaged Down Take Pipe (PVC)",
+        "unit": ""
+      },
+      "PVC Runner Pipe": {
+        "item_no": 20,
+        "title": "",
+        "sub": "All charges for Supply, transportation, and fixing of Drain Spout Pipe of approved make and\n                standard size (PVC/GI/SS – as per site requirement) including necessary clamps, fixtures, and\n                supports. The item includes all charges of material supply, labour for cutting, aligning, jointing,\n                sealing, and securely fixing to the structure as per standard specifications and as directed by the\n                Engineer-in-Charge. Rate to include all tools, tackles, consumables, and all incidental charges for\n                completion of the job in all respects.",
+        "short_name": "PVC Runner Pipe",
+        "unit": ""
+      },
+      "Crack Sealing using V-Groove & Epoxy Mortar": {
+        "item_no": 21,
+        "title": "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar",
+        "sub": "All charges for preparing and sealing of visible or identified cracks in RCC structural \n                elements (such as deck slab, crash barrier, pier cap, etc.) using epoxy mortar, including forming \n                V-groove of appropriate width and depth using suitable tools (grinder/cutter), thorough cleaning of\n                the groove and adjoining surface with air/water jet and wire brush to remove all dust, laitance, or\n                loose particles, application of epoxy-based bond coat on the prepared groove and surrounding \n                concrete surface, and subsequent filling of the groove using a pre-approved non-shrink, \n                high-strength epoxy mortar conforming to manufacturer’s recommendations. The epoxy mortar shall be\n                applied in layers if required, ensuring complete filling of the groove, proper compaction, and a \n                flush finish with adjoining surface. The final surface shall be finished to match the existing \n                profile and be cured as per epoxy system requirement.\n                The epoxy materials used shall conform to relevant provisions of IRC:SP-80, MoRTH Clause 2800, and\n                manufacturers specifications. All operations shall be carried out under controlled conditions with\n                surface temperature and moisture levels suited for epoxy application, as per the material technical\n                data sheet.\n                Rate includes all labour, materials (including epoxy system), V-groove cutting, surface \n                preparation, bond coat, filling, tools, safety equipment, and consumables required to complete the\n                work in a professional and durable manner. The contractor shall make necessary arrangements to\n                access work locations at any height or depth with due safety, and shall complete the work to the \n                satisfaction of the Engineer-in-Charge.",
+        "short_name": "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar",
+        "unit": ""
+      },
+      "Installation of Grouting Nipples (NRV Type)": {
+        "item_no": 22,
+        "title": "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures (using Non-return Valve (NRV) Nipples)",
+        "sub": "This item covers all necessary operations for the provision and secure installation of 12 mm\n                diameter steel grouting nipples with Non-return Valve (NRV) in RCC members for the purpose of \n                pressure injection grouting. The work includes core drilling of holes ranging from 16 mm to 25 mm\n                in diameter and 50 mm to 150 mm in depth at intervals of approximately 300 mm center-to-center, as\n                per site requirements and grouting layout approved by the Engineer-in-Charge\n                After drilling, the holes shall be cleaned thoroughly, and the steel NRV nipples shall be fixed\n                firmly using an approved fixing compound to ensure leakproof anchorage suitable for pressure \n                injection using Polymer Modified Cementitious (PMC) grout or Epoxy resin, as per the technical \n                specifications. The NRV nipple shall be specifically designed to prevent the backflow of injected \n                material, ensuring that the grouting pressure is maintained during the injection process.\n                Upon completion of the grouting process, all installed nipples shall be either cut flush with the\n                surface or removed, and the holes shall be sealed with epoxy mortar or equivalent sealant to \n                restore structural surface continuity.\n                Rate includes: Cost of all materials including steel NRV nipples and fixing compound, labour for \n                drilling, insertion, fixing, cutting/removal, surface preparation, cleaning, sealing of holes post\n                grouting, tools & tackles, and all incidental items necessary to complete the work in accordance \n                with MoRTH Specification Section 2800 and as per directions of the Engineer-in-Charge.",
+        "short_name": "Provision and Installation of Grouting NRV Nipples for Pressure Injection in RCC Structures",
+        "unit": ""
+      },
+      "Epoxy Pressure Injection Grouting (NRV Type)": {
+        "item_no": 23,
+        "title": "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (using Non-return valve (NRV) nipples)",
+        "sub": "This item includes all operations required for pressure injection grouting using low \n                viscosity epoxy resin to fill cracks and voids in RCC members, ensuring monolithic structural\n                restoration. The epoxy grout shall be a two-component system (resin and hardener) such as Sikadur-\n                52 (LP) or equivalent conforming to MoRTH Specifications Clause 2803, mixed in specified proportions\n                as recommended by the manufacturer to achieve a minimum compressive strength of 4 kg/cm².\n                Injection shall be carried out using a pressure grouting pump, ensuring proper penetration of epoxy\n                into hairline and fine cracks through previously installed grouting nipples, which shall be\n                Non-return valve (NRV) type nipples spaced as per the engineer’s direction. The NRV nipples shall\n                allow for unidirectional flow of the grout, preventing any backflow during the injection process.\n                The grouting pressure and flow shall be controlled to avoid overpressurization and material \n                wastage. Grouting shall be continued until refusal or confirmed crack filling is achieved. Surface \n                temperature, humidity, and substrate moisture content shall be verified prior to application, as\n                per product requirements.\n                Post injection, the surface shall be sealed, NRV nipples removed (if not reusable), and the area\n                finished to match the adjoining surface. Grouting shall be executed by skilled personnel trained in\n                handling epoxy-based systems, with due consideration to safety protocols for handling reactive \n                materials.\n\n                Rate includes: Cost of approved epoxy resin system including all components, mixing, application,\n                cleaning, labour, pressure grouting equipment, sealing of cracks and injection points, removal of \n                NRV nipples, and all tools, safety measures, and incidentals to complete the job as per \n                specifications and direction of the Engineer-in-Charge.",
+        "short_name": "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (using NRV Nipples)",
+        "unit": ""
+      },
+      "PMM Repair up to 50mm": {
+        "item_no": 24,
+        "title": "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM Mortar) up to 50mm Thickness",
+        "sub": "This item includes all charges for removal of damaged, cracked, leached, honeycombed, or\n                spalled concrete in RCC structural members such as piers, pier caps, abutments, abutment caps,\n                crash barriers, and superstructures; followed by surface preparation and application of Polymer\n                Modified Cement (PMM) mortar not exceeding 50 mm thickness per layer. The work shall be executed as \n                per MoRTH Specifications Clause 2804.2 and in accordance with the directions of the \n                Engineer-in-Charge.\n                Scope of Work Includes:\n                Concrete Removal: Manual or mechanical removal of delaminated, loose, or deteriorated concrete \n                using hammers, pneumatic tools, or hydro-demolition. Concrete shall be removed to sound substrate \n                based on visual/NDT-based inspection. Adjacent healthy concrete and embedded reinforcement shall be \n                preserved. All debris shall be removed and disposed of safely per Clause 112.\n                Surface Preparation: Cleaning of exposed surfaces using high-pressure water jetting or sand\n                blasting to achieve a rough, laitance-free profile. Exposed rebars shall be cleaned of rust and \n                corrosion using CICO Rust Clean or its equivalent, and the surface shall be kept in SSD condition.\n                Reinforcement Treatment: Corroded rebars shall be coated with Zinc-rich epoxy primer (e.g., CICO\n                Zincilate 500 or equivalent) for corrosion protection.\n                Bond Coat Application: Bond coat shall be applied on prepared surfaces using approved products like\n                Nitobond EP or its equivalent to enhance adhesion.\n                PMC Mortar Application: Polymer modified cement mortar containing 10% polymer by weight (e.g., \n                Tapecrete P151 or equivalent) shall be mixed and applied in layers up to 50 mm thickness using \n                trowels. The mix shall be prepared using slow-speed mechanical mixers and placed to match the \n                original concrete profile.",
+        "short_name": "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM Mortar) up to 50mm Thickness",
+        "unit": ""
+      },
+      "Polymer Cement Grout Injection (4 kg/cm²)": {
+        "item_no": 25,
+        "title": "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure using NRV Nipples",
+        "sub": "All charges for providing and injecting polymer cement grout composed of Ordinary Portland  \n                Cement (OPC) mixed with 10% polymer additive by weight of cement (e.g., Tapcrete-151 or its \n                equivalent) and 0.5% to 1% non-shrink compound (e.g., Cico NSPGC or its equivalent), into cracks,\n                voids, or honeycombed concrete sections at a minimum injection pressure of 4 kg/cm² using approved \n                mechanical grouting equipment, including surface sealing, fixing of non-return valve (NRV) type \n                nipples, grout preparation, progressive injection, and post-injection sealing, as per MoRTH \n                Specifications Clause 2806 and directions of the Engineer-in-Charge.\n                The work includes cleaning and preparation of concrete surfaces and cracks, drilling injection \n                holes if required, fixing NRV nipples to permit controlled one-way grout flow, sealing cracks to \n                avoid grout leakage, and mixing the grout to specified proportions ensuring homogeneity and \n                flowability. Grouting shall be done progressively using suitable pumps and techniques to ensure\n                complete filling and bonding of internal voids. Post-grouting sealing of ports and curing of \n                injected areas shall be completed using compatible materials.Rate includes all materials, \n                consumables, equipment, NRV type nipples, labour, safety measures, documentation, and disposal of\n                waste as required for successful execution of the activity.",
+        "short_name": "Injection of Polymer Cement Grout (PMC) with Non-Shrink Additive at 4 kg/cm² Pressure",
+        "unit": ""
+      },
+      "Carbon Fibre Wrapping": {
+        "item_no": 26,
+        "title": "Carbon Fibre Wrapping for Strengthening of Structural Members",
+        "sub": "All charges for providing and applying Carbon Fibre Reinforced Polymer (CFRP) wrapping for\n                structural strengthening or jacketing of girders or other structural components, using high-strength\n                CFRP bonded with epoxy resin or equivalent polymer matrix adhesive, in accordance with\n                manufacturer’s specifications, relevant design calculations, and as directed by the \n                Engineer-in-Charge. The activity shall comply with IS 1343:2012, ACI 440.2R-17, and ASTM D3039 \n                standards for tensile strength and structural application.The scope includes thorough surface \n                preparation of the concrete substrate by mechanical grinding or sandblasting to ensure removal of \n                laitance, oil, grease, or any bond-inhibiting material, followed by application of CFRP sheets \n                using appropriate tools and techniques to ensure full contact and proper resin impregnation. \n                The applied system shall be allowed to cure as per the manufacturer’s recommended portocol.\n                Final inspection shall be conducted to verify uniform bonding and proper alignment, and any \n                defects shall be rectified. The rate includes cost of all materials (CFRP sheet, resin, etc.),\n                labour, surface preparation, safety measures, equipment, and testing required to complete the work \n                in all respects.",
+        "short_name": "Carbon Fibre Wrapping for Strengthening of Structural Members",
+        "unit": ""
+      },
+      "Micro-concrete Works": {
+        "item_no": 27,
+        "title": "Providing and Laying of Micro-concrete for Structural Repairs",
+        "sub": "All charges for providing and laying flowable micro-concrete by removing/dismantling damaged \n                concrete portions to a pre-defined profile, cleaning the exposed surface and reinforcement with \n                Rust remover (such as CICO Rustoclean or equivalent), followed by application of one coat of \n                zinc-rich primer (e.g., CICO Zincilate 500 or equivalent) on exposed rebars, and a suitable bond \n                coat (e.g., Nitobond or equivalent) on the prepared concrete substrate. Micro-concrete shall be \n                mixed in 1:1 ratio (1 part micro-concrete to 1 part 10mm down well-graded aggregates), placed by \n                gravity flow or pump into properly supported, rigid and leakproof formwork as per manufacturer’s \n                guidelines and site conditions.\n                The material shall meet the performance requirements of ASTM C 109:99, ASTM C 307, and BS 1881 Part \n                207, ensuring minimum shrinkage, high flowability, corrosion resistance, and compressive strength \n                as specified. Reinforcement, if corroded or insufficient, shall be cleaned and/or supplemented as \n                per structural direction. No mechanical vibration is permitted during placement. The repaired \n                surface shall be finished flush with the surrounding concrete and cured using approved methods. The\n                entire work shall be executed as per MoRTH Clauses 1700 & 2800 and under the direction of \n                Engineer-in-Charge.\n\n                Rate includes:\n                • Removal/dismantling of damaged concrete portions\n                • Cleaning of exposed reinforcement and application of anti-corrosive coating (CICO Rustoclean or equivalent)\n                • Application of zinc-rich primer on reinforcement (CICO Zincilate 500 or equivalent)\n                • Bond coat application (e.g., Nitobond or equivalent)\n                • Mixing and laying of micro-concrete in the specified 1:1 ratio with aggregates\n                • Ensuring the formwork is rigid and leakproof, and placing the concrete without mechanical vibration\n                • Curing of the concrete to prevent premature drying\n                • All necessary equipment and labor",
+        "short_name": "Providing and Laying of Micro-concrete for Structural Repairs",
+        "unit": ""
+      },
+      "Approach Slab Mud Jacketing": {
+        "item_no": 28,
+        "title": "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)",
+        "sub": "The work involves the stabilization and re-levelling of settled approach slabs of bridges or\n                culverts using the pressure grouting (mud jacking) method. This process includes drilling holes \n                through the slab to inject a controlled cementitious grout or mortar mix under pressure to fill \n                voids beneath the slab and restore support. The grouting procedure eliminates settlement and \n                prevents differential movement between the approach slab and the bridge deck. The contractor shall \n                remove any damaged or defective portions of the slab, clean the surface of dust, debris, or \n                laitance, and prepare the substrate for grouting. Exposed reinforcement, if any, shall be cleaned \n                and treated with an anti-corrosive coating. The grouting material shall include a cement-sand \n                slurry or polymer-modified grout, prepared to the required consistency for effective filling. The \n                grouting shall be carried out using mechanical or manual pumps at a pressure of 3–5 kg/cm², \n                ensuring complete filling of voids and preventing any uplift or damage to the structure. After \n                grouting, the holes shall be sealed, and the surface shall be restored to its original level. The \n                work shall be carried out in strict accordance with the MoRTH specifications and as directed by the\n                Engineer-in-Charge.\n                The rate includes the cost of drilling holes, supplying and applying grout, sealing, surface \n                restoration, and necessary material, including non-shrink admixtures, polymer additives, and grout \n                nipples. All equipment, including drill machines, grout pumps, mixers, and PPE, is to be provided \n                by the contractor. Safety measures such as proper PPE, traffic control, and barricading shall be \n                implemented during the execution of the work to ensure safety and quality assurance.",
+        "short_name": "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)",
+        "unit": ""
+      },
+      "MS Lining Plates (8mm thick)": {
+        "item_no": 29,
+        "title": "Providing and fixing of Mild Steel (MS) lining plates (8mm thick) for jacketing and structural strengthening of pedestals",
+        "sub": "All charges for providing and fixing MS lining plates of 8mm thickness for jacketing and \n                structural strengthening of pedestals on all sides, including surface preparation of the existing\n                pedestal by chipping, cleaning, and exposing sound concrete. The work includes fabrication of Mild\n                Steel plates conforming to IS 2062 Grade E250, cutting, edge preparation, bending as per site \n                requirement, and fixing around pedestal using anchor bolts (minimum M16, Hilti/Equivalent) or shear\n                connectors embedded in epoxy grout. The plates shall be fully welded along the vertical and \n                horizontal joints using approved low-hydrogen electrodes (E7018 or equivalent), ensuring continuous\n                structural bonding. All exposed metal surfaces shall be cleaned to SA 2.5 finish using mechanical\n                methods, then applied with one coat of zinc-rich primer (minimum 60 microns) and two coats of \n                anti-corrosive epoxy paint (DFT 120 microns minimum) conforming to IS 1477 & IS 8629. Gaps between\n                steel plate and concrete shall be pressure-grouted or sealed using epoxy mortar (Fosroc/Sika/\n                Equivalent) to prevent water ingress. The fixing shall be executed strictly as per approved \n                structural drawings and MoRTH Clause 804, including all scaffolding, staging, tools, tackles, \n                welding equipment, grinding machines, safety gear (PPE), material handling, transportation, and \n                skilled manpower. \n                Rate includes the cost of all labour, materials, tools, machinery, consumables, surface protection\n                works, and safety arrangements required to complete the work in all respects to the satisfaction of\n                the Engineer-in-Charge.",
+        "short_name": "Providing and fixing of Mild Steel (MS) lining plates (8mm thick) for jacketing and structural strengthening of pedestals",
+        "unit": ""
+      },
+      "Shotcreting": {
+        "item_no": 30,
+        "title": "",
+        "sub": "The work shall include the complete execution of shotcrete application in accordance with\n                IRC:SP:40 standards. This includes the supply of all materials, machinery, labour, and execution of\n                work using pre-mixed mortar (PMM), ensuring proper surface preparation and finishing. The activity\n                shall be carried out as per the directions and satisfaction of the Engineer-in-Charge, including\n                all incidental works required for the completion of the item in all respects.",
+        "short_name": "Shotcreting",
+        "unit": ""
+      },
+      "Mortar Sealing and Pointing": {
+        "item_no": 31,
+        "title": "",
+        "sub": "Providing and applying mortar sealing and pointing work for joints, cracks, or voids in\n                concrete or masonry surfaces using approved cement mortar, including surface preparation by raking\n                out loose or damaged mortar, cleaning, wetting, and applying fresh mortar in the specified mix\n                ratio (typically 1:3 cement to sand or as directed by the Engineer-in-Charge). The mortar shall be\n                properly pressed into joints and finished to a neat profile (flush, recessed, or weathered),\n                ensuring a durable and uniform appearance. The work includes supply of all required materials such\n                as OPC 43/53 grade cement, well-graded sand, potable water, and any approved bonding agents, as \n                well as tools, equipment, labour, scaffolding, curing, debris removal, and safety measures. All \n                activities shall be executed only after obtaining prior approval of materials and sample work from \n                the Engineer-in-Charge and must comply with standard specifications and site instructions. The work\n                shall conform to IS 2250:1981, IS 1661:1972, IS 2402:1963, and where applicable, MoRTH \n                specifications including Section 2600 and Clauses 2702 & 2703",
+        "short_name": "Mortar Sealing and Pointing",
+        "unit": ""
+      },
+      "Concrete Supply / Placing": {
+        "item_no": 32,
+        "title": "",
+        "sub": "All concrete works using M15/M40 grade (1:2:4 mix ratio or as approved), including supply of\n                OPC 43/53 grade cement, well-graded aggregates, potable water, and approved admixtures. Work\n                includes transportation, placement, compaction (manual/mechanical), surface preparation, formwork (\n                if needed), and curing as per standard practices. All works to conform to IS 456:2000, IS\n                10262:2019, and as directed by the Engineer-in-Charge. No concreting shall commence without prior\n                approval with direction of Engineer in charge",
+        "short_name": "Concrete Supply / Placing",
+        "unit": ""
+      },
+      "MBCB": {
+        "item_no": 33,
+        "title": "",
+        "sub": "Providing and installing MBCB (Modified Ballastic Crash Barrier) at designated locations and\n                wherever found missing, including supply of all materials such as galvanized steel barriers, posts,\n                fasteners, anchor bolts, and all associated components as per approved drawings and specifications.\n                The work includes loading, transportation of materials from the approved source to the site using \n                the contractor’s own vehicle, unloading, proper alignment, fixing of MBCB as per site conditions,\n                and ensuring secure anchorage into the ground or structure as required. All installation shall be\n                carried out under the supervision and direction of the Engineer-in-Charge, following approved \n                methodologies and safety standards. The rate shall include all labour, materials, tools, equipment,\n                transportation, and incidentals required for completing the work in all respects. The finished \n                installation must conform to the relevant IRC, MoRTH specifications (Clause 809), and be approved\n                by the Engineer-in-Charge before acceptance",
+        "short_name": "MBCB",
+        "unit": ""
+      },
+      "Cross Bracing (Whole Parts)": {
+        "item_no": 34,
+        "title": "",
+        "sub": "All Charges includes Comprehensive item for supply, transportation, fabrication, and erection\n                of transverse steel cross bracing including: procurement of structural steel sections (angles, \n                flats, or channels bolts and nuts ) as per approved drawings; shifting and handling at site using \n                contractor’s own machinery and equipment; complete fabrication work involving accurate marking,\n                cutting to required length, drilling, welding, and preparation of connections; fixing in position \n                with proper alignment and tightness using bolts or welds as per design; installation using \n                contractor’s own scaffolding, tools, tackles, and skilled/unskilled labour; and ensuring full\n                compliance with relevant IS codes with Epoxy Painting and project specifications—all complete as\n                directed by the Engineer-in-Charge",
+        "short_name": "Cross Bracing /Whole Parts",
+        "unit": ""
+      },
+      "Cross Bracing (Partial Parts)": {
+        "item_no": 35,
+        "title": "",
+        "sub": "All Charges includes Comprehensive item for supply, transportation, fabrication, and erection\n                of transverse steel cross bracing including: procurement of structural steel sections (angles,\n                flats, or channels bolts and nuts ) as per approved drawings; shifting and handling at site using\n                contractor’s own machinery and equipment; complete fabrication work involving accurate marking,\n                cutting to required length, drilling, welding, and preparation of connections; fixing in position\n                with proper alignment and tightness using bolts or welds as per design; installation using\n                contractor’s own scaffolding, tools, tackles, and skilled/unskilled labour; and ensuring full\n                compliance with relevant IS codes with Epoxy Painting and project specifications—all complete as\n                directed by the Engineer-in-Charge",
+        "short_name": "Cross Bracing /Partial Parts",
+        "unit": ""
+      },
+      "Anti-Corrosive Epoxy Paint (Girder)": {
+        "item_no": 36,
+        "title": "",
+        "sub": "All charges for providing and applying a high-performance epoxy-based protective-coating\n                system on steel–concrete composite girders, complete with all surface preparation—including sand\n                blasting—access arrangements and safety measures, as specified and directed by the\n                Engineer-in-Charge. Surface preparation shall begin with thorough mechanical cleaning or sand \n                blasting of all exposed steel surfaces to achieve Sa 2.5 visual standard (as per ISO 8501-1), \n                ensuring removal of rust, mill scale, and contaminants. This shall be immediately followed by one \n                coat of approved epoxy zinc-phosphate (or zinc-rich) primer and two coats of solvent-free, \n                high-build epoxy paint to achieve a minimum cumulative dry-film thickness of 200 µm. All coating  \n                materials, application intervals, and holiday testing shall conform to the durability and \n                corrosion-protection provisions given in IRC:24 2010, Annex D (Durability) for steel bridges, as \n                well as the special corrosion-protection requirements for composite construction in IRC:22 2015 (§8\n                “Protection against Corrosion”). Scaffolding, staging, or suspended working platforms—designed to \n                meet site geometry below the superstructure—shall be erected with MS pipes, planks, clamps, and \n                safety nets, incorporating soft bedding or rubber pads wherever the platform bears against the \n                girder to prevent point loading or coating damage; their design, erection, maintenance, and removal\n                shall follow the good-practice guidelines of IRC:SP:74 2007 (post-rehabilitation maintenance, \n                including repainting of exposed steel) and IRC:SP:104.",
+        "short_name": "Anti Corrosive Epoxy Paint(Girder)",
+        "unit": ""
+      },
+      "Soil Nailing": {
+        "item_no": 37,
+        "title": "",
+        "sub": "Supply and carry out 69mm/76mm dia core cutting in the facing panel to avoid vibrations,\n                followed by the installation of 70mm dia PVC casing pipe (3–5mm thick) up to 1m depth to protect \n                the drainage filter. Drill to the required depth and insert 32mm dia SDA bars of 5m or 10m length \n                at selected RE Wall panels located at varying heights (less than 7m and 7m to 10m), with spacing of\n                0.74m horizontally and 1.48m vertically. Provide couplers to join SDA nails as required, as per \n                approved drawings and methodology. Carry out cement grouting for the full length of the 70mm dia \n                borehole after placing the SDA bars. Fix galvanised epoxy-coated bearing plates (150mm x 150mm x \n                10mm) on the outer face of the SDA bars with necessary nuts, bolts, and washers, ensuring proper \n                contact with the RE Wall panel, including all associated labour, staging, scaffolding, equipment,\n                and materials to complete the work as per the instructions of the Engineer-in-Charge of SPV.",
+        "short_name": "Soil Nailing (Each nail)",
+        "unit": ""
+      },
+      "Wearing Coat": {
+        "item_no": 38.3,
+        "title": "Bituminous Wearing Concrete on Structure",
+        "sub": "Providing and laying bituminous concrete as per design mix on prepared  surface with \n                specified graded stone as per table 500-16 & 500-17 for wearing course including loading of\n                aggregate with Front end loader and hot mixing of binder (including cost of anti-stripping \n                compound, wherever required) and filler as per table 500-9 with aggregates in hot mix plant More \n                than 60-90 TPH Transporting the mix material with tipper and laying with sensor paver finisher (as\n                per clause 507.3.5) to the required level , grades and rolling with vibratory compactor and \n                pneumatic tyred roller 150-250 KN,TP=0.7 Mpa, to achieve the desired density (approved by the \n                department) excluding cost of primer/tack coat (MoRTH Specification : Clause -507 & 112) with all \n                lead. Grading I (19.0 mm nominal size) - Bitumen @ minimum 5.20% of mix & thickness 50 mm with \n                VG-40.",
+        "short_name": "Wearing Coat",
+        "unit": ""
+      },
+      "Wearing Coat Dismantling": {
+        "item_no": 38.1,
+        "title": "",
+        "sub": "Milling of distress bituminous layer/Rigid Pavement up to 100mm depth with suitable milling\n                machine  fitted with loading conveyer of loading the filled material directly on the trucks i/c\n                hauling and stock pilling the reclaiming to bring to required specification to reuse with the\n                approval of engineer - in - charge for safe disposal; with all leads and lifts complete in all\n                respect as directly by Engineer - in- charge.",
+        "short_name": "Wearing Coat Dismantling",
+        "unit": ""
+      },
+      "Tack Coat": {
+        "item_no": 38.2,
+        "title": "",
+        "sub": "Providing and applying tack coat with catonic bitumen emulsion (RS-1) using emulsion pressure\n                distributor at the rate of 0.25 to 0.30 kg per sqmt on the prepared bituminous/milled surface and \n                cleaned with mechanical broomer and as per relevant clauses of section-503 of MORTH (Fifth \n                Revision) Technical specifications.@ 0.25 kg per sqmt (normal bituminous surfaces) and @ 0.30 kg\n                per sqmt (milled surfaces). Source of Emulsion: Hindcol & IOCL only.",
+        "short_name": "Tack coat",
+        "unit": ""
+      },
+      "APP Membrane Deck Waterproofing": {
+        "item_no": 38.4,
+        "title": "",
+        "sub": "Providing and laying 3 mm thick mastic asphalt sheet on top of deck slab excluding prime coat\n                with paving grade bitumen meeting the requirements given in table 500-29, prepared by using mastic\n                cooker and laid to required level and slope after cleaning the surface, including providing \n                antiskid surface with bitumen precoated fine grained hard stone chipping approximate spacing of 10\n                cm centre to centre in both directions, pressed into surface when the temperature of surfaces not\n                less than 100 deg. C, protruding 1 mm to 4 mm over mastic surface, all complete as per MoRTH clause\n                515 complete.",
+        "short_name": "P&L - Deck Waterproofing - APP membrane",
+        "unit": ""
+      },
+      "Elastomeric Concrete": {
+        "item_no": 39,
+        "title": "",
+        "sub": "Providing and laying elastomeric concrete between Reinforced Earth (RE) panels, including the\n                supply of all materials, mixing, transportation, placement, compaction, finishing, and curing as \n                per relevant codal provisions and specifications. The work shall be carried out as per the site \n                requirements and the instructions of the site engineer to ensure proper sealing, flexibility, and \n                bonding between panels. All tools, equipment, labor, and incidental charges are included in the \n                scope of this item",
+        "short_name": "Elastomeric Concerte",
+        "unit": ""
+      },
+      "Approach Slab Dismantling": {
+        "item_no": 40,
+        "title": "",
+        "sub": "Dismantling of Existing Approach Slab including PCC –Dismantling of existing RCC approach\n                slab including underlying plain cement concrete (PCC), carefully breaking up the structure using\n                appropriate equipment, removal of reinforcement (if any), lifting, loading, carting away of all\n                dismantled debris to a designated disposal location, and clearing the site. The work includes all\n                labour, machinery, tools, safety arrangements, traffic diversion (if required), and environmental \n                protection measures as per site conditions and directions of the Engineer-in-Charge – complete in \n                all respects.",
+        "short_name": "Dismanteling of Approch Slab",
+        "unit": ""
+      },
+      "Wearing Coat Raft Concrete": {
+        "item_no": 41,
+        "title": "",
+        "sub": "Providing and laying M30 grade cement concrete wearing coat over the raft slab inside the VUP/\n                PUP/Flyover including dismantling and removal of the existing damaged concrete (if any), surface\n                preparation, supply of all materials, mixing, placing, compacting, finishing, and curing of\n                concrete. The work shall include maintaining the required camber/slope as per site conditions and\n                ensuring proper surface drainage with provision of spouts or drain outlets as necessary. The item \n                also includes all charges for labour, equipment, transportation, handling, consumables, formwork (\n                if required), curing, and disposal of debris, complete in all respects as per drawings,\n                specifications, and directions of the Engineer-in-Charge",
+        "short_name": "Wearing Coat  Raft Concrete",
+        "unit": ""
+      },
+      "Reinforcement": {
+        "item_no": 41.1,
+        "title": "",
+        "sub": "Providing, cutting, bending, binding, and placing of  mm diameter TMT  bars at 150 mm \n                center-to-center spacing both ways for wearing coat raft reinforcement, including cost of binding\n                wire, supports, chairs, laps, wastage, and all handling, transportation, and incidental \n                works—complete in all respects as per drawing, relevant IS codes, and instructions of the \n                Engineer-in-Charge.",
+        "short_name": "Reinforcement",
+        "unit": ""
+      },
+      "RT Wall": {
+        "item_no": 42,
+        "title": "",
+        "sub": "Construction of Retaining Wall (RT Wall) of height 4.0 metres, including excavation, \n                foundation preparation, providing and laying of plain cement concrete (PCC) for leveling course,\n                reinforcement, shuttering, and placing of M-30 grade reinforced cement concrete (RCC) in footing,\n                stem, and coping. The work includes supplying and fixing of formwork, reinforcement steel, \n                backfilling with suitable material, compaction, weep holes, curing, disposal of surplus material,\n                and all other incidental items including necessary scaffolding, tools, labour, and machinery to \n                complete the work in all respects as per approved drawings and as directed by the\n                Engineer-in-Charge.",
+        "short_name": "RT Wall",
+        "unit": ""
+      },
+      "Anti-Carbonation Treatment": {
+        "item_no": 43,
+        "title": "",
+        "sub": "Supply and application of Anti-Carbonation Paint over exposed concrete surfaces including \n                surface preparation (cleaning, wire brushing, removal of dust, oil, grease, loose particles),\n                application of primer and two or more coats of anti-carbonation paint of approved make and shade as\n                per manufacturer’s specifications. The item includes all materials, labour, tools, and necessary\n                scaffolding (including erection and dismantling), transportation, and other incidental works to \n                complete the job in all respects as per drawings and instructions of Engineer-in-Charge.",
+        "short_name": "Anti Carbonation",
+        "unit": ""
+      },
+      "Missing Bolts": {
+        "item_no": 44,
+        "title": "",
+        "sub": "Torquing of existing bolts in steel girders using calibrated torque wrenches as per approved\n                methodology and codal provisions, including surface cleaning and alignment checks. Providing and\n                fixing new High-Strength Friction Grip (HSFG) bolts and nuts of size M16 and M32 as per the site \n                requirement, including supply, threading, galvanizing, transportation, and installation. The work\n                shall be carried out as per the site condition and directions of the Engineer-in-Charge. All labor,\n                tools, equipment, scaffolding, and incidental charges are included in the scope of this item.",
+        "short_name": "Missing Bolts",
+        "unit": ""
+      },
+      "Modular Strip Seal": {
+        "item_no": 45,
+        "title": "",
+        "sub": "All charges for Supply, fixing, and laying of Edge Beam concrete including formwork,\n                reinforcement, alignment, leveling, compaction, curing, and all allied works complete as per\n                approved drawings and specifications. The rate shall be inclusive of all labour, materials, \n                machinery, transportation, and all incidental charges required for successful completion of the\n                item in all respects.",
+        "short_name": "Modular Strip Seal ",
+        "unit": ""
+      }
+    }
+  },
+  "config": {
+    "condition_of_girder": {
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching"
+    },
+    "foundation_type": {
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "substructure_type": {
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Crack": "Crack",
+      "Settlement": "Settlement",
+      "Scour": "Scour",
+      "Tilting": "Tilting",
+      "Rusting in exposed Steel": "Rusting in exposed Steel",
+      "Strains": "Strains",
+      "Movements": "Movements",
+      "Other Damages": "Other Damages"
+    },
+    "pavement_surface_type": {
+      "Cracks": "Cracks",
+      "Alligator Cracks": "Alligator Cracks",
+      "Longitudinal Cracks": "Longitudinal Cracks",
+      "Transverse Cracks": "Transverse Cracks",
+      "Ravelling": "Ravelling",
+      "Potholes": "Potholes",
+      "Roughness": "Roughness",
+      "Disintegration": "Disintegration",
+      "Bleeding": "Bleeding",
+      "Corner Breaks": "Corner Breaks",
+      "Punchout": "Punchout",
+      "Popouts": "Popouts",
+      "Loss of Surface Texture": "Loss of Surface Texture"
+    },
+    "approach_slab_type": {
+      "Uneven": "Uneven",
+      "Settlement": "Settlement",
+      "Cracks": "Cracks",
+      "Movements": "Movements",
+      "Spalling": "Spalling",
+      "Rutting": "Rutting"
+    },
+    "check_condition_of_side": {
+      "Not Applicable": "Not Applicable",
+      "Cracking": "Cracking",
+      "Disintegration": "Disintegration",
+      "Seepage": "Seepage"
+    },
+    "check_large_excavations_done_type": {
+      "Not Applicable": "Not Applicable",
+      "Vicinity Of Flyover": "Vicinity Of Flyover",
+      "Road Over Bridge Of Viaduct": "Road Over Bridge Of Viaduct"
+    },
+    "check_damages_to_protective_measures_type": {
+      "Not Applicable": "Not Applicable",
+      "Coating Failure": "Coating Failure",
+      "Joint Leakage": "Joint Leakage",
+      "Cathodic Protection Faults": "Cathodic Protection Faults",
+      "Viaducts": "Viaducts",
+      "Flyover": "Flyover",
+      "R.O.Bs": "R.O.Bs"
+    },
+    "points_of_bearing_type": {
+      "Spalling Disintegration": "Spalling Disintegration",
+      "HoneyCombing": "HoneyCombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "checking_of_cracks": {
+      "Transverse Crack": "Transverse Crack",
+      "Longitudinal Crack": "Longitudinal Crack",
+      "Hairline Crack": "Hairline Crack",
+      "Diagonal Crack": "Diagonal Crack"
+    },
+    "checking_the_condition_of_articulation": {
+      "Articulation": "Articulation",
+      "Cracks": "Cracks",
+      "Exposed Reinforcement etc": "Exposed Reinforcement etc",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "cracks_around_anchorage_zone": {
+      "Not applicable Hence it is not prestressed concrete": "Not applicable Hence it is not prestressed concrete",
+      "No cracks observed around anchorage zone for prestressed concrete members": "No cracks observed around anchorage zone for prestressed concrete members",
+      "Cracks observed around anchorage zone for prestressed concrete members": "Cracks observed around anchorage zone for prestressed concrete members"
+    },
+    "box_griders": {
+      "Not applicable because it is not a box girder": "Not applicable because it is not a box girder",
+      "No sign of cracks and accumulation of water or debris": "No sign of cracks and accumulation of water or debris",
+      "Cracks and accumulation of water or debris is observed": "Cracks and accumulation of water or debris is observed",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "excessive_loss_of_camber_and_excessive_deflections": {
+      "Excessive Loss Of Camber": "Excessive Loss Of Camber",
+      "Excessive Deflections": "Excessive Deflections",
+      "Deformations": "Deformations",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "Check_buckling_etc": {
+      "Buckling": "Buckling",
+      "Kinking": "Kinking",
+      "Warping": "Warping",
+      "Waviness": "Waviness",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "Check_apparent_fracture": {
+      "Yes—Fracture Identified": "Yes—Fracture Identified",
+      "No Fracture Identified": "No Fracture Identified",
+      "Not Applicable": "Not Applicable"
+    },
+    "Check_cracks": {
+      "Crack On Arch": "Crack On Arch",
+      "Crack On Slab": "Crack On Slab",
+      "Not Applicables": "Not Applicables",
+      "others": "others"
+    },
+    "Check_drainage_of_spandrel_fillings": {
+      "Not Applicable": "Not Applicable",
+      "Drainage of spandrel fillings Damaged": "Drainage of spandrel fillings Damaged",
+      "Spandrel wall is in good condition": "Spandrel wall is in good condition",
+      "Others": "Others"
+    },
+    "exposed_reinforcement_and_rusting": {
+      "Exposed Reinforcement & Rusting": "Exposed Reinforcement & Rusting",
+      "No_distress": "No_distress",
+      "Good_in_condition": "Good_in_condition",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "wear_of_deck_surface_distress": {
+      "Wear of deck surface": "Wear of deck surface",
+      "no_distress": "no_distress",
+      "Good in condition": "Good in condition",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "scaling": {
+      "No Distress": "No Distress",
+      "Good In Condition": "Good In Condition",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "surface_stains_and_rust_stains": {
+      "Surface Stains And Rust Stains": "Surface Stains And Rust Stains",
+      "No_Distress": "No_Distress",
+      "Good in conditions": "Good in conditions",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "damages_due_to_moving_vehicles": {
+      "Damage Due To Moving Vehicle": "Damage Due To Moving Vehicle",
+      "No damages observed due to moving vehicles": "No damages observed due to moving vehicles",
+      "Honeycombing": "Honeycombing",
+      "Delamination": "Delamination",
+      "Spalling": "Spalling",
+      "Scaling": "Scaling",
+      "Corrosion": "Corrosion",
+      "Efflorescence": "Efflorescence",
+      "Leaching": "Leaching",
+      "Cracking": "Cracking",
+      "Settlement": "Settlement",
+      "Abnormal": "Abnormal"
+    },
+    "bridge_dropdowns": {
+      "type_of_span": {
+        "": "Select Span",
+        "T - Beam": "T - Beam",
+        "I - Girder": "I - Girder",
+        "Slab": "Slab",
+        "Box – Girder": "Box – Girder",
+        "Arche": "Arche"
+      },
+      "structural_system": {
+        "": "Select Structural System",
+        "Simply Supported": "Simply Supported",
+        "Continuous": "Continuous",
+        "Over Hanging": "Over Hanging",
+        "Balance Cantilever": "Balance Cantilever"
+      },
+      "type_of_material": {
+        "": "Select Type Of Material",
+        "RCC": "RCC",
+        "PSC": "PSC",
+        "Steel": "Steel",
+        "Timber": "Timber",
+        "Masonry": "Masonry",
+        "Brick Stone Masonry": "Brick Stone Masonry",
+        "CRS Stone Masonry": "CRS Stone Masonry",
+        "Stone Masonry": "Stone Masonry"
+      },
+      "check_spalling_disintegration_or_honey_combing": {
+        "": "Select",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No distress, Good in condition": "No distress, Good in condition",
+        "No special attention required to take at bearing point": "No special attention required to take at bearing point"
+      },
+      "check_cracks": {
+        "": "Select Cracks",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No Cracks Noticed": "No Cracks Noticed"
+      },
+      "check_exposed_reinforcement": {
+        "": "Select",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No distress, Good in condition": "No distress, Good in condition"
+      },
+      "check_wear_of_deck_surface": {
+        "": "Select",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No distress, Good in condition": "No distress, Good in condition",
+        "Other": "Other"
+      },
+      "check_scaling": {
+        "": "Select Scaling",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No distress, Good in condition": "No distress, Good in condition",
+        "Other": "Other"
+      },
+      "check_surface_stains_and_rust_stains": {
+        "": "Select",
+        "Yes, Location: Girder, Deck, Pedestal etc.": "Yes, Location: Girder, Deck, Pedestal etc.",
+        "No distress, Good in condition": "No distress, Good in condition"
+      },
+      "check_leaching": {
+        "": "Select Leaching",
+        "Yes, Leaching Is observed, Location": "Yes, Leaching Is observed, Location",
+        "No Leaching Observed": "No Leaching Observed"
+      },
+      "check_corrosion_of_reinforcements": {
+        "": "Select",
+        "Corrosion of reinforcement is observed in sheathing and tendon": "Corrosion of reinforcement is observed in sheathing and tendon",
+        "Sheathing and tendon is not visible": "Sheathing and tendon is not visible",
+        "Not Applicable": "Not Applicable"
+      },
+      "check_leakage": {
+        "": "Select Leakage",
+        "Leakage through Concrete Decks": "Leakage through Concrete Decks",
+        "Leakage through Construction joint": "Leakage through Construction joint",
+        "Leakage through Kerbs": "Leakage through Kerbs",
+        "Leakage through Deck": "Leakage through Deck",
+        "No leakage of water is observed": "No leakage of water is observed"
+      },
+      "check_damages_due_to_moving_vehicles": {
+        "": "Select",
+        "Yes, Location and type of damage": "Yes, Location and type of damage",
+        "No damages observed due to moving vehicles": "No damages observed due to moving vehicles"
+      },
+      "check_condition_of_articulation": {
+        "": "Select",
+        "No cracks and exposed reinforcement is observed": "No cracks and exposed reinforcement is observed",
+        "Cracks and Exposed reinforcement is observed": "Cracks and Exposed reinforcement is observed"
+      },
+      "check_excessive_vibrations": {
+        "": "Select Excessive Vibrations",
+        "Yes": "Yes",
+        "No": "No"
+      },
+      "check_excessive_deflections_loss_of_camber": {
+        "": "Select",
+        "Yes": "Yes",
+        "No": "No"
+      },
+      "check_cracks_around_anchorage_zone": {
+        "": "Select",
+        "Not applicable; Hence it is not prestressed concrete": "Not applicable; Hence it is not prestressed concrete",
+        "No cracks observed around anchorage zone": "No cracks observed around anchorage zone",
+        "Cracks observed around anchorage zone": "Cracks observed around anchorage zone"
+      },
+      "check_excessive_deflections_at_central_hinge": {
+        "": "Select",
+        "Not applicable because it is not a cantilever bridge": "Not applicable because it is not a cantilever bridge",
+        "Observed excessive deflection at central hinge": "Observed excessive deflection at central hinge",
+        "No excessive deflection is observed": "No excessive deflection is observed"
+      },
+      "in_box_girders": {
+        "": "Select Box Girders",
+        "Not applicable because it is not a box girder": "Not applicable because it is not a box girder",
+        "No sign of cracks and accumulation of water or debris": "No sign of cracks and accumulation of water or debris",
+        "Cracks and accumulation of water or debris is observed": "Cracks and accumulation of water or debris is observed"
+      },
+      "check_accumulation_of_slit": {
+        "": "Select",
+        "Not applicable because it is not a submersible bridge": "Not applicable because it is not a submersible bridge",
+        "Others": "Others"
+      },
+      "check_peeling_off": {
+        "": "Select Peeling Off",
+        "Protective coat is in good condition": "Protective coat is in good condition",
+        "Observed peeling off of protective coat": "Observed peeling off of protective coat",
+        "Others": "Others"
+      },
+      "check_steel_members": {
+        "": "Select Steel Members",
+        "Others": "Others",
+        "Not Applicable": "Not Applicable"
+      },
+      "check_condition_of_protective_system": {
+        "": "Select",
+        "Girder": "Girder",
+        "Beam": "Beam",
+        "Bearing Area": "Bearing Area",
+        "Others": "Others",
+        "Not Applicable": "Not Applicable"
+      },
+      "check_corrosion_if_any": {
+        "": "Select",
+        "Girder": "Girder",
+        "Beam": "Beam",
+        "Deck": "Deck",
+        "Bearing Area": "Bearing Area",
+        "Others": "Others",
+        "Not Applicable": "Not Applicable"
+      },
+      "check_excessive_vibrations_if_any": {
+        "": "Select",
+        "Girder": "Girder",
+        "Beam": "Beam",
+        "Deck": "Deck",
+        "Bearing Area": "Bearing Area",
+        "Others": "Others",
+        "Not Applicable": "Not Applicable"
+      },
+      "check_alignment_of_members": {
+        "": "Select",
+        "Properly Aligned": "Properly Aligned",
+        "Not Aligned": "Not Aligned",
+        "Not Applicable": "Not Applicable",
+        "Others": "Others"
+      },
+      "check_excessive_loss_of_camber_and_excessive_deflection": {
+        "": "Select",
+        "Not applicable": "Not applicable",
+        "Found excessive loss of camber and deformations": "Found excessive loss of camber and deformations",
+        "Others": "Others"
+      },
+      "check_apparent_fracture": {
+        "": "Select Apparent Fracture",
+        "Not applicable": "Not applicable",
+        "No apparent fracture is identified": "No apparent fracture is identified",
+        "Others": "Others"
+      },
+      "masonry_arches": {
+        "": "Select Masonry Arches",
+        "Others": "Others",
+        "Not Applicable": "Not Applicable"
+      },
+      "masonry_joints": {
+        "": "Select Masonry Joints",
+        "Not applicable because it is not a masonry bridge": "Not applicable because it is not a masonry bridge",
+        "Others": "Others",
+        "Condition of joints mortar, painting and masonry is in good condition": "Condition of joints mortar, painting and masonry is in good condition"
+      },
+      "arch_profile": {
+        "": "Select Arch Profile",
+        "Not applicable bridge": "Not applicable bridge",
+        "Others": "Others",
+        "Profile is in good condition": "Profile is in good condition"
+      },
+      "arch_cracks": {
+        "": "Select Arch Cracks",
+        "Arch": "Arch",
+        "Slab": "Slab",
+        "Not applicable": "Not Applicable",
+        "Others": "Others"
+      },
+      "spandrel_drainage": {
+        "": "Select Spandrel Drainage",
+        "Not applicable": "Not applicable",
+        "Spandrel wall is in good condition": "Spandrel wall is in good condition",
+        "Others": "Others"
+      },
+      "vegetation_growth": {
+        "": "Select Vegetation Growth",
+        "Vegetation Growth Visible": "Vegetation Growth Visible",
+        "Not applicable": "Not Applicable",
+        "Vegetation Growth Not Visible": "Vegetation Growth Not Visible",
+        "Not Observed": "Not Observed",
+        "Others": "Others"
+      },
+      "iron_components": {
+        "": "Select Iron Components",
+        "Not applicable": "Not applicable",
+        "Steel superstructure is in good condition": "Steel superstructure is in good condition",
+        "Steel superstructure rivets and bolts are loose": "Steel superstructure rivets and bolts are loose",
+        "Others": "Others"
+      },
+      "steel_bridge_condition": {
+        "": "Select Steel Bridge",
+        "Others": "Others",
+        "Not applicable": "Not applicable"
+      },
+      "masonry_bridge_condition": {
+        "": "Select Masonry Bridge",
+        "Others": "Others",
+        "Not applicable": "Not Applicable"
+      },
+      "vegetation_present": {
+        "": "Select Vegetation Present",
+        "No vegetation is observed": "No vegetation is observed",
+        "Vegetation is observed": "Vegetation is observed"
+      }
+    },
+    "functioning_type": {
+      "Cracks In Wearing Course": "Cracks In Wearing Course",
+      "Existence Of Normal Gap": "Existence Of Normal Gap",
+      "Excessive Noise": "Excessive Noise"
+    },
+    "surface_condition_type": {
+      "Cracks": "Cracks",
+      "Alligator Cracks": "Alligator Cracks",
+      "Longitudinal Cracks": "Longitudinal Cracks",
+      "Transverse Cracks": "Transverse Cracks",
+      "Ravelling": "Ravelling",
+      "Potholes": "Potholes",
+      "Roughness": "Roughness",
+      "Disintegration": "Disintegration",
+      "Bleeding": "Bleeding",
+      "Corner Breaks": "Corner Breaks",
+      "Punchout": "Punchout",
+      "Popouts": "Popouts",
+      "Loss Of Surface Texture": "Loss of Surface Texture"
+    },
+    "drainage_spouts_type": {
+      "Clogging": "Clogging",
+      "Deterioration": "Deterioration",
+      "Damage": "Damage"
+    },
+    "expansion_joint_gap": {
+      "Handrail Major Damage": "Handrail Major Damage",
+      "Handrail Minor Damage": "Handrail Minor Damage",
+      "Parapets Major Damage": "Parapets Major Damage",
+      "Parapets Minor Damage": "Parapets Minor Damage",
+      "Crash Barriers Major Damage": "Crash Barriers Major Damage",
+      "Crash Barriers Minor Damage": "Crash Barriers Minor Damage"
+    },
+    "utilities_damage_type": {
+      "Physical Damage": "Physical Damage",
+      "Corrosion": "Corrosion",
+      "Material Degradation": "Material Degradation",
+      "Ground Movement": "Ground Movement",
+      "Animal Infestation": "Animal Infestation",
+      "Cracking": "Cracking",
+      "Spalling": "Spalling",
+      "Settlement": "Settlement",
+      "Displacement": "Displacement",
+      "Inadequate Drainage": "Inadequate Drainage",
+      "Damage to Frames and Covers": "Damage to Frames and Covers",
+      "Oxidation": "Oxidation",
+      "Piping Damage": "Piping Damage",
+      "Cable Damage": "Cable Damage",
+      "Conduit Damage": "Conduit Damage",
+      "Joint Failures etc": "Joint Failures etc"
+    },
+    "rating_descriptions": {
+      "impact": {
+        "1": "No Symptoms and the age of the structure is below one year or Tracks of mechanical impacts are evident",
+        "2": "Local damage of a concrete cover or Spalling of concrete edges Blows from the car tires across Expansion Joints",
+        "3": "Punching failure and excessive Spalling of concrete, single cracks, excessive deformations of longitudinal reinforcement bars or stirrups in the zone of impact",
+        "4": "Destruction of structures and dangerous defects (rupture of main reinforcement, crushing of concrete, excessive deflections or displacements of the structure) leading to global failure of structural members and as a result closure of traffic",
+        "5": "Section Failed / Core Damage is Seen"
+      },
+      "abrasion": {
+        "1": "No Symptoms and the age of the structure is below  one year or the studded tire wear are evident (rubbing, scraping,skidding, or sliding of objects on its surface)",
+        "2": "Loss of surface material due to external loads and Visibility of fine Aggregates are evident",
+        "3": "The fine and coarse aggregate are exposed and Loss of bond between aggregates to cement paste",
+        "4": "Changes to the depth of cement paste or height of aggregate and Extensive Detachment of concrete",
+        "5": "Section Failed / Core Damage is Seen"
+      },
+      "erosion": {
+        "1": "No Symptoms and the age of the structure is below  one year or Top most productive layer of soil is stripped by the action of raindrops and surface flows. Low velocity of water flow for cavitation",
+        "2": "The softened concrete surface, weakened by dissolved water minerals leaching components of hydrated cement paste, is highly vulnerable to removal by water flow, with or without suspended particles. This effect is particularly observed on piers, piles, and abutments immersed in river water. Discontinuities or irregularities in the high-velocity flow path further contribute to cavitation, lifting off the surface material and accelerating deterioration.",
+        "3": "Abrasion from solid particles erodes the concrete surfaces of piles, abutments, and piers at bed level in rivers with high bed loads, leading to particle removal and increased cavitation damage. Additionally, freeze-thaw cycles gradually strip surface mortar and aggregates from wing walls and curbs, further contributing to concrete deterioration and cavitation.",
+        "4": "Fast-flowing water in streams or creeks causes soil erosion and cavitation beyond the cover. Salt scaling from crystallization penetrates several millimeters into the concrete, leaving distinctive white deposits and extensive cavitation damage.",
+        "5": "Section Failed / Soil has been washed away due to fast-flow and resulting in the banks of the waterway becoming unstable and useless. Cavitation damages core concrete"
+      },
+      "overload": {
+        "1": "No Symptoms and the age of the structure is below one year or Evident of Hairline cracks at lower surface of the concrete",
+        "2": "Flexural Cracking on the lower surface of the concrete and sagging of concrete is evident and Hairline cracks at lower surface of the concrete",
+        "3": "Deformation of concrete is observed and Development of vertical cracks at the bottom of the beam/slab/Girder etc. and Crushing of concrete at top surface and sagging of concrete observed",
+        "4": "Extensive Spalling of concrete and exposed reinforcement observed and permanent deformation observed",
+        "5": "Secion Failed / Core Damage is Seen"
+      },
+      "fatigue": {
+        "1": "No Symptoms and the age of the structure is below one year or Stabled micro-cracks observed ",
+        "2": "Moderate or Unstable micro cracks observed",
+        "3": "Cracks have progressed from moderate to extensive with signs of corrosion, deformation is pronounced and vibrations are visible without any instruments",
+        "4": "Cracks have progressed to extensive Spalling of the concrete, Reinforcement damage and deformation have resulted in more cracks and vibrations are noticed during any movement of vehicles",
+        "5": "Secion Failed / Core Damage is Seen, concrete section is visible to approach failure."
+      },
+      "temprature": {
+        "1": "No Symptoms and the age of the structure is below  one year or Negligible effect or damage on the pore system or microstructure of concrete. There is no change in colour",
+        "2": "Significant cracking of both the cementitious paste and aggregates due to expansion, along with localized cracks and dehydration, leads to a reduction in paste volume and the complete loss of free moisture. The concrete’s color changes to pink.",
+        "3": "Complete dehydration of the cementitious paste leads to significant shrinkage cracking and honeycombing, making the concrete friable, highly porous, and easily broken down. The concrete loses strength and changes color to grey.",
+        "4": "Colour of concrete changes to buff and various components of concrete start to melt.",
+        "5": "Section Failed or Concrete melts completely"
+      },
+      "shrinkage": {
+        "1": "No Symptoms and the age of the structure is below  one year or Discontinuous hairline Cracks (below 1 mm) are evident (the crack \"stops and starts\" in the same area)",
+        "2": "Hairline cracks are extend through the entire thickness of the slab (1 mm) or Cracks that run to the mid-depth of the concrete, are distributed across the surface unevenly, and are usually short in length (Below 1 mm)",
+        "3": "Cracks (1 - 2 mm)  form throughout the section to allow the reduction in volume (Dry Shrinkage) and Surface crazing (alligator pattern) on walls and slabs on a small scale. a series of shallow, closely spaced, fine cracks (1 mm) (example of drying shrinkage)",
+        "4": "Detachment of Concrete and Delamination starts and Cracks (2 mm)  are widen throughout the section",
+        "5": "Core Damage or Extensive  Detachment of Concrete and Delamination starts"
+      },
+      "settlement": {
+        "1": "No visual distress or deterioration observed or Negligible effect or damage on the core system or microstructure of concrete.",
+        "2": "Characterised micro cracking of all sides of the structural members near to settlement area.",
+        "3": "Significant wide cracks near to settlement area in structural component and Spalling observed in the structural component",
+        "4": "Cracks are observed in the core, with significant cracking in the support framing, leading to rider discomfort. Delamination and deflection are also evident in other frame sections.",
+        "5": "Section Failed or Concrete section damaged partially"
+      },
+      "carbon_dioxide": {
+        "1": "No Symptoms and the age of the structure is below  one year or Present of Micro-cracks are evident (0.25mm- 0.50mm)",
+        "2": "Extensive Microcraks more pronounced and parallel to reinforcement (0.50-2mm)",
+        "3": "Crack Widening (2-4mm) / Cracks along primary reinforcement is evident / Delamination of Concrete in Primary and Secondary Reinforcement",
+        "4": "Extensive Spalling in Primary Reinforcement / Loss of Steel in Secondary Reinforcement, Extensive Delamination, Loss of Section in Rebar / Discontinuity",
+        "5": "Section Failed or Core damage is seen"
+      },
+      "sulphates": {
+        "1": "No Symptoms and the age of the structure is below  one year or Cracking in surface concrete (0.1- 0.5mm)",
+        "2": "Symptoms previously observed become more evident and pronounced (1-4 mm), with extensive crack formation (0.5-1 mm) and noticeable volume increase in the affected concrete. The damage is more pronounced near the ground in cases of groundwater attack.",
+        "3": "Increases in volume and Excessive Delamination, swelling, cracking and detachment of Concrete",
+        "4": "Delamination of the swelled section exposes the core, showing signs of sulfate attack. As the surface concrete detaches from the core, the risk of cover collapse becomes evident.",
+        "5": "Section Failed or Core damage is seen or Core also gets Damaged and starts to deteriorate."
+      },
+      "carbonation": {
+        "1": "No Symptoms and the age of the structure is below  one year or Present of Micro-cracks are evident (0.25mm- 0.50mm)",
+        "2": "Extensive Microcraks more pronounced and parallel to reinforcement (0.50-2mm)",
+        "3": "Crack Widening (2-4mm) / Cracks along primary reinforcement is evident / Delamination of Concrete in Primary and Secondary Reinforcement",
+        "4": "Extensive Spalling in Primary Reinforcement / Loss of Steel in Secondary Reinforcement, Extensive Delamination, Loss of Section in Rebar / Discontinuity",
+        "5": "Section Failed or Core damage is seen"
+      },
+      "alkali": {
+        "1": "No Symptoms and the age of the structure is below  one year or Pattern cracking or alligator cracking’s are evident (below 0.01 mm)",
+        "2": "Map-cracking (0.08–0.27 mm) is observed in lightly reinforced large columns and at the ends of cross-beams, while slender columns exhibit vertical cracking, either as a single crack or parallel cracks (0.01–0.08 mm).",
+        "3": "Small portions of concrete above reactive silicon aggregates lift, causing a pop-out phenomenon, particularly in industrial floors. Discoloration around cracks (0.27–1 mm) is often observed due to gel exudation in their vicinity.",
+        "4": "Increasing of deteriorating, a further percentage of humidity will accelerate the reaction process, with the added risk of deterioration due to freeze-thaw cycles. And Evident to Serious Branch type Cracking",
+        "5": "Section Failed or Core damage is seen"
+      }
+    },
+    "component_rating_desc": {
+      "superstructure_rating": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed.\n        Only constructional deficiencies may be present. \n        Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low."
+        },
+        "2": {
+          "condition": "Good condition",
+          "description": "0 to 5% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure.\n        0 to 1mm visible cracks and 0 to 5% of exposed reinforcement of concrete superstructure.\n        1 to 5% of unevenness on concrete Superstructure. \n        No Section loss of superstructure "
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "5 to 25 % of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure.\n        1 to 4mm visible cracks and 5 to 25 % of exposed reinforcement of concrete superstructure.\n        5 to 25% of unevenness on concrete Superstructure. \n        0 to 3 % of Section loss of superstructure. "
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "25 to 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure.\n        4 to 6mm visible cracks and 25 to 40 % of exposed reinforcement of concrete superstructure.\n        25 to 40% of unevenness on concrete Superstructure.\n        3 to 5 % of Section loss of superstructure. "
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "> 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure.\n        > 6mm visible cracks and >40 % of exposed reinforcement of concrete superstructure. \n        >40% of unevenness on concrete Superstructure.\n        >5 % of Section loss of superstructure. "
+        }
+      },
+      "substructure_rating": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed.\n        Only constructional deficiencies may be present. \n        Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low."
+        },
+        "2": {
+          "condition": "Good condition",
+          "description": "0 to 5% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Substructure.\n        0 to 1mm visible cracks and 0 to 5% of exposed reinforcement of concrete Substructure.\n        1 to 5% of unevenness on concrete Substructure. \n        No Section loss of Substructure."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "5 to 25 % of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Substructure.\n        1 to 4mm visible cracks and 5 to 25 % of exposed reinforcement of concrete Substructure.\n        5 to 25% of unevenness on concrete Substructure.\n        0 to 3 % of Section loss of Substructure. "
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "25 to 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Substructure.\n        4 to 6mm visible cracks and 25 to 40 % of exposed reinforcement of concrete Substructure.\n        25 to 40% of unevenness on concrete Substructure.\n        3 to 5 % of Section loss of Substructure."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "> 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Substructure.\n        > 6mm visible cracks and >40 % of exposed reinforcement of concrete Substructure.\n        >40% of unevenness on concrete Substructure.\n        >5 % of Section loss of Substructure."
+        }
+      },
+      "foundation_rating": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "Foundation not visible and surrounded by dense soil, and no visibility of soil erosion"
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "Footing not visible and surrounded by soil, soil erosion is evident."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Foundation top is visible and erosion is noticeable"
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Foundation top and partial Foundation depth is visible due to erosion; Footing bottom/ piles stems are visible"
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Complete footing is exposed and piles stems are exposed for a certain length; Bridge Closing is required for immediate R&R of foundation"
+        }
+      },
+      "expansion_joint_rating": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No Debris accumulation in the joint gaps.No bumping while Riding, No excessive noise from the expansion joints.No locked-in/jammed condition, No corrosion of Steel Members.No damaged to the concrete edge beam, No Damage to the elastomeric units/sealing component.No evidence of leakages from the expansion joints."
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "Minor Debris accumulation in the joint gaps.No bumping while Riding, No excessive noise from the expansion joints.No locked-in/jammed condition, No corrosion of Steel Members.Hairline cracks visible on concrete edge beam, No Damage to the elastomeric units/sealing component.No evidence of leakages from the expansion joints."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Debris accumulation in the joint gaps.Minor bumping while Riding, Minor excessive noise from the expansion joints.No locked-in/jammed condition, Minor corrosion of Steel Members.Minor cracks visible on concrete edge beam, Minor Damage to the elastomeric units/sealing component.Evidence of leakages from the expansion joints."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Debris/BC accumulation in the joint gaps and over the assembly.Major Bumping while Riding,  Major excessive noise from the expansion joints.Heavy corrosion of Steel Members, Major cracks, Damage, Patches visible on Concrete edge beam.No elastomer seal /sealing component in the joints and major leakages from the expansion joints."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Damaged anchorage system, Steel studs clearly visible with damage assembly.Major Bumping/Jerk while Riding, Heavy excessive noise from the expansion joints, locked-in/jammed condition.Broken/Corroded Steel Members, Major damage to the concrete edge beam.No elastomer seal /sealing component in the joints and leakages from the expansion joints."
+        }
+      }
+    },
+    "bearing_rating_desc": {
+      "Rocker & Roller Bearing": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No uncontrolled movements, correct positioning with adequacy for free movement.\n        No Fracture, Cracks or deformation in parts of bearings.\n        Condition of anchorage, sliding and rolling surface is Balanced.\n        No corrosion on components been found.\n        No seizure due to dust or non lubrication been found."
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "No uncontrolled movements, correct positioning with adequacy for free movement.\n        No Fracture, Cracks or deformation in parts of bearings.\n        Condition of anchorage, sliding and rolling surface is Balanced.\n        No corrosion on components been found.\n        Dust Cleaing and lubrication been required."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "No uncontrolled movements, correct positioning with adequacy for free movement.\n        No Fracture, Cracks or deformation in parts of bearings.\n        Condition of anchorage, sliding and rolling surface is Balanced.\n        Corrosion on components been found.\n        Dust Cleaing and lubrication cleaning been required."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Minor uncontrolled movements, incorrect positioning with minor inadequacy for free movement.\n        Minor Fracture, Cracks or deformation found in parts of bearings.\n        Condition of anchorage, sliding and rolling surface is partial Balanced.\n        Major Corrosion on components been found.\n        Dust obstructing the movement and lubrication been found stiff around bearing."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Major  uncontrolled movements, dislocation from positioning with complete inadequacy for free movement.\n        Major Fracture, Cracks or deformation found in parts of bearings.\n        Condition of anchorage, sliding and rolling surface is found imbalance/Unstable.\n        Major Corrosion on components been found.\n        Dust obstructing the movement and lubrication been found stiff around bearing\n        Bearing Part is misplace/ dislocate from its original position"
+        }
+      },
+      "Elastomeric Bearing": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed on elastomer\n        Intact elastomer and embedded steel plates (No shear deflection)\n        Top and bottom surface shall be in full contact with Plinth and soffit \n        No Bulging and splitting of the rubber layer. \n        No displacement or deformation of Bearings."
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "Hairlane cracks on elastomer (within the acceptable limit <5%).\n        Intact elastomer and embedded steel plates (No shear deflection)\n        Top and bottom surface shall be in full contact with Plinth and soffit \n        No Bulging and splitting of the rubber layer. \n        No displacement or deformation of Bearings."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Cracks on elastomer (>5%).\n        Minor deteriorated elastomer and embedded steel plates (Minor shear deflection visible)\n        Top and bottom surface shall be seen gaps in edges portion of Plinth and soffit \n        Minor Bulging and splitting of the rubber layer. \n        Minor displacement or deformation of Bearings."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Major Cracks along with bulging observed on elastomer.\n        Poor bond at laminate/steel interface and Misalignment of reinforcing plates(Major shear deflection visible)\n        Top and bottom surface shall be seen Major gaps in edges portion of Plinth and soffit\n        Bulging and splitting of the rubber layer.\n        Major Displacement or deformation of Bearings."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Major Cracks, Tearing and splitting whole on elastomer.\n        Separation of elastomer layers or between elastomer and embedded steel plates (Major shear deflection visible)\n        Top and bottom surface shall be seen Major gaps in throughout portion of Plinth and soffit\n        Bulging and splitting of the rubber layer is visible.\n        Complete Displacement or deformation of Bearings."
+        }
+      },
+      "Pot/Pin/Metallic Bearing": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed.\n        Gap between top plate and bottom piston is evenly mainatined (>5mm)\n        No bearing is found in locked/Jammed condition.\n        No corrosion or any part of bearing is found been exposed.\n        No damage is been found in adjacent component of Bearings"
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "No visible distress/ deterioration observed.\n        Gap between top plate and bottom piston is evenly mainatined (>5mm)\n        No bearing is found in locked/Jammed condition.\n        Minor corrosion been found  but none any part of bearing is found been exposed.\n        No damage is been found in adjacent component of Bearings."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Minor visible distress/ deterioration observed.(One or two bolts pop out)\n        Gap between top plate and bottom piston is unevenly mainatined in one direction (<5mm in one direction)\n        Bearing is found in locked/Jammed condition.\n        Minor corrosion been found  but none any part of bearing is found been exposed.\n        Minor damage is been found in adjacent component of Bearings.                                     \n        Bearing Rubber seal spill out from its position."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Major visible distress/ deterioration observed.(Bearing bolts found missing)\n        Gap between top plate and bottom piston is unevenly mainatined in both direction (<5mm in both  direction).\n        Major bearings are found in locked/Jammed condition.\n        Heavy corrosion been found  also elastomer part of bearing is found been exposed.\n        Major damage is been found in adjacent component of Bearings.               \n        Cracks observed in Bearing Pedestal at bottom of bearing/Pedestal top due to non functionality of bearing.However no deformation in bearing been visible."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Major visible distress/ deterioration observed.(Plates been separated)\n        No Gap between top plate and bottom piston is visible ( 0 mm in throughout direction)\n        Major bearings are found in locked/Jammed condition.\n        Heavy corrosion been found  also elastomer part of bearing is found been exposed and crushed\n        Major damage/Cracks is been found in adjacent component of Bearings."
+        }
+      },
+      "Spherical and Cylindrical Bearing": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed.\n        Top and bottom component of Bearing are perfectly parallel to each other.\n        No bearing is found in locked/Jammed condition.\n        No corrosion or any part of bearing is found been exposed.\n        No damage is been found in adjacent component of Bearings."
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "No visible distress/ deterioration observed.\n        Top and bottom component of Bearing are perfectly parallel to each other.\n        No bearing is found in locked/Jammed condition.\n        Minor corrosion been found  but none any part of bearing is found been exposed.\n        No damage is been found in adjacent component of Bearings.  "
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Minor visible distress/ deterioration observed.(One or two bolts pop out)\n        Top and bottom component of Bearing are slightly parallel to each other.\n        Few Bearing is found in locked/Jammed condition.\n        Minor corrosion been found  but none any part of bearing is found been exposed.\n        Minor damage is been found in adjacent component of Bearings.\n        Bearing Rubber seal spill out from its position."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Major visible distress/ deterioration observed.(Bearing bolts found missing).\n        Top and bottom component of Bearing are tilted and inclined to each other.\n        Major bearings are found in locked/Jammed condition.\n        Heavy corrosion been found  also elastomer part of bearing is found been exposed.\n        Major damage is been found in adjacent component of Bearings.        \n        Cracks observed in Bearing Pedestal at bottom of bearing/Pedestal top due to non functionality of bearing.However no deformation in bearing been visible."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Major visible distress/ deterioration observed.(Plates been separated)\n        No gap been found between Top and bottom component of Bearing.\n        Major bearings are found in locked/Jammed condition.\n        Heavy corrosion been found  also elastomer part of bearing is found been exposed and crushed.\n        Major damage/Cracks is been found in adjacent component of Bearings."
+        }
+      }
+    },
+    "Bridge_Rating": {
+      "overall_bridge_rating": {
+        "1": {
+          "condition": "Excellent condition",
+          "description": "No visible distress/ deterioration observed.\n        Only constructional deficiencies may be present. \n        Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low."
+        },
+        "2": {
+          "condition": "Good Condition",
+          "description": "Extent of deficiencies is minor; Severity of deficiencies is low. \n        0 to 5 % of area effected by any of the following: Honeycombing, Delamination, Spalling, minor/medium cracks, exposed reinforcement.   \n        0 to 1mm visible cracks.  \n        1 to 5% unevenness on concrete Superstructure. \n        No Section loss of superstructure. \n        Unevenness due to wear & tear, no potholes on concrete surface. \n        Drainage spouts are functional."
+        },
+        "3": {
+          "condition": "Fair condition",
+          "description": "Extent of deficiencies is major; Severity of deficiencies is medium. \n        5 to 25 % of area effected by any some of the following: Honeycombing, Delamination, Spalling, medium cracks, exposed reinforcement.  \n        1 to 4mm visible cracks. \n        0 to 3 % of Section loss of superstructure. \n        Unevenness due to wear & tear, potholes on concrete surface. \n        Drainage spouts are non-functional."
+        },
+        "4": {
+          "condition": "Poor condition",
+          "description": "Extent of deficiencies is large; Severity of deficiencies is high. \n        25 to 40 % of area effected by any of the following: Honeycombing, Delamination, Spalling, major cracks, exposed reinforcement.  \n        4 to 6 mm visible cracks and 3 to 5 % of Section loss of superstructure.\n        Unevenness due to wear & tear, potholes on concrete surface. \n        Drainage spouts are non-functional."
+        },
+        "5": {
+          "condition": "Critical condition",
+          "description": "Extent of deficiencies is very large / expensive; Severity of deficiencies is very high. \n        >40% of area effected by some of the following:  Honeycombing, Delamination, Spalling, major cracks, exposed reinforcement. \n        >6 mm visible cracks and \n        > 5 % of Section loss of superstructure. \n        Unevenness due to wear & tear, pot holes on concrete surface. \n        Drainage spouts are non-functional. Bride Closed."
+        }
+      }
+    },
+    "Bridge_Conclusion_Texts": {
+      "1": "Condition:-\nSound structural condition; component do not individually or as a whole impair the strength, stability, traffic safety, durability and serviceability of the structure.\n\nExtent & Severity of Distress:-\nOnly constructional deficiencies may be present. Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low.\n\nType of Maintenance:-\nNo need of repair except routine maintenance.",
+      "2": "Condition:-\nMore than satisfactory structural condition; component do not individually or as a whole impair strength/stability; traffic safety, durability and/or serviceability of the structure might be impaired slightly in the long term.\n\nExtent & Severity of Distress:-\nExtent of deficiencies is minor; Severity of deficiencies is low.\n\nType of Maintenance:-\nSpecialized maintenance and repairs may be needed at convenience.",
+      "3": "Condition:-\nSatisfactory structural condition; strength, stability and traffic safety of the structure is assured however considerable reduction is possible in the long term; serviceability and durability is reduced and durability of the structure might be impaired considerably in the long term.\n\nExtent & Severity of Distress:-\nExtent of deficiencies is major; Severity of deficiencies is medium.\n\nType of Maintenance:-\nSpecialized maintenance and repairs needed soon.",
+      "4": "Condition:-\nStructurally deficient bridge; strength/stability/traffic safety no longer assured; durability may be affected in short term; monitoring is required; restriction of use of the bridge may be needed.\n\nExtent & Severity of Distress:-\nExtent of deficiencies is large; Severity of deficiencies is high.\n\nType of Maintenance:-\nRehabilitation/replacement on program basis is needed; measures for reconstruction or warning signs may be necessary in the short term; detailed investigations and economic analysis required.",
+      "5": "Condition:-\nWeak structural condition; partial failure or risk of total failure of the component or as a whole; durability of the structure is no longer ensured; immediate propping and closing may be required.\n\nExtent & Severity of Distress:-\nExtent of deficiencies is very large/expensive; Severity of deficiencies is very high.\n\nType of Maintenance:-\nRepair/rehabilitation/replacement is required immediately; design strength, expected serviceability and desired remaining service life can no longer be achieved economically."
+    },
+    "STRUCTURAL_RM_OPTIONS": {
+      "Clearing and Grubbing Around Structures": "Clearing and Grubbing Around Structures",
+      "Dismantling of Existing Concrete Structures": "Dismantling of Existing Concrete Structures",
+      "Construction of Subgrade": "Construction of Subgrade",
+      "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill": "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill",
+      "Application of Cement Paint on Concrete Handrails / Crash Barrier": "Application of Cement Paint on Concrete Handrails / Crash Barrier",
+      "Providing and Fixing Temporary Double Steel Scaffolding System with Safety Features": "Providing and Fixing Temporary Double Steel Scaffolding System with Safety Features",
+      "Extra Reinforcement with Zinc-Rich Epoxy Coating": "Extra Reinforcement with Zinc-Rich Epoxy Coating",
+      "Jacketing of Structural Members with M-40 Concrete (150mm to 175mm Thick)": "Jacketing of Structural Members with M-40 Concrete (150mm to 175mm Thick)",
+      "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)": "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)",
+      "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling": "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling",
+      "Replacement of Existing Bearing with New Elastomeric Bearing": "Replacement of Existing Bearing with New Elastomeric Bearing",
+      "Cutting of Metallic Bearing Locks Using Electric Grinder": "Cutting of Metallic Bearing Locks Using Electric Grinder",
+      "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)": "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)",
+      "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)": "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)",
+      "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)": "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)",
+      "Stone Pitching on Side Slopes near Culverts / Bridges for Embankment Protection": "Stone Pitching on Side Slopes near Culverts / Bridges for Embankment Protection",
+      "Providing New Expansion Joint Assembly – Filler Type": "Providing New Expansion Joint Assembly – Filler Type",
+      "New Expansion Joint – Strip Seal Type": "New Expansion Joint – Strip Seal Type",
+      "Providing Seal for Strip Seal Expansion Joint": "Providing Seal for Strip Seal Expansion Joint",
+      "Reconstruction of RCC Crash Barrier (Post Dismantling)": "Reconstruction of RCC Crash Barrier (Post Dismantling)",
+      "Replacement / Providing of Drainage Spout Assembly": "Replacement / Providing of Drainage Spout Assembly",
+      "Provision of Missing MS Grating over Drainage Spouts": "Provision of Missing MS Grating over Drainage Spouts",
+      "Replacement of Missing / Damaged Down Take Pipe (PVC)": "Replacement of Missing / Damaged Down Take Pipe (PVC)",
+      "PVC Runner Pipe": "PVC Runner Pipe",
+      "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar": "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar",
+      "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures (NRV Type)": "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures (NRV Type)",
+      "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (NRV Type)": "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (NRV Type)",
+      "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM) up to 50mm Thickness": "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM) up to 50mm Thickness",
+      "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure Using NRV Nipples": "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure Using NRV Nipples",
+      "Carbon Fibre Wrapping for Strengthening of Structural Members": "Carbon Fibre Wrapping for Strengthening of Structural Members",
+      "Providing and Laying of Micro-Concrete for Structural Repairs": "Providing and Laying of Micro-Concrete for Structural Repairs",
+      "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)": "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)",
+      "Providing and Fixing Mild Steel (MS) Lining Plates (8mm Thick) for Jacketing and Structural Strengthening of Pedestals": "Providing and Fixing Mild Steel (MS) Lining Plates (8mm Thick) for Jacketing and Structural Strengthening of Pedestals",
+      "Shotcreting": "Shotcreting",
+      "Mortar Sealing and Pointing": "Mortar Sealing and Pointing",
+      "Concrete Supply / Placing": "Concrete Supply / Placing",
+      "MBCB": "MBCB",
+      "Cross Bracing – Whole Parts": "Cross Bracing – Whole Parts",
+      "Cross Bracing – Partial Parts": "Cross Bracing – Partial Parts",
+      "Anti-Corrosive Epoxy Paint (Girder)": "Anti-Corrosive Epoxy Paint (Girder)",
+      "Soil Nailing (Each Nail)": "Soil Nailing (Each Nail)",
+      "Wearing Coat Dismantling": "Wearing Coat Dismantling",
+      "Tack Coat": "Tack Coat",
+      "Wearing Coat": "Wearing Coat",
+      "Providing & Laying Deck Waterproofing – APP Membrane": "Providing & Laying Deck Waterproofing – APP Membrane",
+      "Elastomeric Concrete": "Elastomeric Concrete",
+      "Dismantling of Approach Slab": "Dismantling of Approach Slab",
+      "Wearing Coat Raft Concrete": "Wearing Coat Raft Concrete",
+      "Reinforcement": "Reinforcement",
+      "RT Wall": "RT Wall",
+      "Anti-Carbonation Treatment": "Anti-Carbonation Treatment",
+      "Missing Bolts": "Missing Bolts",
+      "Modular Strip Seal": "Modular Strip Seal"
+    },
+    "NON_STRUCTURAL_RM_OPTIONS": {
+      "Clearing and Grubbing Around Structures": "Clearing and Grubbing Around Structures",
+      "Dismantling of Existing Concrete Structures": "Dismantling of Existing Concrete Structures",
+      "Construction of Subgrade": "Construction of Subgrade",
+      "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill": "Repair of Eroded Side Slopes near Structures (Quarter Coning Areas) Using Select Fill",
+      "Application of Cement Paint on Concrete Handrails / Crash Barrier": "Application of Cement Paint on Concrete Handrails / Crash Barrier",
+      "Providing and Fixing Temporary Double Steel Scaffolding System with Safety Features": "Providing and Fixing Temporary Double Steel Scaffolding System with Safety Features",
+      "Extra Reinforcement with Zinc-Rich Epoxy Coating": "Extra Reinforcement with Zinc-Rich Epoxy Coating",
+      "Jacketing of Structural Members with M-40 Concrete (150mm to 175mm Thick)": "Jacketing of Structural Members with M-40 Concrete (150mm to 175mm Thick)",
+      "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)": "Lifting of Superstructure Span by Hydraulic Jacking (Span Length up to 50m)",
+      "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling": "Replacement of Existing Bearing with New POT-PTFE Bearing Including Pedestal Preparation and Levelling",
+      "Replacement of Existing Bearing with New Elastomeric Bearing": "Replacement of Existing Bearing with New Elastomeric Bearing",
+      "Cutting of Metallic Bearing Locks Using Electric Grinder": "Cutting of Metallic Bearing Locks Using Electric Grinder",
+      "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)": "Rust Removal and Anti-Corrosive Zinc Painting on Bearings (As per MoRTH Specifications)",
+      "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)": "Greasing of Steel Bearings (Roller-cum-Rocker and Pin & Roller Types)",
+      "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)": "Reconstruction of Damaged Return Wall (Cast-in-situ RCC up to 4m Height)",
+      "Stone Pitching on Side Slopes near Culverts / Bridges for Embankment Protection": "Stone Pitching on Side Slopes near Culverts / Bridges for Embankment Protection",
+      "Providing New Expansion Joint Assembly – Filler Type": "Providing New Expansion Joint Assembly – Filler Type",
+      "New Expansion Joint  Strip Seal Type": "New Expansion Joint – Strip Seal Type",
+      "Providing Seal for Strip Seal Expansion Joint": "Providing Seal for Strip Seal Expansion Joint",
+      "Reconstruction of RCC Crash Barrier (Post Dismantling)": "Reconstruction of RCC Crash Barrier (Post Dismantling)",
+      "Replacement / Providing of Drainage Spout Assembly": "Replacement / Providing of Drainage Spout Assembly",
+      "Provision of Missing MS Grating over Drainage Spouts": "Provision of Missing MS Grating over Drainage Spouts",
+      "Replacement of Missing / Damaged Down Take Pipe (PVC)": "Replacement of Missing / Damaged Down Take Pipe (PVC)",
+      "PVC Runner Pipe": "PVC Runner Pipe",
+      "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar": "Sealing of Cracks in RCC Members by V-Groove Cutting and Sealing with Epoxy Mortar",
+      "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures (NRV Type)": "Provision and Installation of Grouting Nipples for Pressure Injection in RCC Structures (NRV Type)",
+      "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (NRV Type)": "Low Viscosity Epoxy Pressure Injection Grouting in RCC Members (NRV Type)",
+      "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM) up to 50mm Thickness": "Repair of Damaged Concrete Surfaces Using Polymer Modified Mortar (PMM) up to 50mm Thickness",
+      "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure Using NRV Nipples": "Injection of Polymer Cement Grout with Non-Shrink Additive at 4 kg/cm² Pressure Using NRV Nipples",
+      "Carbon Fibre Wrapping for Strengthening of Structural Members": "Carbon Fibre Wrapping for Strengthening of Structural Members",
+      "Providing and Laying of Micro-Concrete for Structural Repairs": "Providing and Laying of Micro-Concrete for Structural Repairs",
+      "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)": "Approach Slab Mud Jacketing (Void Filling Beneath Slab by Pressure Grouting)",
+      "Providing and Fixing Mild Steel (MS) Lining Plates (8mm Thick) for Jacketing and Structural Strengthening of Pedestals": "Providing and Fixing Mild Steel (MS) Lining Plates (8mm Thick) for Jacketing and Structural Strengthening of Pedestals",
+      "Shotcreting": "Shotcreting",
+      "Mortar Sealing and Pointing": "Mortar Sealing and Pointing",
+      "Concrete Supply / Placing": "Concrete Supply / Placing",
+      "MBCB": "MBCB",
+      "Cross Bracing – Whole Parts": "Cross Bracing – Whole Parts",
+      "Cross Bracing – Partial Parts": "Cross Bracing – Partial Parts",
+      "Anti-Corrosive Epoxy Paint (Girder)": "Anti-Corrosive Epoxy Paint (Girder)",
+      "Soil Nailing (Each Nail)": "Soil Nailing (Each Nail)",
+      "Wearing Coat Dismantling": "Wearing Coat Dismantling",
+      "Tack Coat": "Tack Coat",
+      "Wearing Coat": "Wearing Coat",
+      "Providing & Laying Deck Waterproofing – APP Membrane": "Providing & Laying Deck Waterproofing – APP Membrane",
+      "Elastomeric Concrete": "Elastomeric Concrete",
+      "Dismantling of Approach Slab": "Dismantling of Approach Slab",
+      "Wearing Coat Raft Concrete": "Wearing Coat Raft Concrete",
+      "Reinforcement": "Reinforcement",
+      "RT Wall": "RT Wall",
+      "Anti-Carbonation Treatment": "Anti-Carbonation Treatment",
+      "Missing Bolts": "Missing Bolts",
+      "Modular Strip Seal": "Modular Strip Seal"
+    }
+  }
+}
