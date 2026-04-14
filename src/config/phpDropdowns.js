@@ -1,558 +1,190 @@
-// Subset of CodeIgniter `application/config/constants.php` dropdowns.
-// Kept here so React forms can match PHP option lists.
+/**
+ * Inspection component dropdown data for /inspection/component-dropdowns/:key
+ * Self-contained — no frontend imports needed.
+ * Values mirror PHP constants.php.
+ */
+
+const o = (v, l) => ({ value: v, label: l ?? v })
+const s = (...vals) => vals.map((v) => o(v, v))
+
+const NA = [o('NA', 'NA')]
+const sel = (label, ...vals) => [o('', label), ...s(...vals)]
 
 export const INSPECTION_DROPDOWNS = {
-  wearing_coat: {
-    // PHP: WEARING_COAT_MATERIAL
-    material: [
-      { value: '', label: 'Select Material' },
-      { value: 'Bituminous', label: 'Bituminous' },
-      { value: 'Cement Concrete', label: 'Cement Concrete' },
-    ],
-    // PHP: SURFACE_CONDITION (stored value is code, label is text)
-    surface_condition: [
-      { value: '', label: 'Select Surface Condition' },
-      { value: 'GoodPavement', label: 'Pavement is in Good Condition, No Distress Observed' },
-      {
-        value: 'MinorFlexible',
-        label: 'Minor Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding',
-      },
-      {
-        value: 'MajorFlexible',
-        label: 'Major Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding',
-      },
-      {
-        value: 'MinorRigid',
-        label:
-          'Minor Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture',
-      },
-      {
-        value: 'MajorRigid',
-        label:
-          'Major Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture',
-      },
-    ],
-  },
-
-  drainage_spouts_and_vest_holes: {
-    // PHP: CLOGGING_DETERIORATION_LHS / RHS
-    check_clogging_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Driange spouts is clogged', label: 'Driange spouts is clogged' },
-      { value: 'No drainage spouts clogged', label: 'No drainage spouts clogged' },
-    ],
-    check_clogging_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Driange spouts is clogged', label: 'Driange spouts is clogged' },
-      { value: 'No drainage spouts clogged', label: 'No drainage spouts clogged' },
-    ],
-    // PHP: PROJECTION_OF_SPOUT_LHS / RHS
-    check_projection_of_spout_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'No structural member is affected', label: 'No structural member is affected' },
-      { value: 'No drainage spouts are clogged', label: 'No drainage spouts are clogged' },
-      {
-        value: 'Structural member being affected on the underside due to inadequate projection',
-        label: 'Structural member being affected on the underside due to inadequate projection',
-      },
-      { value: 'Projection to be provide', label: 'Projection to be provide' },
-    ],
-    check_projection_of_spout_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'No structural member is affected', label: 'No structural member is affected' },
-      { value: 'No drainage spouts are clogged', label: 'No drainage spouts are clogged' },
-      {
-        value: 'Structural member being affected on the underside due to inadequate projection',
-        label: 'Structural member being affected on the underside due to inadequate projection',
-      },
-      { value: 'Projection to be provide', label: 'Projection to be provide' },
-    ],
-    // PHP: ADEQUACY_THEROF_LHS / RHS
-    check_adequacy_thereof_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Adequate', label: 'Adequate' },
-      { value: 'In- adequate', label: 'In- adequate' },
-    ],
-    check_adequacy_thereof_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Adequate', label: 'Adequate' },
-      { value: 'In- adequate', label: 'In- adequate' },
-    ],
-    // PHP: REPORT_ABOUT_ADEQUACY_LHS / RHS
-    for_subway_reports_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Not applicable because structure is not subway', label: 'Not applicable because structure is not subway' },
-      { value: 'Adeqaute Drainage and pumping arrangement are found', label: 'Adeqaute Drainage and pumping arrangement are found' },
-    ],
-    for_subway_reports_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Not applicable because structure is not subway', label: 'Not applicable because structure is not subway' },
-      { value: 'Adeqaute Drainage and pumping arrangement are found', label: 'Adeqaute Drainage and pumping arrangement are found' },
-    ],
-    report_absence_of_drainage_spouts_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'There is no absence of drainage spouts', label: 'There is no absence of drainage spouts' },
-      { value: 'Absence of drainage spouts are observed', label: 'Absence of drainage spouts are observed' },
-      { value: 'Others', label: 'Others' },
-    ],
-    report_absence_of_drainage_spouts_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'There is no absence of drainage spouts', label: 'There is no absence of drainage spouts' },
-      { value: 'Absence of drainage spouts are observed', label: 'Absence of drainage spouts are observed' },
-      { value: 'Others', label: 'Others' },
-    ],
-    check_choking_of_drainage_holes_lhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Drainage spouts choked in the bottom booms', label: 'Drainage spouts choked in the bottom booms' },
-      { value: 'No drainage holes choked in the bottom booms', label: 'No drainage holes choked in the bottom booms' },
-      { value: 'Others', label: 'Others' },
-    ],
-    check_choking_of_drainage_holes_rhs: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Drainage spouts choked in the bottom booms', label: 'Drainage spouts choked in the bottom booms' },
-      { value: 'No drainage holes choked in the bottom booms', label: 'No drainage holes choked in the bottom booms' },
-      { value: 'Others', label: 'Others' },
-    ],
-  },
-
-  handrails: {
-    present_lhs: ['Yes', 'No'].map((v) => ({ value: v, label: v })),
-    present_rhs: ['Yes', 'No'].map((v) => ({ value: v, label: v })),
-    material_lhs: ['', 'RCC', 'Steel', 'Timber', 'Masonary'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Material' : v,
-    })),
-    material_rhs: ['', 'RCC', 'Steel', 'Timber', 'Masonary'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Material' : v,
-    })),
-    conditions_lhs: [
-      '',
-      'Hand Rail , parapets and Crash barriers is in Good Condition',
-      'Hand Rail , parapets and Crash barriers is Not in good Condition',
-      'Hand Rail , parapets and Crash barriers is not present',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Condition' : v })),
-    conditions_rhs: [
-      '',
-      'Hand Rail , parapets and Crash barriers is in Good Condition',
-      'Hand Rail , parapets and Crash barriers is Not in good Condition',
-      'Hand Rail , parapets and Crash barriers is not present',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Condition' : v })),
-    expansion_joint_gap_lhs: [
-      '',
-      'Expansion joint gaps observed',
-      'No expansion joint gaps found',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Expansion Joint Gap' : v })),
-    expansion_joint_gap_rhs: [
-      '',
-      'Expansion joint gaps observed',
-      'No expansion joint gaps found',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Expansion Joint Gap' : v })),
-    inspection_galley_ladder_platform_lhs: ['', 'MBIU', 'Ladder', 'Man Lift', 'Other'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Gallery Ladder Platform' : v,
-    })),
-    inspection_galley_ladder_platform_rhs: ['', 'MBIU', 'Ladder', 'Man Lift', 'Other'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Gallery Ladder Platform' : v,
-    })),
-  },
-
-  footpaths: {
-    present_lhs: ['Yes', 'No', 'NA'].map((v) => ({ value: v, label: v })),
-    present_rhs: ['Yes', 'No', 'NA'].map((v) => ({ value: v, label: v })),
-    material_lhs: ['', 'NA', 'Concrete', 'Masonary', 'Timber', 'Others'].map((v) => ({
-      value: v,
-      label: v === '' ? 'select material' : v,
-    })),
-    material_rhs: ['', 'NA', 'Concrete', 'Masonary', 'Timber', 'Others'].map((v) => ({
-      value: v,
-      label: v === '' ? 'select material' : v,
-    })),
-    conditions_lhs: [
-      '',
-      'NA',
-      'Footpath observed to be in good condition',
-      'Footpath is not in good condition',
-      'Others',
-    ].map((v) => ({ value: v, label: v === '' ? 'select condition' : v })),
-    conditions_rhs: [
-      '',
-      'NA',
-      'Footpath observed to be in good condition',
-      'Footpath is not in good condition',
-      'Others',
-    ].map((v) => ({ value: v, label: v === '' ? 'select condition' : v })),
-  },
-
-  utilities: {
-    present_lhs: ['Yes', 'No', 'NA'].map((v) => ({ value: v, label: v })),
-    present_rhs: ['Yes', 'No', 'NA'].map((v) => ({ value: v, label: v })),
-    type_of_utility_lhs: [
-      '',
-      'Drainage Pipe lines',
-      'Electrical Lines',
-      'Telephonic lines',
-      'Gas Pipe Lines',
-      'Lighting Facilities',
-      'Water Pipe Lines',
-      'Others',
-      'No utilities Found',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Utility Type' : v })),
-    type_of_utility_rhs: [
-      '',
-      'Drainage Pipe lines',
-      'Electrical Lines',
-      'Telephonic lines',
-      'Gas Pipe Lines',
-      'Lighting Facilities',
-      'Water Pipe Lines',
-      'Others',
-      'No utilities Found',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select Utility Type' : v })),
-    any_type_of_encroachment_lhs: ['', 'Yes', 'No', 'Other'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Encroachment Under The Bridge' : v,
-    })),
-    any_type_of_encroachment_rhs: ['', 'Yes', 'No', 'Other'].map((v) => ({
-      value: v,
-      label: v === '' ? 'Select Encroachment Under The Bridge' : v,
-    })),
-    report_damage_due_to_utility_lhs: [
-      '',
-      'Physical Damage',
-      'Corrosion',
-      'Material Degradation',
-      'Ground Movement',
-      'Animal Infestation',
-      'Cracking',
-      'Spalling',
-      'Settlement',
-      'Displacement',
-      'Inadequate Drainage',
-      'Damage to Frames and Covers',
-      'Oxidation',
-      'Piping Damage',
-      'Cable Damage',
-      'Conduit Damage',
-      'Joint Failures etc',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select' : v })),
-    report_damage_due_to_utility_rhs: [
-      '',
-      'Physical Damage',
-      'Corrosion',
-      'Material Degradation',
-      'Ground Movement',
-      'Animal Infestation',
-      'Cracking',
-      'Spalling',
-      'Settlement',
-      'Displacement',
-      'Inadequate Drainage',
-      'Damage to Frames and Covers',
-      'Oxidation',
-      'Piping Damage',
-      'Cable Damage',
-      'Conduit Damage',
-      'Joint Failures etc',
-    ].map((v) => ({ value: v, label: v === '' ? 'Select' : v })),
-  },
-
-  // Protection Works (PHP: TYPE, SLOPE_PITICHING_APRON_ANDTOE_WALLS, FLOOR_PROTECTION_WORKS, SCOUR_FOR_ABUTMENTS, SCOUR_FOR_PIERS, RESERVE_STORE_MATERIAL)
-  protection_works: {
-    type: [
-      { value: '', label: 'Select Type' },
-      { value: 'Around Abutments protected with riprap', label: 'Around Abutments protected with riprap' },
-      {
-        value: 'Around abutments protected with cement concrete',
-        label: 'Around abutments protected with cement concrete',
-      },
-      { value: 'No protection provided around abutments', label: 'No protection provided around abutments' },
-      { value: 'Others', label: 'Not Applicable' },
-    ],
-    slope_pitching_apron_and_toe_walls: [
-      { value: '', label: 'Select Slope' },
-      { value: 'damage Found in slope pitching/apron/toe walls', label: 'damage Found in slope pitching/apron/toe walls' },
-      { value: 'damage not Found in slope pitching/apron/toe walls', label: 'damage not Found in slope pitching/apron/toe walls' },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-    floor_protection_works: [
-      { value: '', label: 'Select Floor Protection Work' },
-      { value: 'Damage Found in floor Protection works', label: 'Damage Found in floor Protection works' },
-      { value: 'Damage not Found in floor Protection works', label: 'Damage not Found in floor Protection works' },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-    scour_for_abutments: [
-      { value: '', label: 'Select Scour For Abutments' },
-      { value: 'Scour observed at Abutments', label: 'Scour observed at Abutments' },
-      { value: 'Scour not observed at Abutments', label: 'Scour not observed at Abutments' },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-    scour_for_piers: [
-      { value: '', label: 'Select Scour For Piers' },
-      { value: 'Scour observed at Piers', label: 'Scour observed at Piers' },
-      { value: 'Scour not observed at Piers', label: 'Scour not observed at Piers' },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-    reserve_store_material: [
-      { value: '', label: 'Select Reserve Stone Material' },
-      { value: 'Yes, Reserve store material is Present/Available', label: 'Yes, Reserve store material is Present/Available' },
-      { value: 'No, Reserve store material is not Present/Available', label: 'No, Reserve store material is not Present/Available' },
-    ],
-  },
-
-  // Waterway (PHP: CHECK_PRESENCE_OF_OBSTRUCTION, FLOW_PATTERN)
-  waterway: {
-    check_presence_of_obstruction: [
-      { value: '', label: 'Select Presence Of Obstruction' },
-      {
-        value: 'Yes, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed',
-        label: 'Yes, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed',
-      },
-      {
-        value: 'No, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed',
-        label: 'No, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed',
-      },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-    flow_pattern: [
-      { value: '', label: 'Select Flow Pattern' },
-      { value: 'Flow Pattern is Normal', label: 'Flow Pattern is Normal' },
-      { value: 'Flow Pattern is abnormal', label: 'Flow Pattern is abnormal' },
-      { value: 'Not Applicable', label: 'Not Applicable' },
-    ],
-  },
-
-  // Foundation (PHP: TYPE_BRIDGE, FOUNDATION_MATERIAL, CONDITION_OF_FOUNDATION, FLOATING_BODIES)
-  foundation: {
-    foundation_type: [
-      { value: '', label: 'Select Type' },
-      { value: 'Well Foundation', label: 'Well Foundation' },
-      { value: 'Open Foundation', label: 'Open Foundation' },
-      { value: 'Pile Foundation', label: 'Pile Foundation' },
-      { value: 'Raft Foundation', label: 'Raft Foundation' },
-      { value: 'Spread Foundation', label: 'Spread Foundation' },
-      { value: 'Isolated Foundation', label: 'Isolated Foundation' },
-      {
-        value: 'Foundation is not visible, Data to be referred from design document/as-built drawing',
-        label: 'Foundation is not visible, Data to be referred from design document/as-built drawing',
-      },
-    ],
-    material: [
-      { value: '', label: 'Select Material' },
-      { value: 'Brick', label: 'Brick' },
-      { value: 'RCC', label: 'RCC' },
-      {
-        value: 'Foundation is not visible, Data to be referred from design document/as-built drawing',
-        label: 'Foundation is not visible, Data to be referred from design document/as-built drawing',
-      },
-    ],
-    condition_of_foundation: [
-      { value: '', label: 'Select Condition Of Foundation' },
-      { value: 'Settlement Observed', label: 'Settlement Observed' },
-      { value: 'Abnormal Scour Observed', label: 'Abnormal Scour Observed' },
-      { value: 'Tilting Observed', label: 'Tilting Observed' },
-      { value: 'Good in Condition', label: 'Good in Condition' },
-      { value: 'Foundation Not Visible', label: 'Foundation Not Visible' },
-    ],
-    floating_bodies_boulders: [
-      { value: 'NA', label: 'NA' },
-      { value: 'No damage Observed', label: 'No damage Observed' },
-      { value: 'Damage Observed', label: 'Damage Observed' },
-    ],
-  },
-
-  // Substructure (PHP: TYPE_A1/A2, MATERIAL_A1/A2, CONDITION_A1/A2, EFFICIENCY_OF_DRAINAGE_A1/A2, PIER_CONDITION)
-  substructure: {
-    type_a1: [
-      'NA',
-      'Solid masonry wall type',
-      'Solid RCC wall type',
-      'Circular pier with Hammer Head',
-      'Square pier with Hammer Head',
-      'Rectangular pier with Hammer Head',
-      'Rigid frame or portal pier',
-      'Trestle Pier or Trestle Bent',
-    ].map((v) => ({ value: v, label: v })),
-    type_a2: [
-      'NA',
-      'Solid masonry wall type',
-      'Solid RCC wall type',
-      'Circular pier with Hammer Head',
-      'Square pier with Hammer Head',
-      'Rectangular pier with Hammer Head',
-      'Rigid frame or portal pier',
-      'Trestle Pier or Trestle Bent',
-    ].map((v) => ({ value: v, label: v })),
-    substructure_material_a1: [
-      'NA',
-      'Brick Stone Masonry',
-      'CRS Stone Masonry',
-      'Stone Masonry',
-      'Reinforced cement concrete',
-      'Masonry',
-      'Other',
-    ].map((v) => ({ value: v, label: v })),
-    substructure_material_a2: [
-      'NA',
-      'Brick Stone Masonry',
-      'CRS Stone Masonry',
-      'Stone Masonry',
-      'Reinforced cement concrete',
-      'Masonry',
-      'Other',
-    ].map((v) => ({ value: v, label: v })),
-    condition_a1: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Abutment is in good condition', label: 'Abutment is in good condition' },
-      {
-        value: 'Abutment is not in good condition enter observed distress',
-        label: 'Abutment is not in good condition enter observed distress',
-      },
-    ],
-    condition_a2: [
-      { value: 'NA', label: 'NA' },
-      { value: 'Abutment is in good condition', label: 'Abutment is in good condition' },
-      {
-        value: 'Abutment is not in good condition enter observed distress',
-        label: 'Abutment is not in good condition enter observed distress',
-      },
-    ],
-    efficiency_drainage_a1: [
-      'NA',
-      'Weep holes functioning good and no evidence of moisture on abutment faces',
-      'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed',
-      'weep holes functioning good and shows the evidence of moisture',
-      'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed',
-    ].map((v) => ({ value: v, label: v })),
-    efficiency_drainage_a2: [
-      'NA',
-      'Weep holes functioning good and no evidence of moisture on abutment faces',
-      'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed',
-      'weep holes functioning good and shows the evidence of moisture',
-      'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed',
-    ].map((v) => ({ value: v, label: v })),
-  },
-
-  // Bearing & Pedestal (PHP: TYPE_AND_ALLOWABLE_MOVEMENTS_BEARING/PEDESTAL, MATERIAL_BEARING/PEDESTAL,
-  // GENERAL_CONDITION_BEARING/PEDESTAL, FUNCTIONING_BEARING/PEDESTAL)
-  bearing_and_pedestal: {
-    bearing_type_allowable_movements: [
-      'NA',
-      'No bearing is presented',
-      'Elastomeric Bearing',
-      'Pot Bearing',
-      'Single roller bearing',
-      'Multi roller bearing',
-      'Rocker Bearing',
-      'Disk Bearing',
-      'Spherical Bearing',
-      'Pin Bearing',
-      'Knuckle Pin Bearing',
-    ].map((v) => ({ value: v, label: v })),
-    pedestal_type_allowable_movements: [
-      'NA',
-      'No pedestal is presented',
-      'Rectangular reinforced cement concrete',
-      'Rectangular steel',
-      'Rectangular masonry',
-    ].map((v) => ({ value: v, label: v })),
-    bearing_material: ['NA', 'No bearing is presented', 'Elastomeric', 'Polytetrafluoroet hylene', 'Steel'].map((v) => ({
-      value: v,
-      label: v,
-    })),
-    pedestal_material: [
-      'NA',
-      'No pedestal is presented',
-      'Reinforced cement concrete',
-      'Steel',
-      'Masonry',
-    ].map((v) => ({ value: v, label: v })),
-    bearing_general_condition: ['NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'].map((v) => ({
-      value: v,
-      label: v,
-    })),
-    pedestal_general_condition: ['NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'].map((v) => ({
-      value: v,
-      label: v,
-    })),
-    bearing_functioning: [
-      'NA',
-      'No Bearing is Presented',
-      'Excessive movement',
-      'Tilting',
-      'Jumping off guides',
-    ].map((v) => ({ value: v, label: v })),
-    pedestal_functioning: [
-      'NA',
-      'No pedestal is Presented',
-      'Excessive movement',
-      'Tilting',
-      'Jumping off guides',
-    ].map((v) => ({ value: v, label: v })),
-  },
-
-  // Superstructure (PHP: TYPE_OF_SPAN, STRUCTURAL_SYSTEM, TYPE_OF_MATERIAL + bridge_dropdowns)
+  // ── SUPERSTRUCTURE ─────────────────────────────────────────────────────────
   superstructure: {
-    type_of_span: ['T-Beam', 'I-Girder', 'Slab', 'Box – Girder', 'Arche'].map((v) => ({ value: v, label: v })),
-    structural_system: ['Simply Supported', 'Continuous', 'Over Hanging', 'Balance Cantilever'].map((v) => ({
-      value: v,
-      label: v,
-    })),
+    type_of_span: sel('Select Span', 'T - Beam', 'I - Girder', 'Slab', 'Box – Girder', 'Arche'),
+    structural_system: sel('Select Structural System', 'Simply Supported', 'Continuous', 'Over Hanging', 'Balance Cantilever'),
+    type_of_material: sel('Select Type Of Material', 'RCC', 'PSC', 'Steel', 'Timber', 'Masonry', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry'),
+    check_spalling_disintegration_or_honey_combing: sel('Select', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No distress, Good in condition', 'No special attention required to take at bearing point'),
+    check_cracks: sel('Select Cracks', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No Cracks Noticed'),
+    check_exposed_reinforcement: sel('Select', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No distress, Good in condition'),
+    check_wear_of_deck_surface: sel('Select', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No distress, Good in condition', 'Other'),
+    check_scaling: sel('Select Scaling', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No distress, Good in condition', 'Other'),
+    check_surface_stains_and_rust_stains: sel('Select', 'Yes, Location: Girder, Deck, Pedestal etc.', 'No distress, Good in condition'),
+    check_leaching: sel('Select Leaching', 'Yes, Leaching Is observed, Location', 'No Leaching Observed'),
+    check_corrosion_of_reinforcements: sel('Select', 'Corrosion of reinforcement is observed in sheathing and tendon', 'Sheathing and tendon is not visible', 'Not Applicable'),
+    check_leakage: sel('Select Leakage', 'Leakage through Concrete Decks', 'Leakage through Construction joint', 'Leakage through Kerbs', 'Leakage through Deck', 'No leakage of water is observed'),
+    check_damages_due_to_moving_vehicles: sel('Select', 'Yes, Location and type of damage', 'No damages observed due to moving vehicles'),
+    check_condition_of_articulation: sel('Select', 'No cracks and exposed reinforcement is observed', 'Cracks and Exposed reinforcement is observed'),
+    check_excessive_vibrations: sel('Select Excessive Vibrations', 'Yes', 'No'),
+    check_excessive_deflections_loss_of_camber: sel('Select', 'Yes', 'No'),
+    check_cracks_around_anchorage_zone: sel('Select', 'Not applicable; Hence it is not prestressed concrete', 'No cracks observed around anchorage zone', 'Cracks observed around anchorage zone'),
+    check_excessive_deflections_at_central_hinge: sel('Select', 'Not applicable because it is not a cantilever bridge', 'Observed excessive deflection at central hinge', 'No excessive deflection is observed'),
+    in_box_girders: sel('Select Box Girders', 'Not applicable because it is not a box girder', 'No sign of cracks and accumulation of water or debris', 'Cracks and accumulation of water or debris is observed'),
+    check_accumulation_of_slit: sel('Select', 'Not applicable because it is not a submersible bridge', 'Others'),
+    check_peeling_off: sel('Select Peeling Off', 'Protective coat is in good condition', 'Observed peeling off of protective coat', 'Others'),
+    check_steel_members: sel('Select Steel Members', 'Others', 'Not Applicable'),
+    check_condition_of_protective_system: sel('Select', 'Girder', 'Beam', 'Bearing Area', 'Others', 'Not Applicable'),
+    check_corrosion_if_any: sel('Select', 'Girder', 'Beam', 'Deck', 'Bearing Area', 'Others', 'Not Applicable'),
+    check_excessive_vibrations_if_any: sel('Select', 'Girder', 'Beam', 'Deck', 'Bearing Area', 'Others', 'Not Applicable'),
+    check_alignment_of_members: sel('Select', 'Properly Aligned', 'Not Aligned', 'Not Applicable', 'Others'),
+    check_excessive_loss_of_camber_and_excessive_deflection: sel('Select', 'Not applicable', 'Found excessive loss of camber and deformations', 'Others'),
+    check_apparent_fracture: sel('Select Apparent Fracture', 'Not applicable', 'No apparent fracture is identified', 'Others'),
+    masonry_arches: sel('Select Masonry Arches', 'Others', 'Not Applicable'),
+    masonry_joints: sel('Select Masonry Joints', 'Not applicable because it is not a masonry bridge', 'Condition of joints mortar, painting and masonry is in good condition', 'Others'),
+    arch_profile: sel('Select Arch Profile', 'Not applicable bridge', 'Profile is in good condition', 'Others'),
+    arch_cracks: sel('Select Arch Cracks', 'Arch', 'Slab', 'Not Applicable', 'Others'),
+    spandrel_drainage: sel('Select Spandrel Drainage', 'Not applicable', 'Spandrel wall is in good condition', 'Others'),
+    vegetation_growth: sel('Select Vegetation Growth', 'Vegetation Growth Visible', 'Not Applicable', 'Vegetation Growth Not Visible', 'Not Observed', 'Others'),
+    iron_components: sel('Select Iron Components', 'Not applicable', 'Steel superstructure is in good condition', 'Steel superstructure rivets and bolts are loose', 'Others'),
+    steel_bridge_condition: sel('Select Steel Bridge', 'Others', 'Not applicable'),
+    masonry_bridge_condition: sel('Select Masonry Bridge', 'Others', 'Not Applicable'),
+    vegetation_present: sel('Select Vegetation Present', 'No vegetation is observed', 'Vegetation is observed'),
   },
 
-  // Expansion Joint (PHP: EXPANSION_TYPE_A1/A2, EXPANSION_CONDITION_A1/A2, FUNCTIONING_A1/A2, SEALING_MATERIAL_A1/A2,
-  // CHECK_SECURENESS_OF_THE_JOINTS_A1/A2, TOP_SLIDING_PLATE_A1/A2, LOCKING_OF_JOINTS_A1/A2, DERBIS_IN_JOINTS_A1/A2,
-  // REPORT_RATTLING_A1/A2, DRAINAGE_FROM_EXPANSION_JOINT_A1/A2, ALIGNMENT_AND_CLEARANCE_A1/A2)
+  // ── EXPANSION JOINT ────────────────────────────────────────────────────────
   expansion_joint: {
-    type_a1: [
-      'NA',
-      'Buried joint',
-      'Filler joint',
-      'Asphaltic plug joint',
-      'Compression seal joint',
-      'Single strip/box seal joint',
-      'Reinforced elastomeric joints',
-      'Modular strip/box seal joint',
-      'Finger joints',
-      'Reinforced coupled elastomeric joint',
-    ].map((v) => ({ value: v, label: v })),
-    type_a2: [
-      'NA',
-      'Buried joint',
-      'Filler joint',
-      'Asphaltic plug joint',
-      'Compression seal joint',
-      'Single strip/box seal joint',
-      'Reinforced elastomeric joints',
-      'Modular strip/box seal joint',
-      'Finger joints',
-      'Reinforced coupled elastomeric joint',
-    ].map((v) => ({ value: v, label: v })),
-    condition_a1: [
-      'NA',
-      'Misalignment of joint , debris, Accumulation of soil/ dirt are observed',
-      'Misalignment of joint is observed',
-      'debris is observed',
-      'Accumulation of soil/ dirt is observed',
-      'Expansion joint is buried with bituminous layer',
-    ].map((v) => ({ value: v, label: v })),
-    condition_a2: [
-      'NA',
-      'Misalignment of joint , debris, Accumulation of soil/ dirt are observed',
-      'Misalignment of joint is observed',
-      'debris is observed',
-      'Accumulation of soil/ dirt is observed',
-      'Expansion joint is buried with bituminous layer',
-    ].map((v) => ({ value: v, label: v })),
-    functioning_a1: ['NA', 'Good in condition', 'Type of distress observed', 'Not Applicable'].map((v) => ({
-      value: v,
-      label: v,
-    })),
-    functioning_a2: ['NA', 'Good in condition', 'Type of distress observed', 'Not Applicable'].map((v) => ({
-      value: v,
-      label: v,
-    })),
+    expansion_type_a1: [...NA, ...s('Buried joint', 'Filler joint', 'Asphaltic plug joint', 'Compression seal joint', 'Single strip/box seal joint', 'Reinforced elastomeric joints', 'Modular strip/box seal joint', 'Finger joints', 'Reinforced coupled elastomeric joint')],
+    expansion_type_a2: [...NA, ...s('Buried joint', 'Filler joint', 'Asphaltic plug joint', 'Compression seal joint', 'Single strip/box seal joint', 'Reinforced elastomeric joints', 'Modular strip/box seal joint', 'Finger joints', 'Reinforced coupled elastomeric joint')],
+    expansion_condition_a1: [...NA, ...s('Misalignment of joint , debris, Accumulation of soil/ dirt are observed', 'Misalignment of joint is observed', 'debris is observed', 'Accumulation of soil/ dirt is observed', 'Expansion joint is buried with bituminous layer')],
+    expansion_condition_a2: [...NA, ...s('Misalignment of joint , debris, Accumulation of soil/ dirt are observed', 'Misalignment of joint is observed', 'debris is observed', 'Accumulation of soil/ dirt is observed', 'Expansion joint is buried with bituminous layer')],
+    functioning_a1: [...NA, ...s('Good in condition', 'Type of distress observed', 'Not Applicable')],
+    functioning_a2: [...NA, ...s('Good in condition', 'Type of distress observed', 'Not Applicable')],
+    sealing_material_a1: [...NA, ...s('Good in condition', 'Sealing material damaged', 'Not Applicable')],
+    sealing_material_a2: [...NA, ...s('Good in condition', 'Sealing material damaged', 'Not Applicable')],
+    check_secureness_of_the_joints_a1: [...NA, ...s('Secured', 'Unsecured', 'Not Visible', 'Not Applicable')],
+    check_secureness_of_the_joints_a2: [...NA, ...s('Secured', 'Unsecured', 'Not Visible', 'Not Applicable')],
+    top_sliding_plate_a1: [...NA, ...s('Good in condition', 'Type of distress observed', 'Not Visible', 'Not Applicable')],
+    top_sliding_plate_a2: [...NA, ...s('Good in condition', 'Type of distress observed', 'Not Visible', 'Not Applicable')],
+    locking_of_joints_a1: [...NA, ...s('Interlocked', 'Joint Is improperly locked as Locking Teeth is Damaged', 'Expansion joint is buried with bituminous layer', 'Not Applicable')],
+    locking_of_joints_a2: [...NA, ...s('Interlocked', 'Joint Is improperly locked as Locking Teeth is Damaged', 'Expansion joint is buried with bituminous layer', 'Not Applicable')],
+    derbis_in_joints_a1: [...NA, ...s('Expansion joint is buried with bituminous layer', 'Debris observed in joints', 'No debris observed in joints')],
+    derbis_in_joints_a2: [...NA, ...s('Expansion joint is buried with bituminous layer', 'Debris observed in joints', 'No debris observed in joints')],
+    report_rattling_a1: [...NA, ...s('Expansion joint is buried with bituminous layer', 'Rattling is audible', 'Rattling is not audible')],
+    report_rattling_a2: [...NA, ...s('Expansion joint is buried with bituminous layer', 'Rattling is audible', 'Rattling is not audible')],
+    drainage_from_expansion_joint_a1: [...NA, ...s('Expansion joint is buried with bituminous layer', 'No drainage from expansion joint', 'Drainage from expansion joint is observed')],
+    drainage_from_expansion_joint_a2: [...NA, ...s('Expansion joint is buried with bituminous layer', 'No drainage from expansion joint', 'Drainage from expansion joint is observed')],
+    alignment_and_clearance_a1: [...NA, ...s('Proper alignment and clearance is Observed/Notice', 'No Proper alignment and clearance is Observed/Noticed', 'Expansion joint is buried with bituminous layer')],
+    alignment_and_clearance_a2: [...NA, ...s('Proper alignment and clearance is Observed/Notice', 'No Proper alignment and clearance is Observed/Noticed', 'Expansion joint is buried with bituminous layer')],
+  },
+
+  // ── WEARING COAT ───────────────────────────────────────────────────────────
+  wearing_coat: {
+    wearing_coat_material: sel('Select Material', 'Bituminous', 'Cement Concrete'),
+    surface_condition: [
+      o('', 'Select Surface Condition'),
+      o('GoodPavement', 'Pavement is in Good Condition, No Distress Observed'),
+      o('MinorFlexible', 'Minor Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding'),
+      o('MajorFlexible', 'Major Flexible Distress Observed: Crack Types/ Ravelling/ Potholes/ Roughness/ Disintegration/ Bleeding'),
+      o('MinorRigid', 'Minor Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture'),
+      o('MajorRigid', 'Major Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture'),
+    ],
+  },
+
+  // ── DRAINAGE SPOUTS AND VEST HOLES ─────────────────────────────────────────
+  drainage_spouts_and_vest_holes: {
+    clogging_deterioration_lhs: [...NA, ...s('Driange spouts is clogged', 'No drainage spouts clogged')],
+    clogging_deterioration_rhs: [...NA, ...s('Driange spouts is clogged', 'No drainage spouts clogged')],
+    projection_of_spout_lhs: [...NA, ...s('No structural member is affected', 'No drainage spouts are clogged', 'Structural member being affected on the underside due to inadequate projection', 'Projection to be provide')],
+    projection_of_spout_rhs: [...NA, ...s('No structural member is affected', 'No drainage spouts are clogged', 'Structural member being affected on the underside due to inadequate projection', 'Projection to be provide')],
+    adequacy_therof_lhs: [...NA, ...s('Adequate', 'In- adequate')],
+    adequacy_therof_rhs: [...NA, ...s('Adequate', 'In- adequate')],
+    report_about_adequacy_lhs: [...NA, ...s('Not applicable because structure is not subway', 'Adeqaute Drainage and pumping arrangement are found')],
+    report_about_adequacy_rhs: [...NA, ...s('Not applicable because structure is not subway', 'Adeqaute Drainage and pumping arrangement are found')],
+    absence_of_drainage_spouts_lhs: [...NA, ...s('There is no absence of drainage spouts', 'Absence of drainage spouts are observed', 'Others')],
+    absence_of_drainage_spouts_rhs: [...NA, ...s('There is no absence of drainage spouts', 'Absence of drainage spouts are observed', 'Others')],
+    choking_of_drainage_holes_lhs: [...NA, ...s('Drainage spouts choked in the bottom booms', 'No drainage holes choked in the bottom booms', 'Others')],
+    choking_of_drainage_holes_rhs: [...NA, ...s('Drainage spouts choked in the bottom booms', 'No drainage holes choked in the bottom booms', 'Others')],
+  },
+
+  // ── HANDRAILS, PARAPETS, CRASH BARRIERS ────────────────────────────────────
+  handrails: {
+    material_lhs: sel('Select Material', 'RCC', 'Steel', 'Timber', 'Masonary'),
+    material_rhs: sel('Select Material', 'RCC', 'Steel', 'Timber', 'Masonary'),
+    condition_lhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
+    condition_rhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
+    expansion_joint_gap_lhs: sel('Select Expansion Joint Gap', 'Expansion joint gaps observed', 'No expansion joint gaps found'),
+    expansion_joint_gap_rhs: sel('Select Expansion Joint Gap', 'Expansion joint gaps observed', 'No expansion joint gaps found'),
+    inspection_gallery_ladder_platform_lhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
+    inspection_gallery_ladder_platform_rhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
+  },
+
+  // ── FOOTPATHS ──────────────────────────────────────────────────────────────
+  footpaths: {
+    footpath_material_lhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
+    footpath_material_rhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
+    footpath_condition_lhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
+    footpath_condition_rhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
+  },
+
+  // ── UTILITIES ──────────────────────────────────────────────────────────────
+  utilities: {
+    type_of_utility_lhs: sel('Select Utility Type', 'Drainage Pipe lines', 'Electrical Lines', 'Telephonic lines', 'Gas Pipe Lines', 'Lighting Facilities', 'Water Pipe Lines', 'Others', 'No utilities Found'),
+    type_of_utility_rhs: sel('Select Utility Type', 'Drainage Pipe lines', 'Electrical Lines', 'Telephonic lines', 'Gas Pipe Lines', 'Lighting Facilities', 'Water Pipe Lines', 'Others', 'No utilities Found'),
+    type_of_encroachment_lhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
+    type_of_encroachment_rhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
+  },
+
+  // ── FOUNDATION ─────────────────────────────────────────────────────────────
+  foundation: {
+    type_bridge: sel('Select Type', 'Well Foundation', 'Open Foundation', 'Pile Foundation', 'Raft Foundation', 'Spread Foundation', 'Isolated Foundation', 'Foundation is not visible, Data to be referred from design document/as-built drawing'),
+    foundation_material: sel('Select Material', 'Brick', 'RCC', 'Foundation is not visible, Data to be referred from design document/as-built drawing'),
+    condition_of_foundation: sel('Select Condition Of Foundation', 'Settlement Observed', 'Abnormal Scour Observed', 'Tilting Observed', 'Good in Condition', 'Foundation Not Visible'),
+    floating_bodies: s('NA', 'No damage Observed', 'Damage Observed'),
+  },
+
+  // ── SUBSTRUCTURE ───────────────────────────────────────────────────────────
+  substructure: {
+    type_a1: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent'),
+    type_a2: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent'),
+    material_a1: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other'),
+    material_a2: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other'),
+    condition_a1: s('NA', 'Abutment is in good condition', 'Abutment is not in good condition enter observed distress'),
+    condition_a2: s('NA', 'Abutment is in good condition', 'Abutment is not in good condition enter observed distress'),
+    efficiency_of_drainage_a1: s('NA', 'Weep holes functioning good and no evidence of moisture on abutment faces', 'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed', 'weep holes functioning good and shows the evidence of moisture', 'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed'),
+    efficiency_of_drainage_a2: s('NA', 'Weep holes functioning good and no evidence of moisture on abutment faces', 'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed', 'weep holes functioning good and shows the evidence of moisture', 'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed'),
+    pier_condition: sel('Select Pier Condition', 'Pier is in good condition', 'Pier is not in good condition enter observed distress'),
+    large_excavations_done: s('Not Applicable', 'Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct', 'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct'),
+    damages_to_protective_measures: s('Not Applicable', 'Yes, damages to protective measures to piers and abutments', 'No, damages to protective measures to piers and abutments'),
+    damages_to_protective_coating_or_paint: s('Not Applicable', 'Yes, damages to protective coating or paint', 'No, damages to protective coating or paint'),
+  },
+
+  // ── BEARING AND PEDESTAL ───────────────────────────────────────────────────
+  bearing_and_pedestal: {
+    type_and_allowable_movements_bearing: s('NA', 'No bearing is presented', 'Elastomeric Bearing', 'Pot Bearing', 'Single roller bearing', 'Multi roller bearing', 'Rocker Bearing', 'Disk Bearing', 'Spherical Bearing', 'Pin Bearing', 'Knuckle Pin Bearing'),
+    type_and_allowable_movements_pedestal: s('NA', 'No pedestal is presented', 'Rectangular reinforced cement concrete', 'Rectangular steel', 'Rectangular masonry'),
+    material_bearing: s('NA', 'No bearing is presented', 'Elastomeric', 'Polytetrafluoroet hylene', 'Steel'),
+    material_pedestal: s('NA', 'No pedestal is presented', 'Reinforced cement concrete', 'Steel', 'Masonry'),
+    general_condition_bearing: s('NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'),
+    general_condition_pedestal: s('NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'),
+    functioning_bearing: s('NA', 'No Bearing is Presented', 'Excessive movement', 'Tilting', 'Jumping off guides'),
+    functioning_pedestal: s('NA', 'No pedestal is Presented', 'Excessive movement', 'Tilting', 'Jumping off guides'),
+  },
+
+  // ── WATERWAY ───────────────────────────────────────────────────────────────
+  waterway: {
+    check_presence_of_obstruction: sel('Select Presence Of Obstruction', 'Yes, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed', 'No, Obstruction in flow and its impact on flow, Island formation, Vegetation growth is observed', 'Not Applicable'),
+    flow_pattern: sel('Select Flow Pattern', 'Flow Pattern is Normal', 'Flow Pattern is abnormal', 'Not Applicable'),
+  },
+
+  // ── PROTECTION WORKS ───────────────────────────────────────────────────────
+  protection_works: {
+    type: sel('Select Type', 'Around Abutments protected with riprap', 'Around abutments protected with cement concrete', 'No protection provided around abutments', 'Not Applicable'),
+    slope_pitiching_apron_andtoe_walls: sel('Select Slope', 'damage Found in slope pitching/apron/toe walls', 'damage not Found in slope pitching/apron/toe walls', 'Not Applicable'),
+    floor_protection_works: sel('Select Floor Protection Work', 'Damage Found in floor Protection works', 'Damage not Found in floor Protection works', 'Not Applicable'),
+    scour_for_abutments: sel('Select Scour For Abutments', 'Scour observed at Abutments', 'Scour not observed at Abutments', 'Not Applicable'),
+    scour_for_piers: sel('Select Scour For Piers', 'Scour observed at Piers', 'Scour not observed at Piers', 'Not Applicable'),
+    reserve_store_material: sel('Select Reserve Stone Material', 'Yes, Reserve store material is Present/Available', 'No, Reserve store material is not Present/Available'),
   },
 }
-

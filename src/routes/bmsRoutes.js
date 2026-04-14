@@ -9,10 +9,10 @@ import { pool } from '../config/db.js'
 import { normalizeAppRole } from '../lib/roles.js'
 import { verifyPassword, md5Hex } from '../lib/password.js'
 import { signToken, requireAuth, optionalAuth } from '../middleware/auth.js'
-import { INSPECTION_DROPDOWNS } from '../config/phpDropdowns.js'
-import { readFileSync } from 'fs'
+import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
+import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/constants/repairOptions.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -141,6 +141,42 @@ function normalizeStepBody(body = {}) {
     out[toSnakeCase(k)] = v
   }
   return out
+}
+
+/** ENUM('No','Yes') rejects '' — avoids MySQL "Data truncated" on structure_data_bridge. */
+function coerceYesNoEnum(v) {
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase()
+  if (s === 'yes') return 'Yes'
+  if (s === 'no') return 'No'
+  return 'No'
+}
+
+const STRUCTURE_HIGH_LEVEL = new Set(['High-Level', 'Submersible', 'Causeway'])
+
+function coerceStructureHighLevelEnum(v) {
+  let s = String(v ?? '').trim()
+  if (s === 'High Level') s = 'High-Level'
+  if (STRUCTURE_HIGH_LEVEL.has(s)) return s
+  return 'High-Level'
+}
+
+/** Mutates patch in place for known ENUM columns on structure_data_bridge. */
+function coerceStructureDataBridgePatch(patch, allowed) {
+  if (!patch || typeof patch !== 'object') return
+  if (allowed.has('average_skew') && Object.prototype.hasOwnProperty.call(patch, 'average_skew')) {
+    patch.average_skew = coerceYesNoEnum(patch.average_skew)
+  }
+  if (allowed.has('whether_navigable') && Object.prototype.hasOwnProperty.call(patch, 'whether_navigable')) {
+    patch.whether_navigable = coerceYesNoEnum(patch.whether_navigable)
+  }
+  if (
+    allowed.has('hign_level_submersible_causeway') &&
+    Object.prototype.hasOwnProperty.call(patch, 'hign_level_submersible_causeway')
+  ) {
+    patch.hign_level_submersible_causeway = coerceStructureHighLevelEnum(patch.hign_level_submersible_causeway)
+  }
 }
 
 function fallbackValueForDataType(dataType) {
@@ -485,9 +521,11 @@ router.get('/bridge-list', async (req, res) => {
     )
     const total = countRows[0].c
     const [rows] = await pool.query(
-      `SELECT b.*, s.state_name
+      `SELECT b.*, s.state_name, s.state_code,
+              brc.comment AS rejection_comment, brc.comment_on AS rejection_date
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
+       LEFT JOIN bridge_rejection_comment brc ON brc.bridge_id = b.bridge_id
        WHERE ${where}
        ORDER BY b.bridge_id DESC
        LIMIT ? OFFSET ?`,
@@ -509,7 +547,7 @@ router.get('/bridge-list', async (req, res) => {
 router.get('/bridges/:bridgeId', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT b.*, s.state_name
+      `SELECT b.*, s.state_name, s.state_code
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
        WHERE b.bridge_id = ? LIMIT 1`,
@@ -645,10 +683,28 @@ router.post('/bridges/:bridgeId/approve', requireAuth, async (req, res) => {
 
 router.post('/bridges/:bridgeId/reject', requireAuth, async (req, res) => {
   try {
+    const bridgeId = req.params.bridgeId
+    const comment = String(req.body?.comment || '').trim()
     await pool.query(
       `UPDATE bridge SET bmc_status = 'Rejected', bmc_status_updated_on = NOW() WHERE bridge_id = ?`,
-      [req.params.bridgeId]
+      [bridgeId]
     )
+    if (comment) {
+      try {
+        // Ensure table has AUTO_INCREMENT on rejection_id before INSERT
+        await pool.query(
+          `ALTER TABLE bridge_rejection_comment MODIFY rejection_id INT NOT NULL AUTO_INCREMENT`
+        )
+      } catch (_) { /* ignore if already set */ }
+      try {
+        await pool.query(
+          `INSERT INTO bridge_rejection_comment (bridge_id, comment, comment_by, comment_on) VALUES (?, ?, ?, CURDATE())`,
+          [bridgeId, comment, req.user?.uid || 0]
+        )
+      } catch (insertErr) {
+        console.error('Could not save rejection comment:', insertErr.message)
+      }
+    }
     res.json({ success: true })
   } catch (e) {
     console.error(e)
@@ -670,6 +726,20 @@ for (const path of ['location', 'administration', 'geometric', 'classification',
 router.get('/bridge/get_states', async (_req, res) => {
   try {
     const [rows] = await pool.query('SELECT state_id, state_name, state_code FROM state ORDER BY state_name')
+    res.json(rows)
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
+// Same pattern as get_states: return actual table columns (no aliases).
+router.get('/bridge/get_material_of_construction', async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT moc_id, material_of_construction_code, material_of_construction_description
+       FROM material_of_construction
+       ORDER BY moc_id`
+    )
     res.json(rows)
   } catch (e) {
     res.status(500).json({ message: e.message })
@@ -719,15 +789,19 @@ router.get('/bridge/get_traffic_lanes', async (_req, res) => {
 router.get('/bridge/options/:key', async (req, res) => {
   try {
     const key = String(req.params.key || '').trim()
+    // Same rows as GET /bridge/get_material_of_construction (real column names, like state table).
+    if (key === 'material_of_construction') {
+      const [rows] = await pool.query(
+        `SELECT moc_id, material_of_construction_code, material_of_construction_description
+         FROM material_of_construction
+         ORDER BY moc_id`
+      )
+      return res.json(rows)
+    }
     const map = {
       type_of_bridge: { table: 'type_of_bridge', code: 'type_of_bridge_code', label: 'type_of_bridge' },
       age_of_bridge: { table: 'age_of_bridge', code: 'age_code', label: 'age_when_inspection_done_first' },
       structural_form: { table: 'structural_form', code: 'structural_form_code', label: 'structural_form_description' },
-      material_of_construction: {
-        table: 'material_of_construction',
-        code: 'material_of_construction_code',
-        label: 'material_of_construction_description',
-      },
       loading_icr: { table: 'loading_icr', code: 'loading_code', label: 'allowed_loading' },
       hydraluic_tone_weightage: { table: 'hydraluic_tone_weightage', code: 'hydraluic_tone_code', label: 'hydraluic_tone_rating' },
       structural_crossing_feature: {
@@ -748,7 +822,7 @@ router.get('/bridge/options/:key', async (req, res) => {
       },
       rating_of_waterway_adequacy: {
         table: 'rating_of_waterway_adequacy',
-        code: 'waterway_adequacy_code',
+        code: 'waterway_rating_code',
         label: 'waterway_rating',
       },
       rating_of_average_daily_traffic: {
@@ -779,9 +853,11 @@ router.get('/bridge/options/:key', async (req, res) => {
     }
     const cfg = map[key]
     if (!cfg) return res.status(400).json({ message: 'Invalid options key' })
-    const [rows] = await pool.query(
-      `SELECT \`${cfg.code}\` AS code, \`${cfg.label}\` AS label FROM \`${cfg.table}\` ORDER BY \`${cfg.code}\``
-    )
+    const orderBy = cfg.orderBy || cfg.code
+    const sql = cfg.idColumn
+      ? `SELECT \`${cfg.idColumn}\` AS id, \`${cfg.code}\` AS code, \`${cfg.label}\` AS label FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
+      : `SELECT \`${cfg.code}\` AS code, \`${cfg.label}\` AS label FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
+    const [rows] = await pool.query(sql)
     res.json(rows)
   } catch (e) {
     res.status(500).json({ message: e.message })
@@ -828,7 +904,13 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
       where = `b.bmc_status = 'Rejected'`
     }
     const [rows] = await pool.query(
-      `SELECT b.*, s.state_name FROM bridge b LEFT JOIN state s ON s.state_id = b.state_id WHERE ${where} ORDER BY b.bridge_id DESC LIMIT 500`
+      `SELECT b.*, s.state_name, s.state_code,
+              brc.comment AS rejection_comment, brc.comment_on AS rejection_date
+       FROM bridge b
+       LEFT JOIN state s ON s.state_id = b.state_id
+       LEFT JOIN bridge_rejection_comment brc ON brc.bridge_id = b.bridge_id
+       WHERE ${where}
+       ORDER BY b.bridge_id DESC LIMIT 500`
     )
     res.json(rows)
   } catch (e) {
@@ -855,11 +937,13 @@ async function inspectionList(req, res, mode) {
     const total = countRows[0].c
     const [rows] = await pool.query(
       `SELECT i.*, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.project_name, b.highway_no, b.type_of_bridge,
-              s.state_name, z.zone_name
+              s.state_name, z.zone_name,
+              irc.comment AS rejection_comment, irc.comment_on AS rejection_date
        FROM bridge_inspection i
        LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
        LEFT JOIN state s ON s.state_id = COALESCE(b.state_id, i.state_id)
        LEFT JOIN zone z ON z.zone_id = i.zone_id
+       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.bridge_inspection_id = i.inspection_id
        WHERE ${where}
        ORDER BY i.created_on DESC
        LIMIT ? OFFSET ?`,
@@ -1809,7 +1893,7 @@ router.get('/inspection/download_all_images', async (req, res) => {
     if (!imagesString || !uploadPath) return res.status(400).json({ message: 'Missing parameters' })
 
     // uploadPath from PHP is like "upload/substructure/".
-    // We serve from backend `uploadRoot` (BMS-backend/upload).
+    // We serve from backend `uploadRoot` (backend/upload).
     const safeRel = uploadPath.replace(/^[/\\]+/, '').replace(/\\/g, '/')
     const baseDir = path.join(uploadRoot, safeRel.replace(/^upload\//i, ''))
     const names = imagesString
@@ -2219,8 +2303,14 @@ router.get('/inspection/component-dropdowns/:key', async (req, res) => {
 // Full export of PHP constants.php arrays (define arrays + $config arrays)
 router.get('/php/constants', async (_req, res) => {
   try {
-    const raw = readFileSync(path.resolve(__dirname, '../config/phpConstants.json'), 'utf8')
-    const data = JSON.parse(raw)
+    const data = {
+      source: 'frontend/src/constants/constants.js',
+      constants: {
+        STRUCTURAL_RM_OPTIONS,
+        NON_STRUCTURAL_RM_OPTIONS,
+      },
+      config: {},
+    }
     res.json({ success: true, data })
   } catch (e) {
     res.status(500).json({ success: false, message: e.message })
@@ -2232,8 +2322,13 @@ router.get('/php/constants', async (_req, res) => {
 router.get('/php/constants/:name', async (req, res) => {
   try {
     const name = String(req.params.name || '').trim()
-    const raw = readFileSync(path.resolve(__dirname, '../config/phpConstants.json'), 'utf8')
-    const phpConstants = JSON.parse(raw)
+    const phpConstants = {
+      constants: {
+        STRUCTURAL_RM_OPTIONS,
+        NON_STRUCTURAL_RM_OPTIONS,
+      },
+      config: {},
+    }
     const c = phpConstants?.constants?.[name]
     if (c !== undefined) return res.json({ success: true, scope: 'constants', name, data: c })
     const k = phpConstants?.config?.[name]
@@ -2818,7 +2913,7 @@ for (const step of [
       const cfg = STEP_TABLE_MAP[step]
       const dataObj = normalizeStepBody(req.body || {})
       const [metaRows] = await pool.query(
-        `SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
+        `SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, EXTRA
          FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
         [cfg.table]
@@ -2826,6 +2921,7 @@ for (const step of [
       const allowed = new Set(metaRows.map((x) => x.COLUMN_NAME))
       const statusMeta = metaRows.find((r) => r.COLUMN_NAME === 'status') || null
       const patch = Object.fromEntries(Object.entries(dataObj).filter(([k]) => allowed.has(k)))
+      if (step === 'structure_data') coerceStructureDataBridgePatch(patch, allowed)
       if (allowed.has('updated_by')) patch.updated_by = req.user?.uid || 0
       if (allowed.has('updated_on')) patch.updated_on = new Date()
 
@@ -2884,7 +2980,17 @@ for (const step of [
       if (allowed.has('created_by') && payload.created_by == null) payload.created_by = req.user?.uid || 0
       if (allowed.has('created_on') && !payload.created_on) payload.created_on = new Date()
 
-      const cols = Object.keys(payload).filter((k) => k !== cfg.pk)
+      // Legacy step tables in some deployments don't auto-increment PK.
+      const pkMeta = metaRows.find((r) => r.COLUMN_NAME === cfg.pk) || null
+      const isAutoPk = String(pkMeta?.EXTRA || '').toLowerCase().includes('auto_increment')
+      if (!isAutoPk && payload[cfg.pk] == null) {
+        const [nextRows] = await pool.query(
+          `SELECT COALESCE(MAX(${cfg.pk}), 0) + 1 AS next_id FROM ${cfg.table}`
+        )
+        payload[cfg.pk] = Number(nextRows?.[0]?.next_id || 1)
+      }
+
+      const cols = Object.keys(payload).filter((k) => k !== cfg.pk || payload[cfg.pk] != null)
       const vals = cols.map((k) => payload[k])
       const [ins] = await pool.query(
         `INSERT INTO ${cfg.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
@@ -2905,6 +3011,139 @@ for (const step of [
     }
   })
 }
+
+/** Child rows for Step 13: piers linked to substructure_bridge (substructure_piers_bridge). */
+;(function mountSubstructurePiersBridgeRoutes() {
+  router.get('/bridge/substructure_piers/:bridgeId', async (req, res) => {
+    try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      if (!bridgeId) return res.status(400).json({ success: false, message: 'Invalid bridge id' })
+      const [rows] = await pool.query(
+        `SELECT * FROM substructure_piers_bridge WHERE bridge_id = ? ORDER BY p_id ASC`,
+        [bridgeId]
+      )
+      res.json({ success: true, data: rows })
+    } catch (e) {
+      const msg = String(e.message || '')
+      if (msg.includes('doesn\'t exist') || msg.includes("doesn't exist")) {
+        return res.json({ success: true, data: [] })
+      }
+      console.error(e)
+      res.status(500).json({ success: false, message: e.message })
+    }
+  })
+
+  router.post('/bridge/substructure_piers/:bridgeId', optionalAuth, async (req, res) => {
+    try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      if (!bridgeId) return res.status(400).json({ success: false, message: 'Invalid bridge id' })
+      const uid = req.user?.uid || 0
+      const body = req.body || {}
+      const type = String(body.type || '').trim()
+      const substructure_material = String(body.substructure_material || '').trim()
+      const max_depth = String(
+        body.max_depth_of_abutment_foundation || body.max_depth_abutment || ''
+      ).trim()
+      const piler_name = String(body.piler_name || body.pier_name || '').trim()
+
+      if (!type || !substructure_material || !max_depth || !piler_name) {
+        return res.status(400).json({
+          success: false,
+          message: 'Type, substructure material, maximum depth of abutment, and pier name are required.',
+        })
+      }
+
+      const [subRows] = await pool.query(
+        `SELECT substructure_bridge_id FROM substructure_bridge WHERE bridge_id = ? ORDER BY substructure_bridge_id DESC LIMIT 1`,
+        [bridgeId]
+      )
+      const substructure_bridge_id = Number(subRows[0]?.substructure_bridge_id || 0)
+      if (!substructure_bridge_id) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Save the main Substructure data (abutments A1/A2) first, then add piers.',
+        })
+      }
+
+      const condition = String(body.condition || 'NA').trim() || 'NA'
+      const efficiency = String(body.efficiency_of_drainage || 'NA').trim() || 'NA'
+
+      const [nextRows] = await pool.query(
+        `SELECT COALESCE(MAX(p_id), 0) + 1 AS next_id FROM substructure_piers_bridge`
+      )
+      const p_id = Number(nextRows?.[0]?.next_id || 1)
+
+      await pool.query(
+        `INSERT INTO substructure_piers_bridge (
+          p_id, substructure_bridge_id, bridge_id, type, substructure_material,
+          \`condition\`, efficiency_of_drainage, max_depth_of_abutment_foundation, piler_name,
+          status, created_by, created_on, updated_by, updated_on
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, CURDATE(), ?, CURDATE())`,
+        [
+          p_id,
+          substructure_bridge_id,
+          bridgeId,
+          type,
+          substructure_material,
+          condition,
+          efficiency,
+          max_depth,
+          piler_name,
+          uid,
+          uid,
+        ]
+      )
+      res.json({ success: true, p_id })
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ success: false, message: e.message })
+    }
+  })
+
+  router.put('/bridge/substructure_piers/:bridgeId/:pId', optionalAuth, async (req, res) => {
+    try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      const pId = Number(req.params.pId || 0)
+      if (!bridgeId || !pId) {
+        return res.status(400).json({ success: false, message: 'Invalid bridge id or pier id' })
+      }
+      const body = req.body || {}
+      const type = String(body.type || '').trim()
+      const substructure_material = String(body.substructure_material || '').trim()
+      const max_depth = String(body.max_depth_of_abutment_foundation || '').trim()
+      const piler_name = String(body.piler_name || '').trim()
+      const [r] = await pool.query(
+        `UPDATE substructure_piers_bridge
+         SET type=?, substructure_material=?, max_depth_of_abutment_foundation=?, piler_name=?, updated_on=CURDATE()
+         WHERE bridge_id=? AND p_id=?`,
+        [type, substructure_material, max_depth, piler_name, bridgeId, pId]
+      )
+      res.json({ success: true, updated: Number(r.affectedRows || 0) })
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ success: false, message: e.message })
+    }
+  })
+
+  router.delete('/bridge/substructure_piers/:bridgeId/:pId', optionalAuth, async (req, res) => {
+    try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      const pId = Number(req.params.pId || 0)
+      if (!bridgeId || !pId) {
+        return res.status(400).json({ success: false, message: 'Invalid bridge id or pier id' })
+      }
+      const [r] = await pool.query(
+        `DELETE FROM substructure_piers_bridge WHERE bridge_id = ? AND p_id = ?`,
+        [bridgeId, pId]
+      )
+      res.json({ success: true, deleted: Number(r.affectedRows || 0) })
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ success: false, message: e.message })
+    }
+  })
+})()
 
 router.get('/boq/export/:bridgeId', async (req, res) => {
   try {

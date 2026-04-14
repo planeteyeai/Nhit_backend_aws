@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { pool, pingDatabase } from '../config/db.js'
+import { isProduction } from '../lib/envValidate.js'
 
 const router = Router()
 
@@ -34,7 +35,8 @@ router.get('/tables', async (_req, res) => {
     console.error('List tables failed:', err.message)
     res.status(500).json({
       ok: false,
-      error: err.message,
+      error: 'Request failed',
+      detail: isProduction() ? undefined : err.message,
     })
   }
 })

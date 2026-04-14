@@ -2,8 +2,10 @@ import 'dotenv/config'
 import mysql from 'mysql2/promise'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
-const outDir = path.resolve(process.cwd(), 'db')
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const outDir = path.resolve(__dirname, '../../database')
 const outFile = path.join(outDir, 'schema-from-pdf.sql')
 
 function env(name, fallback = '') {

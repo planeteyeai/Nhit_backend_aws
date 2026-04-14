@@ -5,8 +5,8 @@ import path from 'path'
  * One-time (or repeatable) sync of legacy CodeIgniter file folders into Node backend.
  *
  * Copies:
- *   C:\xampp\htdocs\bms\upload    -> BMS-backend\upload
- *   C:\xampp\htdocs\bms\download  -> BMS-backend\upload\download
+ *   C:\xampp\htdocs\bms\upload    -> backend\upload
+ *   C:\xampp\htdocs\bms\download  -> backend\upload\download
  *
  * This keeps old images/PDFs working under Node static route: /upload/...
  */
