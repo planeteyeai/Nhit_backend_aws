@@ -9,8 +9,8 @@ export function isProduction() {
 }
 
 /**
- * Exit the process if required production configuration is missing or unsafe.
- * Call once at startup before accepting traffic.
+ * Warn about missing production configuration. Does NOT exit — lets the
+ * server start so /api/diag/db can be used to debug connectivity issues.
  */
 export function assertProductionConfig() {
   if (!isProduction()) return
@@ -21,23 +21,16 @@ export function assertProductionConfig() {
     if (v === undefined || String(v).trim() === '') missing.push(key)
   }
   if (missing.length) {
-    console.error(`[FATAL] Production requires env: ${missing.join(', ')}`)
-    process.exit(1)
+    console.warn(`[WARN] Missing env vars: ${missing.join(', ')} — DB queries will fail`)
   }
 
   const jwt = String(process.env.JWT_SECRET || '').trim()
   if (!jwt || WEAK_JWT_SECRETS.has(jwt) || jwt.length < 16) {
-    console.error(
-      '[FATAL] Production requires JWT_SECRET: a random string at least 16 characters (not a default placeholder).'
-    )
-    process.exit(1)
+    console.warn('[WARN] JWT_SECRET is missing or weak — authentication will fail')
   }
 
   const cors = String(process.env.CORS_ORIGIN || '').trim()
   if (!cors) {
-    console.error(
-      '[FATAL] Production requires CORS_ORIGIN (comma-separated frontend origins), e.g. https://app.example.com'
-    )
-    process.exit(1)
+    console.warn('[WARN] CORS_ORIGIN not set — browser requests from production frontend will be blocked')
   }
 }

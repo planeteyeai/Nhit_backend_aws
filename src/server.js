@@ -61,11 +61,8 @@ app.get(['/health', '/api/health'], (_req, res) => {
 
 app.use('/api', bmsRoutes)
 
-const enableDiag =
-  !isProduction() || String(process.env.ENABLE_DIAG_API || '').toLowerCase() === 'true'
-if (enableDiag) {
-  app.use('/api/diag', diagnosticsRoutes)
-}
+// Always enable diag so we can check DB connectivity in production
+app.use('/api/diag', diagnosticsRoutes)
 
 app.use('/', bmsRoutes)
 

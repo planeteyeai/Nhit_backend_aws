@@ -17,7 +17,14 @@ router.get('/db', async (_req, res) => {
     res.status(503).json({
       ok: false,
       error: 'Database unavailable',
-      detail: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      detail: err.message,
+      config: {
+        host: process.env.MYSQL_HOST || '(not set)',
+        port: process.env.MYSQL_PORT || '(not set)',
+        user: process.env.MYSQL_USER || '(not set)',
+        database: process.env.MYSQL_DATABASE || '(not set)',
+        ssl: process.env.MYSQL_SSL || '(not set)',
+      },
     })
   }
 })
