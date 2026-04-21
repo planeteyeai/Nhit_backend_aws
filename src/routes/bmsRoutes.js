@@ -1080,7 +1080,7 @@ async function inspectionList(req, res, mode) {
        LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
        LEFT JOIN state s ON s.state_id = COALESCE(b.state_id, i.state_id)
        LEFT JOIN zone z ON z.zone_id = i.zone_id
-       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.bridge_inspection_id = i.inspection_id
+       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.bridge_inspection_id = i.bridge_inspection_id
        WHERE ${where}
        ORDER BY i.created_on DESC
        LIMIT ? OFFSET ?`,
