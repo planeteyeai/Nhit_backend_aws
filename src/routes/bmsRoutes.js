@@ -1175,6 +1175,131 @@ router.get('/approved-inspection-list', (req, res) => inspectionList(req, res, '
 router.get('/rejected-inspection-list', (req, res) => inspectionList(req, res, 'rejected'))
 router.get('/pending-approval-inspection-list', (req, res) => inspectionList(req, res, 'pending_approval'))
 
+router.get('/inspection/foundation/:inspectionId', async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+    const [rows] = await pool.query(
+      `SELECT foundation_id, bridge_inspection_id, foundation_name, foundation_type, material,
+              floating_bodies_boulders, condition_of_foundation, seepage_vehicle_impact,
+              status, created_on, updated_on
+       FROM foundation
+       WHERE bridge_inspection_id = ? AND (status IS NULL OR status <> 'In-Active')
+       ORDER BY foundation_id ASC`,
+      [inspectionId]
+    )
+    res.json({ success: true, data: rows })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.post('/inspection/foundation/:inspectionId', requireAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+    const body = req.body || {}
+    const payload = {
+      foundation_name: String(body.foundation_name || '').trim(),
+      foundation_type: String(body.foundation_type || '').trim(),
+      material: String(body.material || '').trim(),
+      floating_bodies_boulders: String(body.floating_bodies_boulders || '').trim(),
+      condition_of_foundation: String(body.condition_of_foundation || '').trim(),
+      seepage_vehicle_impact: String(body.seepage_vehicle_impact || '').trim(),
+    }
+    if (!payload.foundation_name) {
+      return res.status(400).json({ success: false, message: 'Foundation name is required' })
+    }
+    const [result] = await pool.query(
+      `INSERT INTO foundation
+       (bridge_inspection_id, foundation_name, foundation_type, material, floating_bodies_boulders,
+        condition_of_foundation, seepage_vehicle_impact, status, created_by, created_on, updated_by, updated_on)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', ?, NOW(), ?, NOW())`,
+      [
+        inspectionId,
+        payload.foundation_name,
+        payload.foundation_type,
+        payload.material,
+        payload.floating_bodies_boulders,
+        payload.condition_of_foundation,
+        payload.seepage_vehicle_impact,
+        Number(req.user?.uid || 0),
+        Number(req.user?.uid || 0),
+      ]
+    )
+    const [rows] = await pool.query('SELECT * FROM foundation WHERE foundation_id = ? LIMIT 1', [result.insertId])
+    res.json({ success: true, data: rows[0] || null })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.put('/inspection/foundation/:inspectionId/:foundationId', requireAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    const foundationId = Number(req.params.foundationId || 0)
+    if (!inspectionId || !foundationId) {
+      return res.status(400).json({ success: false, message: 'Invalid inspection/foundation id' })
+    }
+    const body = req.body || {}
+    const payload = {
+      foundation_name: String(body.foundation_name || '').trim(),
+      foundation_type: String(body.foundation_type || '').trim(),
+      material: String(body.material || '').trim(),
+      floating_bodies_boulders: String(body.floating_bodies_boulders || '').trim(),
+      condition_of_foundation: String(body.condition_of_foundation || '').trim(),
+      seepage_vehicle_impact: String(body.seepage_vehicle_impact || '').trim(),
+    }
+    if (!payload.foundation_name) {
+      return res.status(400).json({ success: false, message: 'Foundation name is required' })
+    }
+    await pool.query(
+      `UPDATE foundation
+       SET foundation_name = ?, foundation_type = ?, material = ?, floating_bodies_boulders = ?,
+           condition_of_foundation = ?, seepage_vehicle_impact = ?, updated_by = ?, updated_on = NOW()
+       WHERE foundation_id = ? AND bridge_inspection_id = ?`,
+      [
+        payload.foundation_name,
+        payload.foundation_type,
+        payload.material,
+        payload.floating_bodies_boulders,
+        payload.condition_of_foundation,
+        payload.seepage_vehicle_impact,
+        Number(req.user?.uid || 0),
+        foundationId,
+        inspectionId,
+      ]
+    )
+    const [rows] = await pool.query('SELECT * FROM foundation WHERE foundation_id = ? LIMIT 1', [foundationId])
+    res.json({ success: true, data: rows[0] || null })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.delete('/inspection/foundation/:inspectionId/:foundationId', requireAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    const foundationId = Number(req.params.foundationId || 0)
+    if (!inspectionId || !foundationId) {
+      return res.status(400).json({ success: false, message: 'Invalid inspection/foundation id' })
+    }
+    await pool.query(
+      `UPDATE foundation
+       SET status = 'In-Active', updated_by = ?, updated_on = NOW()
+       WHERE foundation_id = ? AND bridge_inspection_id = ?`,
+      [Number(req.user?.uid || 0), foundationId, inspectionId]
+    )
+    res.json({ success: true })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
 router.get('/inspections/:inspectionId', async (req, res) => {
   try {
     const [rows] = await pool.query(

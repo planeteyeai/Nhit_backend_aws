@@ -110,8 +110,8 @@ export const INSPECTION_DROPDOWNS = {
 
   // ── HANDRAILS, PARAPETS, CRASH BARRIERS ────────────────────────────────────
   handrails: {
-    material_lhs: sel('Select Material', 'RCC', 'Steel', 'Timber', 'Masonary'),
-    material_rhs: sel('Select Material', 'RCC', 'Steel', 'Timber', 'Masonary'),
+    material_lhs: sel('Select Material', 'NA', 'RCC', 'Steel', 'Timber', 'Masonary'),
+    material_rhs: sel('Select Material', 'NA', 'RCC', 'Steel', 'Timber', 'Masonary'),
     condition_lhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
     condition_rhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
     expansion_joint_gap_lhs: sel('Select Expansion Joint Gap', 'Expansion joint gaps observed', 'No expansion joint gaps found'),
