@@ -561,6 +561,143 @@ router.get('/bridges/:bridgeId', async (req, res) => {
   }
 })
 
+async function ensureSpanArrangementSchema() {
+  try {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS sapn_arrangment (
+        sp_id INT NOT NULL AUTO_INCREMENT,
+        bridge_id INT NOT NULL,
+        span_material VARCHAR(250) NOT NULL,
+        span_type VARCHAR(256) NOT NULL,
+        span_length FLOAT(10,4) NOT NULL,
+        created_by INT NOT NULL DEFAULT 0,
+        created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_by INT NULL,
+        updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (sp_id),
+        KEY idx_sapn_arrangment_bridge_id (bridge_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`
+    )
+  } catch (_) {
+    // If CREATE TABLE has compatibility issues on legacy DB, proceed with ALTER attempts below.
+  }
+
+  try { await pool.query('ALTER TABLE sapn_arrangment MODIFY sp_id INT NOT NULL AUTO_INCREMENT') } catch (_) {}
+  try { await pool.query('ALTER TABLE sapn_arrangment ADD PRIMARY KEY (sp_id)') } catch (_) {}
+  try { await pool.query('ALTER TABLE sapn_arrangment ADD INDEX idx_sapn_arrangment_bridge_id (bridge_id)') } catch (_) {}
+  try { await pool.query('ALTER TABLE sapn_arrangment ADD COLUMN updated_by INT NULL') } catch (_) {}
+  try { await pool.query('ALTER TABLE sapn_arrangment ADD COLUMN updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP') } catch (_) {}
+}
+
+router.get('/bridges/:bridgeId/span-arrangement', async (req, res) => {
+  try {
+    await ensureSpanArrangementSchema()
+    const bridgeId = Number(req.params.bridgeId)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
+      return res.status(400).json({ message: 'Invalid bridgeId' })
+    }
+
+    const [rows] = await pool.query(
+      `SELECT sp_id, bridge_id, span_material, span_type, span_length
+       FROM sapn_arrangment
+       WHERE bridge_id = ?
+       ORDER BY sp_id ASC`,
+      [bridgeId]
+    )
+    res.json(rows)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+router.put('/bridges/:bridgeId/span-arrangement', optionalAuth, async (req, res) => {
+  try {
+    await ensureSpanArrangementSchema()
+    const bridgeId = Number(req.params.bridgeId)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
+      return res.status(400).json({ message: 'Invalid bridgeId' })
+    }
+
+    const spans = Array.isArray(req.body?.spans) ? req.body.spans : []
+    const userId = Number(req.user?.uid || 0)
+
+    await pool.query('DELETE FROM sapn_arrangment WHERE bridge_id = ?', [bridgeId])
+
+    for (const s of spans) {
+      const material = String(s?.material || '').trim()
+      const type = String(s?.type || '').trim()
+      const lengthNum = Number(s?.length)
+      if (!material || !type || !Number.isFinite(lengthNum) || lengthNum <= 0) continue
+
+      await pool.query(
+        `INSERT INTO sapn_arrangment
+         (bridge_id, span_material, span_type, span_length, created_by, created_on, updated_by)
+         VALUES (?, ?, ?, ?, ?, NOW(), ?)`,
+        [bridgeId, material, type, lengthNum, userId, userId]
+      )
+    }
+
+    res.json({ success: true })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+// Legacy compatibility endpoints
+router.get('/bridge/span_arrangment/:bridgeId', async (req, res) => {
+  try {
+    await ensureSpanArrangementSchema()
+    const bridgeId = Number(req.params.bridgeId)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
+      return res.status(400).json({ message: 'Invalid bridgeId' })
+    }
+    const [rows] = await pool.query(
+      `SELECT sp_id, bridge_id, span_material, span_type, span_length
+       FROM sapn_arrangment
+       WHERE bridge_id = ?
+       ORDER BY sp_id ASC`,
+      [bridgeId]
+    )
+    res.json(rows)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+router.post('/bridge/span_arrangment/:bridgeId', optionalAuth, async (req, res) => {
+  try {
+    await ensureSpanArrangementSchema()
+    const bridgeId = Number(req.params.bridgeId)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
+      return res.status(400).json({ message: 'Invalid bridgeId' })
+    }
+
+    const spans = Array.isArray(req.body?.spans) ? req.body.spans : []
+    const userId = Number(req.user?.uid || 0)
+
+    await pool.query('DELETE FROM sapn_arrangment WHERE bridge_id = ?', [bridgeId])
+    for (const s of spans) {
+      const material = String(s?.material || '').trim()
+      const type = String(s?.type || '').trim()
+      const lengthNum = Number(s?.length)
+      if (!material || !type || !Number.isFinite(lengthNum) || lengthNum <= 0) continue
+      await pool.query(
+        `INSERT INTO sapn_arrangment
+         (bridge_id, span_material, span_type, span_length, created_by, created_on, updated_by)
+         VALUES (?, ?, ?, ?, ?, NOW(), ?)`,
+        [bridgeId, material, type, lengthNum, userId, userId]
+      )
+    }
+    res.json({ success: true })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
 router.post('/bridges', optionalAuth, async (req, res) => {
   try {
     const b = normalizeBridgePayload(req.body || {})
@@ -1058,13 +1195,187 @@ router.get('/inspections/:inspectionId', async (req, res) => {
 
 router.get('/inspection/distress/:inspectionId', async (req, res) => {
   try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
+    const tableType = String(req.query?.table_type || '').trim()
+    const componentName = String(req.query?.component_name || '').trim()
+    const where = ['bridge_inspection_id = ?']
+    const params = [inspectionId]
+    if (tableType) {
+      where.push('table_type = ?')
+      params.push(tableType)
+    }
+    if (componentName) {
+      where.push('id IN (SELECT inspection_distress_id FROM inspection_cause_rating WHERE bridge_inspection_id = ? AND component_name = ?)')
+      params.push(inspectionId, componentName)
+    }
     const [rows] = await pool.query(
-      'SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ? ORDER BY id',
-      [req.params.inspectionId]
+      `SELECT * FROM bridge_inspection_distress WHERE ${where.join(' AND ')} ORDER BY id`,
+      params
     )
     res.json(rows)
   } catch (e) {
     res.status(500).json({ message: e.message })
+  }
+})
+
+router.get('/inspection/cause_rating/:inspectionId', async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
+    const componentName = String(req.query?.component_name || '').trim()
+    const where = ['bridge_inspection_id = ?']
+    const params = [inspectionId]
+    if (componentName) {
+      where.push('component_name = ?')
+      params.push(componentName)
+    }
+    const [rows] = await pool.query(
+      `SELECT * FROM inspection_cause_rating WHERE ${where.join(' AND ')} ORDER BY id`,
+      params
+    )
+    res.json(rows || [])
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
+router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
+  const conn = await pool.getConnection()
+  try {
+    const inspectionId = Number(req.body?.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const tableType = String(req.body?.tableType || '').trim() || 'approaches'
+    const componentName = String(req.body?.componentName || '').trim() || 'approaches'
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : []
+    const userId = Number(req.user?.uid || 0)
+
+    const nextId = async (table, idColumn = 'id') => {
+      const [mx] = await conn.query(`SELECT COALESCE(MAX(\`${idColumn}\`), 0) AS mx FROM \`${table}\``)
+      return Number(mx?.[0]?.mx || 0) + 1
+    }
+
+    await conn.beginTransaction()
+
+    // keep only ids submitted for this table_type
+    const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
+    if (incomingIds.length) {
+      await conn.query(
+        `DELETE FROM bridge_inspection_distress
+         WHERE bridge_inspection_id = ? AND table_type = ? AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+        [inspectionId, tableType, ...incomingIds]
+      )
+    } else {
+      await conn.query(
+        'DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?',
+        [inspectionId, tableType]
+      )
+    }
+
+    for (const row of rows) {
+      const distressType = String(row?.distress_type || '').trim()
+      if (!distressType) continue
+      const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+      const id = Number(row?.id || 0)
+      const baseData = [
+        distressType,
+        String(row?.name_of_span || '').trim() || null,
+        String(row?.field_type || '').trim() || null,
+        numeric(row?.distress_length),
+        numeric(row?.distress_width),
+        numeric(row?.distress_depth),
+        numeric(row?.distance_of_distress_x),
+        numeric(row?.distance_of_distress_y),
+        numeric(row?.abutment_A1),
+        numeric(row?.abutment_A2),
+        numeric(row?.piers),
+        numeric(row?.spans),
+        numeric(row?.foundation),
+        numeric(row?.expansion),
+        numeric(row?.lhs_distress),
+        numeric(row?.rhs_distress),
+      ]
+
+      let distressId = id
+      if (distressId > 0) {
+        await conn.query(
+          `UPDATE bridge_inspection_distress
+           SET distress_type = ?, name_of_span = ?, field_type = ?,
+               distress_length = ?, distress_width = ?, distress_depth = ?,
+               distance_of_distress_x = ?, distance_of_distress_y = ?,
+               abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?,
+               foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?
+           WHERE id = ? AND bridge_inspection_id = ? AND table_type = ?`,
+          [...baseData, distressId, inspectionId, tableType]
+        )
+      } else {
+        distressId = await nextId('bridge_inspection_distress', 'id')
+        await conn.query(
+          `INSERT INTO bridge_inspection_distress
+           (id, bridge_inspection_id, table_type, distress_type, name_of_span, field_type,
+            distress_length, distress_width, distress_depth, distance_of_distress_x, distance_of_distress_y,
+            abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress, created_by, created_on)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+          [distressId, inspectionId, tableType, ...baseData, userId]
+        )
+      }
+
+      const ratings = row?.ratings && typeof row.ratings === 'object' ? row.ratings : {}
+      const [existingCR] = await conn.query(
+        'SELECT id FROM inspection_cause_rating WHERE inspection_distress_id = ? LIMIT 1',
+        [distressId]
+      )
+      const causeData = [
+        inspectionId,
+        componentName,
+        numeric(ratings.foundation),
+        numeric(ratings.wearing_coat),
+        numeric(ratings.expansion_joint),
+        numeric(ratings.superstructure),
+        distressType,
+        numeric(ratings.impact),
+        numeric(ratings.abrasion),
+        numeric(ratings.erosion),
+        numeric(ratings.overload),
+        numeric(ratings.fatigue),
+        numeric(ratings.temprature),
+        numeric(ratings.shrinkage),
+        numeric(ratings.settlement),
+        numeric(ratings.carbon_dioxide),
+        numeric(ratings.sulphates),
+        numeric(ratings.carbonation),
+        numeric(ratings.alkali),
+      ]
+      if (existingCR[0]?.id) {
+        await conn.query(
+          `UPDATE inspection_cause_rating
+           SET bridge_inspection_id = ?, component_name = ?, foundation = ?, wearing_coat = ?, expansion_joint = ?, superstructure = ?,
+               distress_type = ?, impact = ?, abrasion = ?, erosion = ?, overload = ?, fatigue = ?, temprature = ?, shrinkage = ?,
+               settlement = ?, carbon_dioxide = ?, sulphates = ?, carbonation = ?, alkali = ?, updated_by = ?, updated_on = CURDATE()
+           WHERE id = ?`,
+          [...causeData, userId, existingCR[0].id]
+        )
+      } else {
+        const causeId = await nextId('inspection_cause_rating', 'id')
+        await conn.query(
+          `INSERT INTO inspection_cause_rating
+           (id, inspection_distress_id, bridge_inspection_id, component_name, foundation, wearing_coat, expansion_joint, superstructure,
+            distress_type, impact, abrasion, erosion, overload, fatigue, temprature, shrinkage, settlement, carbon_dioxide, sulphates,
+            carbonation, alkali, updated_by, updated_on)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+          [causeId, distressId, ...causeData, userId]
+        )
+      }
+    }
+
+    await conn.commit()
+    return res.json({ success: true })
+  } catch (e) {
+    await conn.rollback().catch(() => {})
+    return res.status(500).json({ success: false, message: e.message })
+  } finally {
+    conn.release()
   }
 })
 
@@ -2654,6 +2965,32 @@ router.put('/inspections/:id', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.get('/bridge/schedule_inspecion/:bridgeId', requireAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId)
+    const [rows] = await pool.query(
+      `SELECT * FROM schedule_inspecion WHERE bridge_id = ? ORDER BY si_id DESC LIMIT 1`,
+      [bridgeId]
+    )
+    res.json(rows[0] || null)
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
+router.get('/bridge/schedule_adhoc_inspecion/:bridgeId', requireAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId)
+    const [rows] = await pool.query(
+      `SELECT * FROM schedule_adhoc_inspecion WHERE bridge_id = ? ORDER BY adhoc_id DESC LIMIT 1`,
+      [bridgeId]
+    )
+    res.json(rows[0] || null)
+  } catch (e) {
+    res.status(500).json({ message: e.message })
   }
 })
 

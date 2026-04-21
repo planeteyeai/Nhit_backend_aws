@@ -177,13 +177,13 @@ export const INSPECTION_DROPDOWNS = {
   },
 
   waterway: {
-    check_presence_of_obstruction: opts(C.CHECK_PRESENCE_OF_OBSTRUCTION),
+    check_presence_of_obstruction_in_flow: opts(C.CHECK_PRESENCE_OF_OBSTRUCTION),
     flow_pattern: opts(C.CHECK_FLOW_PATTERN),
   },
 
   protection_works: {
     type: opts(C.CHECK_TYPE),
-    slope_pitiching_apron_andtoe_walls: opts(C.CHECK_SLOPE_PITICHING_APRON_ANDTOE_WALLS),
+    slope_pitching_apron_and_toe_walls: opts(C.CHECK_SLOPE_PITICHING_APRON_ANDTOE_WALLS),
     floor_protection_works: opts(C.CHECK_FLOOR_PROTECTION_WORKS),
     scour_for_abutments: opts(C.CHECK_SCOUR_FOR_ABUTMENTS),
     scour_for_piers: opts(C.CHECK_SCOUR_FOR_PIERS),

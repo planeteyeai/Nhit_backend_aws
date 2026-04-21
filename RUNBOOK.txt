@@ -1,0 +1,36 @@
+BMS 2 (React + Node) — operational runbook
+
+Prerequisites
+  - Node.js LTS, npm
+  - MySQL with database created from db/schema-from-pdf.sql (or migrated legacy DB)
+  - Optional: run db/migrations/001_span_arrangement_legacy_fix.sql if table sapn_arrangment exists and needs PK/AI/FK (see migrations/README.txt).
+
+Backend (nhit-backend)
+  1) cd Backend/nhit-backend
+  2) Copy .env.example to .env if needed; set PORT (default 3001), DB_* credentials, CORS_ORIGIN (e.g. http://localhost:5173)
+  3) npm install
+  4) npm run dev   (or npm start per package.json)
+
+Frontend (nhit-frontend)
+  1) cd Frontend/nhit-frontend
+  2) .env: VITE_API_BASE_URL=http://localhost:3001 (or LAN IP:3001 when UI served from LAN)
+  3) npm install
+  4) npm run dev
+
+Smoke checks
+  - Login (token in localStorage is intentional)
+  - Open Bridge List → View Bridge / 3D Viewer (bridgeId in URL)
+  - BMC: pending bridges → View Bridge (bmcReturnView in URL)
+  - Inspection: Ongoing list → View / Edit (inspectionId + status in URL)
+  - Edit Pending → sub-forms (inspectionMode + inspectionId in URL)
+  - Component ratings / overall rating from View Inspection (rating* params in URL)
+
+Build
+  - Frontend: npm run build (Vite) — must succeed before release
+
+Reference
+  - PHP → React mapping: db/MIGRATION_MATRIX.json
+  - CORS: server.js allows localhost/LAN private ranges in development
+
+Known gaps (track in matrix)
+  - Inspection PDF parity, some PHP-only reports, full image upload parity vs multipart PHP forms.

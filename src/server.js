@@ -24,6 +24,25 @@ if (isProduction()) {
 const corsOrigin = (process.env.CORS_ORIGIN || '').trim()
 const allowedOrigins = corsOrigin ? corsOrigin.split(',').map((s) => s.trim()).filter(Boolean) : []
 
+/** Development only: allow Vite when opened via LAN IP (e.g. http://192.168.x.x:5173 from another device). */
+function isAllowedDevOrigin(origin) {
+  try {
+    const { hostname } = new URL(origin)
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)
+    if (!m) return false
+    const octets = m.slice(1, 5).map((x) => parseInt(x, 10))
+    if (octets.some((n) => n > 255)) return false
+    const [a, b] = octets
+    if (a === 10) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -39,6 +58,7 @@ app.use(
         if (allowedOrigins.includes(origin)) return cb(null, true)
         return cb(null, false)
       }
+      if (isAllowedDevOrigin(origin)) return cb(null, true)
       if (allowedOrigins.length === 0) return cb(null, true)
       if (allowedOrigins.includes(origin)) return cb(null, true)
       return cb(null, false)

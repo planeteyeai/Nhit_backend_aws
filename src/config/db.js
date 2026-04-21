@@ -5,6 +5,7 @@ dotenv.config()
 
 const port = Number(process.env.MYSQL_PORT || 3306)
 const useSsl = process.env.MYSQL_SSL === '1' || process.env.MYSQL_SSL === 'true'
+const rejectUnauthorized = !['0', 'false'].includes(String(process.env.MYSQL_SSL_REJECT_UNAUTHORIZED || '').toLowerCase())
 
 const poolConfig = {
   host: process.env.MYSQL_HOST,
@@ -20,7 +21,7 @@ const poolConfig = {
 }
 
 if (useSsl) {
-  poolConfig.ssl = { rejectUnauthorized: true }
+  poolConfig.ssl = { rejectUnauthorized }
 }
 
 export const pool = mysql.createPool(poolConfig)
