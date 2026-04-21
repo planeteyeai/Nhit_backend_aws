@@ -1063,6 +1063,13 @@ async function inspectionList(req, res, mode) {
     const w = inspectionWhereClause(mode)
     const params = []
     let where = w
+    // Live DBs differ: some use bridge_inspection_id, older ones use inspection_id.
+    // Resolve join columns at runtime so ongoing/approved/rejected lists do not fail.
+    const [iIdRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'bridge_inspection_id'`)
+    const inspectionIdCol = iIdRows.length ? 'bridge_inspection_id' : 'inspection_id'
+    const [ircFkRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection_rejection_comment LIKE 'bridge_inspection_id'`)
+    const rejectionCommentFkCol = ircFkRows.length ? 'bridge_inspection_id' : 'inspection_id'
+
     if (req.query.search) {
       where += ' AND CAST(i.bridge_id AS CHAR) LIKE ?'
       params.push(`%${req.query.search.trim()}%`)
@@ -1073,14 +1080,14 @@ async function inspectionList(req, res, mode) {
     )
     const total = countRows[0].c
     const [rows] = await pool.query(
-      `SELECT i.*, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.project_name, b.highway_no, b.type_of_bridge,
+      `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.project_name, b.highway_no, b.type_of_bridge,
               s.state_name, z.zone_name,
               irc.comment AS rejection_comment, irc.comment_on AS rejection_date
        FROM bridge_inspection i
        LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
        LEFT JOIN state s ON s.state_id = COALESCE(b.state_id, i.state_id)
        LEFT JOIN zone z ON z.zone_id = i.zone_id
-       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.bridge_inspection_id = i.bridge_inspection_id
+       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.\`${rejectionCommentFkCol}\` = i.\`${inspectionIdCol}\`
        WHERE ${where}
        ORDER BY i.created_on DESC
        LIMIT ? OFFSET ?`,
@@ -1681,8 +1688,9 @@ router.get('/inspection/download_pdf/:inspectionId', requireAuth, async (req, re
       try {
         const cfg = INSPECTION_COMPONENTS[k]
         if (!cfg) continue
+        const resolvedPk = await resolveInspectionComponentPk(cfg)
         const [rows] = await pool.query(
-          `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${cfg.pk}\` DESC LIMIT 1`,
+          `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
           [id]
         )
         components[k] = rows[0] || null
@@ -2679,13 +2687,58 @@ const INSPECTION_COMPONENTS = {
     pk: 'handrails_parapets_crash_barriers_id',
     flag: 'hand_rails_&_parapets_walls',
   },
-  footpaths: { table: 'footpaths', pk: 'footpaths_id', flag: 'footpaths' },
+  footpaths: { table: 'footpaths', pk: 'footpath_id', flag: 'footpaths' },
   utilities: { table: 'utilities', pk: 'utilities_id', flag: 'utilities' },
   foundation: { table: 'foundation', pk: 'foundation_id', flag: 'foundation' },
   substructure: { table: 'substructure', pk: 'substructure_id', flag: 'substructure' },
   bearing_and_pedestal: { table: 'bearing_and_pedistal', pk: 'bearing_and_pedistal_id', flag: 'bearing_and_pedestal' },
   superstructure: { table: 'superstructure', pk: 'superstructure_id', flag: 'superstructure' },
   expansion_joint: { table: 'expansion_joint', pk: 'expansion_joint_id', flag: 'expansion_joint' },
+}
+
+const INSPECTION_COMPONENT_PK_CACHE = new Map()
+
+async function resolveInspectionComponentPk(cfg, metaRows = null) {
+  const cacheKey = `${cfg.table}:${cfg.pk}`
+  if (INSPECTION_COMPONENT_PK_CACHE.has(cacheKey)) return INSPECTION_COMPONENT_PK_CACHE.get(cacheKey)
+
+  if (Array.isArray(metaRows) && metaRows.length) {
+    const names = new Set(metaRows.map((r) => r.COLUMN_NAME))
+    if (names.has(cfg.pk)) {
+      INSPECTION_COMPONENT_PK_CACHE.set(cacheKey, cfg.pk)
+      return cfg.pk
+    }
+  } else {
+    const [configuredPkRows] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+       LIMIT 1`,
+      [cfg.table, cfg.pk]
+    )
+    if (configuredPkRows.length) {
+      INSPECTION_COMPONENT_PK_CACHE.set(cacheKey, cfg.pk)
+      return cfg.pk
+    }
+  }
+
+  const [pkRows] = await pool.query(
+    `SELECT k.COLUMN_NAME
+     FROM information_schema.TABLE_CONSTRAINTS t
+     JOIN information_schema.KEY_COLUMN_USAGE k
+       ON t.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+      AND t.TABLE_SCHEMA = k.TABLE_SCHEMA
+      AND t.TABLE_NAME = k.TABLE_NAME
+     WHERE t.TABLE_SCHEMA = DATABASE()
+       AND t.TABLE_NAME = ?
+       AND t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+     ORDER BY k.ORDINAL_POSITION
+     LIMIT 1`,
+    [cfg.table]
+  )
+  const resolved = pkRows[0]?.COLUMN_NAME || cfg.pk
+  INSPECTION_COMPONENT_PK_CACHE.set(cacheKey, resolved)
+  return resolved
 }
 
 router.get('/inspection/component-meta/:key', async (req, res) => {
@@ -2718,7 +2771,8 @@ router.get('/inspection/component-meta/:key', async (req, res) => {
         enumValues,
       }
     })
-    res.json({ success: true, data: { table: cfg.table, pk: cfg.pk, flag: cfg.flag, columns } })
+    const resolvedPk = await resolveInspectionComponentPk(cfg, metaRows)
+    res.json({ success: true, data: { table: cfg.table, pk: resolvedPk, flag: cfg.flag, columns } })
   } catch (e) {
     console.error(e)
     res.status(500).json({ success: false, message: e.message })
@@ -2830,8 +2884,9 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
     if (!cfg) return res.status(400).json({ message: 'Unknown component' })
     const inspectionId = Number(req.params.inspectionId)
     if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
+    const resolvedPk = await resolveInspectionComponentPk(cfg)
     const [rows] = await pool.query(
-      `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${cfg.pk}\` DESC LIMIT 1`,
+      `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
       [inspectionId]
     )
     res.json(rows[0] || null)
@@ -2856,6 +2911,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
       [cfg.table]
     )
+    const resolvedPk = await resolveInspectionComponentPk(cfg, metaRows)
     const allowed = new Set(metaRows.map((r) => r.COLUMN_NAME))
     const patch = Object.fromEntries(Object.entries(dataObj).filter(([k]) => allowed.has(k)))
     // Empty-string numerics -> 0
@@ -2889,7 +2945,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
     for (const c of metaRows) {
       const key = c.COLUMN_NAME
       if (!allowed.has(key)) continue
-      if (key === cfg.pk) continue
+      if (key === resolvedPk) continue
       if (patch[key] !== undefined && patch[key] !== null) continue
       const nullable = c.IS_NULLABLE === 'YES'
       const hasDefault = c.COLUMN_DEFAULT !== null
@@ -2905,11 +2961,11 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
     }
 
     const [existing] = await pool.query(
-      `SELECT \`${cfg.pk}\` AS id FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${cfg.pk}\` DESC LIMIT 1`,
+      `SELECT \`${resolvedPk}\` AS id FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
       [inspectionId]
     )
     const existingId = Number(existing[0]?.id || 0)
-    const cols = Object.keys(patch).filter((k) => k !== cfg.pk && patch[k] !== undefined)
+    const cols = Object.keys(patch).filter((k) => k !== resolvedPk && patch[k] !== undefined)
     const vals = cols.map((k) => patch[k])
     const qCols = cols.map((c) => `\`${c}\``)
 
@@ -2917,7 +2973,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
       const setClause = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on').map((c) => `\`${c}\` = ?`).join(', ')
       const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
       await pool.query(
-        `UPDATE \`${cfg.table}\` SET ${setClause} WHERE \`${cfg.pk}\` = ?`,
+        `UPDATE \`${cfg.table}\` SET ${setClause} WHERE \`${resolvedPk}\` = ?`,
         [...setKeys.map((k) => patch[k]), existingId]
       )
     } else {
