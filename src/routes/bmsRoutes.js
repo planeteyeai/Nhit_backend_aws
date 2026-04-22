@@ -113,6 +113,34 @@ const RATING_DESCRIPTION_DEFAULT = {
   5: { condition: 'Critical', description: 'Severe distress; immediate intervention required' },
 }
 
+const OVERALL_BRIDGE_RATING_DESCRIPTIONS = {
+  1: {
+    condition: 'Excellent condition',
+    description:
+      'No visible distress/deterioration observed. Only constructional deficiencies may be present. Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low.',
+  },
+  2: {
+    condition: 'Good Condition',
+    description:
+      'Extent of deficiencies is minor. Severity of deficiencies is low. 0 to 5 % of area affected by any of the following: Honeycombing, Delamination, Spalling, minor/medium cracks, exposed reinforcement, 0 to 1 mm visible cracks, 1 to 5% unevenness on concrete superstructure, no section loss of superstructure, unevenness due to wear and tear, no potholes on concrete surface, drainage spouts are functional.',
+  },
+  3: {
+    condition: 'Fair condition',
+    description:
+      'Extent of deficiencies is major. Severity of deficiencies is medium. 5 to 25 % of area affected by any some of the following: Honeycombing, Delamination, Spalling, medium cracks, exposed reinforcement, 1 to 4 mm visible cracks, 0 to 3 % of section loss of superstructure, unevenness due to wear and tear, potholes on concrete surface, drainage spouts are non-functional.',
+  },
+  4: {
+    condition: 'Poor condition',
+    description:
+      'Extent of deficiencies is large. Severity of deficiencies is high. 25 to 40 % of area affected by any of the following: Honeycombing, Delamination, Spalling, major cracks, exposed reinforcement, 4 to 6 mm visible cracks and 3 to 5 % of section loss of superstructure, unevenness due to wear and tear, potholes on concrete surface, drainage spouts are non-functional.',
+  },
+  5: {
+    condition: 'Critical condition',
+    description:
+      'Extent of deficiencies is very large/extensive. Severity of deficiencies is very high. >40% of area affected by some of the following: Honeycombing, Delamination, Spalling, major cracks, exposed reinforcement, >6 mm visible cracks and >5 % of section loss of superstructure, unevenness due to wear and tear, potholes on concrete surface, drainage spouts are non-functional. Bridge closed.',
+  },
+}
+
 function toSnakeCase(key) {
   return String(key || '')
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -2099,6 +2127,95 @@ router.get('/inspection/pedestal_conditions/:inspectionId', requireAuth, async (
   }
 })
 
+// Upsert pedestal condition rows (bearing_and_pedistal_condition)
+router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, res) => {
+  const conn = await pool.getConnection()
+  try {
+    const inspectionId = Number(req.body?.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : []
+    const userId = Number(req.user?.uid || 0)
+
+    await conn.beginTransaction()
+
+    const [bRows] = await conn.query(
+      `SELECT bearing_and_pedistal_id
+       FROM bearing_and_pedistal
+       WHERE bridge_inspection_id = ?
+       ORDER BY bearing_and_pedistal_id DESC
+       LIMIT 1`,
+      [inspectionId]
+    )
+    const bearingAndPedistalId =
+      Number(req.body?.bearingAndPedistalId || 0) || Number(bRows?.[0]?.bearing_and_pedistal_id || 0)
+
+    if (!bearingAndPedistalId) {
+      await conn.rollback()
+      return res.status(400).json({ success: false, message: 'Save bearing & pedestal first.' })
+    }
+
+    const incomingIds = rows.map((r) => Number(r?.bpc_id || 0)).filter((n) => n > 0)
+    if (incomingIds.length) {
+      await conn.query(
+        `DELETE FROM bearing_and_pedistal_condition
+         WHERE bridge_inspection_id = ? AND bpc_id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+        [inspectionId, ...incomingIds]
+      )
+    } else {
+      await conn.query('DELETE FROM bearing_and_pedistal_condition WHERE bridge_inspection_id = ?', [inspectionId])
+    }
+
+    const nextId = async () => {
+      const [mx] = await conn.query('SELECT COALESCE(MAX(bpc_id), 0) AS mx FROM bearing_and_pedistal_condition')
+      return Number(mx?.[0]?.mx || 0) + 1
+    }
+    const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+
+    for (const row of rows) {
+      const pedestalCondition = String(row?.pedestal_condition || '').trim()
+      if (!pedestalCondition) continue
+      const payload = [
+        pedestalCondition,
+        numeric(row?.pedestal_condition_length),
+        numeric(row?.pedestal_condition_width),
+        numeric(row?.pedestal_condition_depth),
+        numeric(row?.pedestal_condition_distance_x),
+        numeric(row?.pedestal_condition_distance_y),
+        String(row?.name_of_span || '').trim() || null,
+      ]
+      const bpcId = Number(row?.bpc_id || 0)
+      if (bpcId > 0) {
+        await conn.query(
+          `UPDATE bearing_and_pedistal_condition
+           SET pedestal_condition = ?, pedestal_condition_length = ?, pedestal_condition_width = ?,
+               pedestal_condition_depth = ?, pedestal_condition_distance_x = ?, pedestal_condition_distance_y = ?,
+               name_of_span = ?
+           WHERE bpc_id = ? AND bridge_inspection_id = ?`,
+          [...payload, bpcId, inspectionId]
+        )
+      } else {
+        const id = await nextId()
+        await conn.query(
+          `INSERT INTO bearing_and_pedistal_condition
+           (bpc_id, bridge_inspection_id, bearing_and_pedistal_id, pedestal_condition,
+            pedestal_condition_length, pedestal_condition_width, pedestal_condition_depth,
+            pedestal_condition_distance_x, pedestal_condition_distance_y, created_by, created_on, name_of_span)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
+          [id, inspectionId, bearingAndPedistalId, ...payload, userId]
+        )
+      }
+    }
+
+    await conn.commit()
+    return res.json({ success: true })
+  } catch (e) {
+    await conn.rollback().catch(() => {})
+    return res.status(500).json({ success: false, message: e.message })
+  } finally {
+    conn.release()
+  }
+})
+
 // Substructure pilers list (best-effort; returns [] if table not present)
 router.get('/inspection/substructure_pilers/:inspectionId', async (req, res) => {
   try {
@@ -2126,6 +2243,84 @@ router.get('/inspection/superstructure_spans/:inspectionId', async (req, res) =>
     return res.json(rows || [])
   } catch {
     return res.json([])
+  }
+})
+
+// Upsert superstructure span row (supports multiple spans per inspection)
+router.post('/inspection/superstructure_span/upsert', requireAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.body?.inspectionId || 0)
+    const superstructureId = Number(req.body?.superstructureId || 0)
+    const dataObj = req.body?.data || {}
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const cfg = INSPECTION_COMPONENTS.superstructure
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [cfg.table]
+    )
+    const resolvedPk = await resolveInspectionComponentPk(cfg, metaRows)
+    const allowed = new Set(metaRows.map((r) => r.COLUMN_NAME))
+    const patch = Object.fromEntries(Object.entries(dataObj).filter(([k]) => allowed.has(k)))
+
+    patch.bridge_inspection_id = inspectionId
+    if (allowed.has('status') && (patch.status == null || patch.status === '')) {
+      patch.status = 'Active'
+    }
+    if (allowed.has('created_by') && !superstructureId) patch.created_by = Number(req.user?.uid || 0)
+    if (allowed.has('created_on') && !superstructureId) patch.created_on = new Date()
+    if (allowed.has('updated_by')) patch.updated_by = Number(req.user?.uid || 0)
+    if (allowed.has('updated_on')) patch.updated_on = new Date()
+
+    for (const c of metaRows) {
+      const key = c.COLUMN_NAME
+      if (!allowed.has(key)) continue
+      if (key === resolvedPk) continue
+      if (patch[key] !== undefined && patch[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          patch[key] = first || 'Pending'
+        } else {
+          patch[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(patch).filter((k) => k !== resolvedPk && patch[k] !== undefined)
+    const qCols = cols.map((c) => `\`${c}\``)
+    const vals = cols.map((k) => patch[k])
+
+    if (superstructureId) {
+      const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
+      const setClause = setKeys.map((c) => `\`${c}\` = ?`).join(', ')
+      await pool.query(
+        `UPDATE \`${cfg.table}\` SET ${setClause} WHERE \`${resolvedPk}\` = ? AND bridge_inspection_id = ?`,
+        [...setKeys.map((k) => patch[k]), superstructureId, inspectionId]
+      )
+      return res.json({ success: true, data: { superstructure_id: superstructureId } })
+    }
+
+    const [ins] = await pool.query(
+      `INSERT INTO \`${cfg.table}\` (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals
+    )
+    const insertedId = Number(ins?.insertId || 0)
+
+    await pool.query(
+      `UPDATE bridge_inspection SET \`${cfg.flag}\` = 'Yes', updated_by = ?, upadted_on = CURDATE() WHERE bridge_inspection_id = ?`,
+      [req.user?.uid || 0, inspectionId]
+    )
+
+    return res.json({ success: true, data: { superstructure_id: insertedId } })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, message: e.message })
   }
 })
 
@@ -2200,6 +2395,24 @@ async function detectExpansionPilerTableAndRow(expansionPilersId) {
   return { table: t, row: null }
 }
 
+async function detectWearingCoatTableAndRow(wearingCoatId) {
+  const candidates = ['wearing_coat']
+  for (const table of candidates) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const [rows] = await pool.query(
+        `SELECT * FROM \`${table}\` WHERE wearing_coat_id = ? LIMIT 1`,
+        [wearingCoatId]
+      )
+      if (rows?.[0]) return { table, row: rows[0] }
+    } catch {
+      // ignore
+    }
+  }
+  const t = await detectFirstExistingTable(candidates)
+  return { table: t, row: null }
+}
+
 // Expansion joint pilers list (PHP parity: Inspection::add_expansion_joints_pilers)
 router.get('/inspection/expansion_pilers/:inspectionId', async (req, res) => {
   const id = Number(req.params.inspectionId || 0)
@@ -2230,6 +2443,114 @@ router.get('/inspection/expansion_distress/:inspectionId/:expansionPilersId', as
   }
 })
 
+// Wearing coat rows list for inspection
+router.get('/inspection/wearing_coat_rows/:inspectionId', async (req, res) => {
+  try {
+    const id = Number(req.params.inspectionId || 0)
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+    const rows = await trySelectFirstOk(pool, [
+      { sql: 'SELECT * FROM wearing_coat WHERE bridge_inspection_id = ? ORDER BY wearing_coat_id ASC', params: [id] },
+    ])
+    return res.json(rows || [])
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+// Wearing coat upsert (create/update)
+router.post('/inspection/wearing_coat/upsert', optionalAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.body?.inspectionId || req.body?.bridge_inspection_id || 0)
+    const wearingCoatId = Number(req.body?.wearing_coat_id || 0)
+    const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const { table: detectedTable } = wearingCoatId
+      ? await detectWearingCoatTableAndRow(wearingCoatId)
+      : { table: await detectFirstExistingTable(['wearing_coat']) }
+    const table = detectedTable || 'wearing_coat'
+
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table]
+    )
+    const allowed = new Set((metaRows || []).map((r) => r.COLUMN_NAME))
+    const patch = {}
+    for (const [k, v] of Object.entries(dataObj || {})) {
+      if (k === 'wearing_coat_id') continue
+      if (!allowed.has(k)) continue
+      patch[k] = v
+    }
+
+    patch.bridge_inspection_id = inspectionId
+    if (allowed.has('status') && (patch.status == null || patch.status === '')) patch.status = 'Active'
+    if (allowed.has('updated_by') && patch.updated_by == null) patch.updated_by = req.user?.uid || 0
+    if (allowed.has('updated_on') && patch.updated_on == null) patch.updated_on = new Date()
+    if (!wearingCoatId) {
+      if (allowed.has('created_by') && patch.created_by == null) patch.created_by = req.user?.uid || 0
+      if (allowed.has('created_on') && patch.created_on == null) patch.created_on = new Date()
+    }
+
+    for (const c of metaRows || []) {
+      const key = c.COLUMN_NAME
+      if (!allowed.has(key)) continue
+      if (key === 'wearing_coat_id') continue
+      if (patch[key] !== undefined && patch[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          patch[key] = first || 'Pending'
+        } else {
+          patch[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(patch).filter((k) => k !== 'wearing_coat_id' && patch[k] !== undefined)
+    if (!cols.length) return res.status(400).json({ success: false, message: 'No fields to save' })
+
+    if (wearingCoatId) {
+      const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
+      const setSql = setKeys.map((c) => `\`${c}\` = ?`).join(', ')
+      const vals = setKeys.map((k) => patch[k])
+      const [r] = await pool.query(
+        `UPDATE \`${table}\` SET ${setSql} WHERE wearing_coat_id = ? AND bridge_inspection_id = ?`,
+        [...vals, wearingCoatId, inspectionId]
+      )
+      return res.json({ success: true, data: { wearing_coat_id: wearingCoatId }, updated: (r.affectedRows || 0) > 0 })
+    }
+
+    const qCols = cols.map((c) => `\`${c}\``)
+    const vals = cols.map((k) => patch[k])
+    const [ins] = await pool.query(
+      `INSERT INTO \`${table}\` (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals
+    )
+    return res.json({ success: true, data: { wearing_coat_id: Number(ins?.insertId || 0) } })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+// Wearing coat soft-close
+router.post('/inspection/close_wearing_coat', optionalAuth, async (req, res) => {
+  try {
+    const id = Number(req.body?.wearing_coat_id || 0)
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid wearing_coat_id' })
+    const { table } = await detectWearingCoatTableAndRow(id)
+    if (!table) return res.status(404).json({ success: false, message: 'Wearing coat table not found' })
+    const [r] = await pool.query(`UPDATE \`${table}\` SET status = 'In-Active' WHERE wearing_coat_id = ?`, [id])
+    return res.json({ success: (r.affectedRows || 0) > 0 })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
 // PHP parity: Inspection::get_expansion_piler_details (expects POST expansion_pilers_id)
 router.post('/inspection/get_expansion_piler_details', async (req, res) => {
   try {
@@ -2237,6 +2558,85 @@ router.post('/inspection/get_expansion_piler_details', async (req, res) => {
     if (!expansionPilersId) return res.status(400).json({ success: false, message: 'Invalid expansion_pilers_id' })
     const { row } = await detectExpansionPilerTableAndRow(expansionPilersId)
     return res.json({ success: true, data: row || null })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+// Upsert expansion piler row (create from template or update existing row)
+router.post('/inspection/expansion_piler/upsert', optionalAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.body?.inspectionId || req.body?.bridge_inspection_id || 0)
+    const expansionPilersId = Number(req.body?.expansion_pilers_id || 0)
+    const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const table = await detectFirstExistingTable(['expansion_joints_pilers', 'expansion_joint_pilers', 'expansion_pilers'])
+    if (!table) return res.status(404).json({ success: false, message: 'Expansion piler table not found' })
+
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table]
+    )
+    const allowed = new Set((metaRows || []).map((r) => r.COLUMN_NAME))
+
+    const patch = {}
+    for (const [k, v] of Object.entries(dataObj || {})) {
+      if (k === 'expansion_pilers_id') continue
+      if (!allowed.has(k)) continue
+      patch[k] = v
+    }
+
+    patch.bridge_inspection_id = inspectionId
+    if (allowed.has('status') && (patch.status == null || patch.status === '')) patch.status = 'Active'
+    if (allowed.has('updated_by') && patch.updated_by == null) patch.updated_by = req.user?.uid || 0
+    if (allowed.has('updated_on') && patch.updated_on == null) patch.updated_on = new Date()
+    if (!expansionPilersId) {
+      if (allowed.has('created_by') && patch.created_by == null) patch.created_by = req.user?.uid || 0
+      if (allowed.has('created_on') && patch.created_on == null) patch.created_on = new Date()
+    }
+
+    for (const c of metaRows || []) {
+      const key = c.COLUMN_NAME
+      if (!allowed.has(key)) continue
+      if (key === 'expansion_pilers_id') continue
+      if (patch[key] !== undefined && patch[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          patch[key] = first || 'Pending'
+        } else {
+          patch[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(patch).filter((k) => k !== 'expansion_pilers_id' && patch[k] !== undefined)
+    if (!cols.length) return res.status(400).json({ success: false, message: 'No fields to save' })
+
+    if (expansionPilersId) {
+      const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
+      const setSql = setKeys.map((c) => `\`${c}\` = ?`).join(', ')
+      const vals = setKeys.map((k) => patch[k])
+      const [r] = await pool.query(
+        `UPDATE \`${table}\` SET ${setSql} WHERE expansion_pilers_id = ? AND bridge_inspection_id = ?`,
+        [...vals, expansionPilersId, inspectionId]
+      )
+      return res.json({ success: true, data: { expansion_pilers_id: expansionPilersId }, updated: (r.affectedRows || 0) > 0 })
+    }
+
+    const qCols = cols.map((c) => `\`${c}\``)
+    const vals = cols.map((k) => patch[k])
+    const [ins] = await pool.query(
+      `INSERT INTO \`${table}\` (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals
+    )
+    return res.json({ success: true, data: { expansion_pilers_id: Number(ins?.insertId || 0) } })
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message })
   }
@@ -2560,8 +2960,12 @@ router.post('/inspection/:inspectionId/overall_rating', optionalAuth, async (req
   }
 })
 
-router.get('/inspection/rating_descriptions/:ratingType', async (_req, res) => {
-  res.json(RATING_DESCRIPTION_DEFAULT)
+router.get('/inspection/rating_descriptions/:ratingType', async (req, res) => {
+  const ratingType = String(req.params?.ratingType || '').trim().toLowerCase()
+  if (ratingType === 'overall_bridge_rating') {
+    return res.json(OVERALL_BRIDGE_RATING_DESCRIPTIONS)
+  }
+  return res.json(RATING_DESCRIPTION_DEFAULT)
 })
 
 for (const sub of [
@@ -2613,7 +3017,7 @@ router.get('/inspection/non_structural/:id', async (req, res) => {
     const [rows] = await pool.query(
       `SELECT non_structural_element_id AS id, bridge_inspection_id, element_type AS table_type,
               distress_type, l_value AS distress_length, w_value AS distress_width, d_value AS distress_depth,
-              location, repair_methodology, created_on
+              nos_value, images, location, repair_methodology, created_on
        FROM non_structural_elements
        WHERE bridge_inspection_id = ? AND status = 'Active'
        ORDER BY non_structural_element_id DESC`,
@@ -2627,9 +3031,10 @@ router.get('/inspection/non_structural/:id', async (req, res) => {
 router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
   try {
     const b = req.body || {}
+    const imagesPayload = Array.isArray(b.images) ? JSON.stringify(b.images) : b.images ?? null
     await pool.query(
       `UPDATE non_structural_elements
-       SET element_type = ?, distress_type = ?, l_value = ?, w_value = ?, d_value = ?, location = ?,
+       SET element_type = ?, distress_type = ?, l_value = ?, w_value = ?, d_value = ?, nos_value = ?, images = ?, location = ?,
            repair_methodology = ?, updated_by = ?, updated_on = NOW()
        WHERE non_structural_element_id = ?`,
       [
@@ -2638,6 +3043,8 @@ router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
         b.l_value ?? b.distress_length ?? null,
         b.w_value ?? b.distress_width ?? null,
         b.d_value ?? b.distress_depth ?? null,
+        b.nos_value ?? null,
+        imagesPayload,
         b.location ?? `${b.distance_of_distress_x || ''},${b.distance_of_distress_y || ''}`.trim(),
         b.repair_methodology ?? '',
         req.user?.uid || null,
