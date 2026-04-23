@@ -3569,11 +3569,23 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
       )
     }
 
-    // Mark flag on bridge_inspection
-    await pool.query(
-      `UPDATE bridge_inspection SET \`${cfg.flag}\` = 'Yes', updated_by = ?, upadted_on = CURDATE() WHERE bridge_inspection_id = ?`,
-      [req.user?.uid || 0, inspectionId]
+    // Mark component flag on bridge_inspection only if the column exists in current DB schema.
+    const [bridgeInspectionFlagRows] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'bridge_inspection'
+         AND COLUMN_NAME = ?`,
+      [cfg.flag]
     )
+    if (bridgeInspectionFlagRows.length) {
+      await pool.query(
+        `UPDATE bridge_inspection
+         SET \`${cfg.flag}\` = 'Yes', updated_by = ?, upadted_on = CURDATE()
+         WHERE bridge_inspection_id = ?`,
+        [req.user?.uid || 0, inspectionId]
+      )
+    }
 
     res.json({ success: true })
   } catch (e) {
