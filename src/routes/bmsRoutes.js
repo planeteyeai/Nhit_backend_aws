@@ -23,6 +23,17 @@ const uploadRoot = path.resolve(__dirname, '../../upload')
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 }
+function normalizeUploadSubfolder(value, fallback = 'non_structural_elements') {
+  const raw = String(value || '').trim().replace(/\\/g, '/')
+  const safe = raw
+    .split('/')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join('/')
+  if (!safe) return fallback
+  if (!/^[a-zA-Z0-9_/-]+$/.test(safe)) return fallback
+  return safe
+}
 ensureDir(uploadRoot)
 ensureDir(path.join(uploadRoot, 'download'))
 
@@ -39,7 +50,8 @@ const uploadStorage = multer.diskStorage({
       return cb(null, dir)
     }
     if (req.path.includes('/inspection/non_structural/upload_images')) {
-      const dir = path.join(uploadRoot, 'non_structural_elements')
+      const subfolder = normalizeUploadSubfolder(req.query?.folder, 'non_structural_elements')
+      const dir = path.join(uploadRoot, subfolder)
       ensureDir(dir)
       return cb(null, dir)
     }
