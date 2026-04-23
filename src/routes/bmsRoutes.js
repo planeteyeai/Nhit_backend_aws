@@ -863,7 +863,9 @@ router.post('/bridges/:bridgeId/reject', requireAuth, async (req, res) => {
     const bridgeId = req.params.bridgeId
     const comment = String(req.body?.comment || '').trim()
     await pool.query(
-      `UPDATE bridge SET bmc_status = 'Rejected', bmc_status_updated_on = NOW() WHERE bridge_id = ?`,
+      `UPDATE bridge
+       SET status = 'Pending', bmc_status = 'Rejected', bmc_status_updated_on = NOW()
+       WHERE bridge_id = ?`,
       [bridgeId]
     )
     if (comment) {
@@ -1074,7 +1076,8 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
     const s = (req.params.status || '').toLowerCase()
     let where = '1=1'
     if (s === 'pending') {
-      where = `(b.status = 'Completed' OR b.status = 'Pending') AND (b.bmc_status IS NULL OR b.bmc_status NOT IN ('Approved'))`
+      // Pending approval should include only submitted entries awaiting BMC action.
+      where = `b.status = 'Completed' AND (b.bmc_status IS NULL OR TRIM(b.bmc_status) = '' OR b.bmc_status = 'No')`
     } else if (s === 'approved') {
       where = `b.bmc_status = 'Approved'`
     } else if (s === 'rejected') {
@@ -1150,7 +1153,7 @@ router.get('/schedule-inspection-list', async (req, res) => {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10))
     const offset = (page - 1) * limit
     const params = []
-    let where = `si.status = 'Active'`
+    let where = `1=1`
 
     const search = String(req.query.search || '').trim()
     if (search) {
@@ -1170,7 +1173,16 @@ router.get('/schedule-inspection-list', async (req, res) => {
 
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS c
-       FROM schedule_inspecion si
+       FROM (
+         SELECT s1.*
+         FROM schedule_inspecion s1
+         INNER JOIN (
+           SELECT bridge_id, MAX(si_id) AS max_si_id
+           FROM schedule_inspecion
+           WHERE status = 'Active'
+           GROUP BY bridge_id
+         ) latest ON latest.max_si_id = s1.si_id
+       ) si
        LEFT JOIN bridge b ON b.bridge_id = si.bridge_id
        WHERE ${where}`,
       params
@@ -1181,7 +1193,6 @@ router.get('/schedule-inspection-list', async (req, res) => {
       `SELECT
          si.si_id,
          si.bridge_id,
-         i.bridge_inspection_id,
          si.pre_month,
          si.post_month,
          si.routine_inspecion_month,
@@ -1198,9 +1209,17 @@ router.get('/schedule-inspection-list', async (req, res) => {
          b.bridge_side,
          b.consultant_name,
          b.custodian
-       FROM schedule_inspecion si
+       FROM (
+         SELECT s1.*
+         FROM schedule_inspecion s1
+         INNER JOIN (
+           SELECT bridge_id, MAX(si_id) AS max_si_id
+           FROM schedule_inspecion
+           WHERE status = 'Active'
+           GROUP BY bridge_id
+         ) latest ON latest.max_si_id = s1.si_id
+       ) si
        LEFT JOIN bridge b ON b.bridge_id = si.bridge_id
-       LEFT JOIN bridge_inspection i ON i.bridge_id = si.bridge_id AND i.status = 'Confirmed'
        WHERE ${where}
        ORDER BY si.updated_on DESC, si.si_id DESC
        LIMIT ? OFFSET ?`,
@@ -3217,6 +3236,7 @@ const INSPECTION_COMPONENTS = {
   approaches: { table: 'approaches', pk: 'approaches_id', flag: 'approaches' },
   protection_works: { table: 'protection_works', pk: 'protection_works_id', flag: 'protection_works' },
   waterway: { table: 'waterway', pk: 'waterway_id', flag: 'waterway' },
+  subways: { table: 'subways', pk: 'subway_id', flag: 'subways' },
   wearing_coat: { table: 'wearing_coat', pk: 'wearing_coat_id', flag: 'wearing_coat' },
   drainage_spouts_and_vest_holes: {
     table: 'drainage_spouts_and_vest_holes',
@@ -3238,6 +3258,31 @@ const INSPECTION_COMPONENTS = {
 }
 
 const INSPECTION_COMPONENT_PK_CACHE = new Map()
+
+const SUBWAYS_FIELD_MAP = {
+  pier_condition: 'check_condition_of_side_retaining_wall',
+  pier_condition_image: 'check_condition_of_side_retaining_wall_image',
+  large_excavations_done: 'check_large_excavations_done',
+  large_excavations_done_image: 'check_large_excavations_done_image',
+  damages_to_protective_measures: 'check_damages_to_protective_measures',
+  damages_to_protective_measures_image: 'check_damages_to_protective_measures_image',
+  damages_to_protective_coating_or_paint: 'check_damage_to_protective_coating_or_paint',
+  damages_to_protective_coating_or_paint_image: 'check_damage_to_protective_coating_or_paint_image',
+}
+
+const SUBWAYS_REVERSE_FIELD_MAP = Object.fromEntries(
+  Object.entries(SUBWAYS_FIELD_MAP).map(([k, v]) => [v, k])
+)
+
+function toDbComponentPayload(componentKey, payload) {
+  if (componentKey !== 'subways' || !payload || typeof payload !== 'object') return payload
+  return Object.fromEntries(Object.entries(payload).map(([k, v]) => [SUBWAYS_FIELD_MAP[k] || k, v]))
+}
+
+function fromDbComponentPayload(componentKey, row) {
+  if (componentKey !== 'subways' || !row || typeof row !== 'object') return row
+  return Object.fromEntries(Object.entries(row).map(([k, v]) => [SUBWAYS_REVERSE_FIELD_MAP[k] || k, v]))
+}
 
 async function resolveInspectionComponentPk(cfg, metaRows = null) {
   const cacheKey = `${cfg.table}:${cfg.pk}`
@@ -3430,7 +3475,7 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
       `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
       [inspectionId]
     )
-    res.json(rows[0] || null)
+    res.json(fromDbComponentPayload(key, rows[0] || null))
   } catch (e) {
     console.error(e)
     res.status(500).json({ message: e.message })
@@ -3445,7 +3490,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
     const inspectionId = Number(req.params.inspectionId)
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
 
-    const dataObj = req.body || {}
+    const dataObj = toDbComponentPayload(key, req.body || {})
     const [metaRows] = await pool.query(
       `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
        FROM information_schema.COLUMNS
@@ -3844,6 +3889,14 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
     const [ins] = await pool.query(
       `INSERT INTO bridge_inspection (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
       vals
+    )
+
+    // Move this schedule row out of "Scheduled" list once inspection is started.
+    await pool.query(
+      `UPDATE schedule_inspecion
+       SET status = 'InActive', updated_by = ?, updated_on = CURDATE()
+       WHERE si_id = ?`,
+      [req.user?.uid || 0, siId]
     )
 
     // Return the id so frontend can optionally view it immediately

@@ -165,6 +165,13 @@ export const INSPECTION_DROPDOWNS = {
     damages_to_protective_coating_or_paint: opts(C.CHECK_DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT),
   },
 
+  subways: {
+    pier_condition: opts(C.CHECK_PIER_CONDITION),
+    large_excavations_done: opts(C.CHECK_LARGE_EXCAVATIONS_DONE),
+    damages_to_protective_measures: opts(C.CHECK_DAMAGES_TO_PROTECTIVE_MEASURES),
+    damages_to_protective_coating_or_paint: opts(C.CHECK_DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT),
+  },
+
   bearing_and_pedestal: {
     type_and_allowable_movements_bearing: opts(C.CHECK_TYPE_AND_ALLOWABLE_MOVEMENTS_BEARING),
     type_and_allowable_movements_pedestal: opts(C.CHECK_TYPE_AND_ALLOWABLE_MOVEMENTS_PEDESTAL),
