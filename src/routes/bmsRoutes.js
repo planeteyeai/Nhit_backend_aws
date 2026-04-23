@@ -1496,6 +1496,36 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       ]
 
       let distressId = id
+      if (distressId <= 0) {
+        // Prevent duplicate inserts during edit flows when frontend misses id:
+        // reuse an existing row for same component/field/span/distress signature.
+        const lookupWhere = [
+          'bridge_inspection_id = ?',
+          'table_type = ?',
+          'IFNULL(field_type, \'\') = ?',
+          'IFNULL(distress_type, \'\') = ?',
+          'IFNULL(name_of_span, \'\') = ?',
+        ]
+        const lookupParams = [
+          inspectionId,
+          tableType,
+          String(row?.field_type || '').trim(),
+          distressType,
+          String(row?.name_of_span || '').trim(),
+        ]
+        const spansValue = numeric(row?.spans)
+        if (tableType === 'superstructure' && spansValue > 0) {
+          lookupWhere.push('spans = ?')
+          lookupParams.push(spansValue)
+        }
+        const [matchedRows] = await conn.query(
+          `SELECT id FROM bridge_inspection_distress
+           WHERE ${lookupWhere.join(' AND ')}
+           ORDER BY id DESC LIMIT 1`,
+          lookupParams
+        )
+        if (matchedRows[0]?.id) distressId = Number(matchedRows[0].id)
+      }
       if (distressId > 0) {
         await conn.query(
           `UPDATE bridge_inspection_distress
