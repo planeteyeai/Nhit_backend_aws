@@ -1456,6 +1456,15 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
 
     await conn.beginTransaction()
 
+    const [distressCols] = await conn.query(
+      `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge_inspection_distress'`
+    )
+    const distressColSet = new Set((distressCols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
+    const distressImagesCol =
+      (['images', 'distress_images', 'distress_image', 'image'].find((c) => distressColSet.has(c)) || null)
+
     // keep only ids submitted for this table_type
     const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
     if (incomingIds.length) {
@@ -1494,6 +1503,9 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         numeric(row?.lhs_distress),
         numeric(row?.rhs_distress),
       ]
+      const distressImagesValue = Array.isArray(row?.images)
+        ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
+        : String(row?.images || row?.distress_images || '').trim()
 
       let distressId = id
       if (distressId <= 0) {
@@ -1527,25 +1539,38 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         if (matchedRows[0]?.id) distressId = Number(matchedRows[0].id)
       }
       if (distressId > 0) {
+        const updateSetImages = distressImagesCol ? `, \`${distressImagesCol}\` = ?` : ''
+        const updateParams = [...baseData]
+        if (distressImagesCol) updateParams.push(distressImagesValue || null)
         await conn.query(
           `UPDATE bridge_inspection_distress
            SET distress_type = ?, name_of_span = ?, field_type = ?,
                distress_length = ?, distress_width = ?, distress_depth = ?,
                distance_of_distress_x = ?, distance_of_distress_y = ?,
                abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?,
-               foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?
+               foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?${updateSetImages}
            WHERE id = ? AND bridge_inspection_id = ? AND table_type = ?`,
-          [...baseData, distressId, inspectionId, tableType]
+          [...updateParams, distressId, inspectionId, tableType]
         )
       } else {
         distressId = await nextId('bridge_inspection_distress', 'id')
+        const insertCols = [
+          'id', 'bridge_inspection_id', 'table_type', 'distress_type', 'name_of_span', 'field_type',
+          'distress_length', 'distress_width', 'distress_depth', 'distance_of_distress_x', 'distance_of_distress_y',
+          'abutment_A1', 'abutment_A2', 'piers', 'spans', 'foundation', 'expansion', 'lhs_distress', 'rhs_distress',
+        ]
+        const insertVals = [distressId, inspectionId, tableType, ...baseData]
+        if (distressImagesCol) {
+          insertCols.push(distressImagesCol)
+          insertVals.push(distressImagesValue || null)
+        }
+        insertCols.push('created_by', 'created_on')
+        insertVals.push(userId)
         await conn.query(
           `INSERT INTO bridge_inspection_distress
-           (id, bridge_inspection_id, table_type, distress_type, name_of_span, field_type,
-            distress_length, distress_width, distress_depth, distance_of_distress_x, distance_of_distress_y,
-            abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress, created_by, created_on)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
-          [distressId, inspectionId, tableType, ...baseData, userId]
+           (${insertCols.map((c) => `\`${c}\``).join(', ')})
+           VALUES (${insertCols.map((c) => (c === 'created_on' ? 'CURDATE()' : '?')).join(', ')})`,
+          insertVals
         )
       }
 
