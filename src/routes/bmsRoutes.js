@@ -1108,13 +1108,16 @@ async function inspectionList(req, res, mode) {
     )
     const total = countRows[0].c
     const [rows] = await pool.query(
-      `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.project_name, b.highway_no, b.type_of_bridge,
-              s.state_name, z.zone_name,
+      `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.bridge_side, b.zone AS bridge_zone_text, b.project_name, b.highway_no, b.type_of_bridge,
+              COALESCE(s_i.state_name, s_b.state_name) AS state_name,
+              COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name,
               irc.comment AS rejection_comment, irc.comment_on AS rejection_date
        FROM bridge_inspection i
        LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
-       LEFT JOIN state s ON s.state_id = COALESCE(b.state_id, i.state_id)
-       LEFT JOIN zone z ON z.zone_id = i.zone_id
+       LEFT JOIN state s_i ON s_i.state_id = i.state_id
+       LEFT JOIN state s_b ON s_b.state_code = TRIM(CAST(b.state_id AS CHAR)) AND TRIM(CAST(b.state_id AS CHAR)) <> ''
+       LEFT JOIN zone z_i ON z_i.zone_id = i.zone_id
+       LEFT JOIN zone z_b ON z_b.zone_code = TRIM(b.zone) AND TRIM(b.zone) <> ''
        LEFT JOIN bridge_inspection_rejection_comment irc ON irc.\`${rejectionCommentFkCol}\` = i.\`${inspectionIdCol}\`
        WHERE ${where}
        ORDER BY i.created_on DESC
@@ -1338,11 +1341,15 @@ router.delete('/inspection/foundation/:inspectionId/:foundationId', requireAuth,
 router.get('/inspections/:inspectionId', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT i.*, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.project_name, s.state_name, z.zone_name
+      `SELECT i.*, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.bridge_side, b.project_name,
+              COALESCE(s_i.state_name, s_b.state_name) AS state_name,
+              COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name
        FROM bridge_inspection i
        LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
-       LEFT JOIN state s ON s.state_id = COALESCE(b.state_id, i.state_id)
-       LEFT JOIN zone z ON z.zone_id = i.zone_id
+       LEFT JOIN state s_i ON s_i.state_id = i.state_id
+       LEFT JOIN state s_b ON s_b.state_code = TRIM(CAST(b.state_id AS CHAR)) AND TRIM(CAST(b.state_id AS CHAR)) <> ''
+       LEFT JOIN zone z_i ON z_i.zone_id = i.zone_id
+       LEFT JOIN zone z_b ON z_b.zone_code = TRIM(b.zone) AND TRIM(b.zone) <> ''
        WHERE i.bridge_inspection_id = ? LIMIT 1`,
       [req.params.inspectionId]
     )
@@ -1983,6 +1990,29 @@ router.post('/inspections/:inspectionId/approve', requireAuth, async (req, res) 
   }
 })
 
+// Site Engineer confirms inspection and sends it to BMC pending-approval queue
+router.post('/inspections/:inspectionId/send_for_approval', requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.inspectionId || 0)
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    await pool.query(
+      `UPDATE bridge_inspection
+       SET status = 'Confirmed',
+           bmc_inspection_status = 'No',
+           bmc_user = ?,
+           bmc_inspection_status_date = NULL,
+           upadted_on = NOW()
+       WHERE bridge_inspection_id = ?`,
+      [req.user?.uid || 0, id]
+    )
+
+    res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
 router.post('/bmc/inspection/reject/:inspectionId', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.inspectionId || 0)
@@ -2228,6 +2258,98 @@ router.get('/inspection/substructure_pilers/:inspectionId', async (req, res) => 
     return res.json(rows || [])
   } catch {
     return res.json([])
+  }
+})
+
+// Upsert substructure piler row (create/update)
+router.post('/inspection/substructure_piler/upsert', optionalAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.body?.inspectionId || req.body?.bridge_inspection_id || 0)
+    const pId = Number(req.body?.p_id || 0)
+    const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const table = await detectFirstExistingTable(['substructure_pilers'])
+    if (!table) return res.status(404).json({ success: false, message: 'Substructure piler table not found' })
+
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table]
+    )
+    const allowed = new Set((metaRows || []).map((r) => r.COLUMN_NAME))
+    const patch = {}
+    for (const [k, v] of Object.entries(dataObj || {})) {
+      if (k === 'p_id') continue
+      if (!allowed.has(k)) continue
+      patch[k] = v
+    }
+
+    patch.bridge_inspection_id = inspectionId
+    if (allowed.has('status') && (patch.status == null || patch.status === '')) patch.status = 'Active'
+    if (allowed.has('updated_by') && patch.updated_by == null) patch.updated_by = req.user?.uid || 0
+    if (allowed.has('updated_on') && patch.updated_on == null) patch.updated_on = new Date()
+    if (!pId) {
+      if (allowed.has('created_by') && patch.created_by == null) patch.created_by = req.user?.uid || 0
+      if (allowed.has('created_on') && patch.created_on == null) patch.created_on = new Date()
+    }
+
+    for (const c of metaRows || []) {
+      const key = c.COLUMN_NAME
+      if (!allowed.has(key)) continue
+      if (key === 'p_id') continue
+      if (patch[key] !== undefined && patch[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          patch[key] = first || 'Pending'
+        } else {
+          patch[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(patch).filter((k) => k !== 'p_id' && patch[k] !== undefined)
+    if (!cols.length) return res.status(400).json({ success: false, message: 'No fields to save' })
+
+    if (pId) {
+      const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
+      const setSql = setKeys.map((c) => `\`${c}\` = ?`).join(', ')
+      const vals = setKeys.map((k) => patch[k])
+      const [r] = await pool.query(
+        `UPDATE \`${table}\` SET ${setSql} WHERE p_id = ? AND bridge_inspection_id = ?`,
+        [...vals, pId, inspectionId]
+      )
+      return res.json({ success: true, data: { p_id: pId }, updated: (r.affectedRows || 0) > 0 })
+    }
+
+    const qCols = cols.map((c) => `\`${c}\``)
+    const vals = cols.map((k) => patch[k])
+    const [ins] = await pool.query(
+      `INSERT INTO \`${table}\` (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals
+    )
+    return res.json({ success: true, data: { p_id: Number(ins?.insertId || 0) } })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+// Soft-close substructure piler row
+router.post('/inspection/substructure_piler/close', optionalAuth, async (req, res) => {
+  try {
+    const id = Number(req.body?.p_id || 0)
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid p_id' })
+    const table = await detectFirstExistingTable(['substructure_pilers'])
+    if (!table) return res.status(404).json({ success: false, message: 'Substructure piler table not found' })
+    const [r] = await pool.query(`UPDATE \`${table}\` SET status = 'In-Active' WHERE p_id = ?`, [id])
+    return res.json({ success: (r.affectedRows || 0) > 0 })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
   }
 })
 
