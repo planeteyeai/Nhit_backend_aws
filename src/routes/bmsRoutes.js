@@ -20,6 +20,22 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const uploadRoot = path.resolve(__dirname, '../../upload')
 
+const NON_STRUCTURAL_TABLE_TYPES = new Map([
+  ['approaches', 'approaches'],
+  ['wearing coat', 'WEARING COAT'],
+  ['drainage spouts and vest holes', 'DRAINAGE SPOUTS AND VEST HOLES'],
+  ['handrails, parapets, crash barriers', 'HANDRAILS, PARAPETS, CRASH BARRIERS'],
+  ['footpaths', 'FOOTPATHS'],
+  ['utilities', 'UTILITIES'],
+  ['non-structural elements', 'NON-STRUCTURAL ELEMENTS'],
+])
+
+function canonicalNonStructuralTableType(value) {
+  const key = String(value || '').trim().toLowerCase()
+  if (!key) return null
+  return NON_STRUCTURAL_TABLE_TYPES.get(key) || null
+}
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 }
@@ -33,6 +49,57 @@ function normalizeUploadSubfolder(value, fallback = 'non_structural_elements') {
   if (!safe) return fallback
   if (!/^[a-zA-Z0-9_/-]+$/.test(safe)) return fallback
   return safe
+}
+function safeInspectionFolderSegment(value, fallback = 'common') {
+  const s = String(value || '').trim()
+  if (!s) return fallback
+  if (!/^[a-zA-Z0-9_-]+$/.test(s)) return fallback
+  return s
+}
+async function ensureInspection3DAssetsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bridge_inspection_3d_assets (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      bridge_inspection_id INT DEFAULT NULL,
+      bridge_id INT NOT NULL,
+      asset_type ENUM('glb','panorama','distress_icon') NOT NULL,
+      pano_face ENUM('right','left','top','bottom','front','back') DEFAULT NULL,
+      title VARCHAR(255) DEFAULT NULL,
+      distress_type VARCHAR(255) DEFAULT NULL,
+      distress_note TEXT DEFAULT NULL,
+      distress_x DECIMAL(12,4) DEFAULT NULL,
+      distress_y DECIMAL(12,4) DEFAULT NULL,
+      distress_z DECIMAL(12,4) DEFAULT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(512) NOT NULL,
+      original_name VARCHAR(255) DEFAULT NULL,
+      mime_type VARCHAR(128) DEFAULT NULL,
+      size_bytes BIGINT UNSIGNED DEFAULT NULL,
+      uploaded_by INT DEFAULT NULL,
+      created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_bi3da_inspection (bridge_inspection_id),
+      KEY idx_bi3da_bridge (bridge_id),
+      KEY idx_bi3da_asset_type (asset_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+}
+async function getBridgeIdByInspection(inspectionId) {
+  const safeId = Number(inspectionId || 0)
+  if (!safeId) return null
+  try {
+    const [rows] = await pool.query('SELECT bridge_id FROM bridge_inspection WHERE id = ? LIMIT 1', [safeId])
+    const bridgeId = Number(rows?.[0]?.bridge_id || 0) || null
+    if (bridgeId) return bridgeId
+  } catch {
+    // fallback below
+  }
+  try {
+    const [rows] = await pool.query('SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1', [safeId])
+    return Number(rows?.[0]?.bridge_id || 0) || null
+  } catch {
+    return null
+  }
 }
 ensureDir(uploadRoot)
 ensureDir(path.join(uploadRoot, 'download'))
@@ -52,6 +119,17 @@ const uploadStorage = multer.diskStorage({
     if (req.path.includes('/inspection/non_structural/upload_images')) {
       const subfolder = normalizeUploadSubfolder(req.query?.folder, 'non_structural_elements')
       const dir = path.join(uploadRoot, subfolder)
+      ensureDir(dir)
+      return cb(null, dir)
+    }
+    if (req.path.includes('/inspection/3d-assets/upload/')) {
+      const dir = path.join(uploadRoot, 'inspection_3d_assets', safeInspectionFolderSegment(req.params?.inspectionId))
+      ensureDir(dir)
+      return cb(null, dir)
+    }
+    if (req.path.includes('/bridges/') && req.path.includes('/3d-assets/upload')) {
+      const baseSegment = safeInspectionFolderSegment(req.body?.inspectionId || req.params?.bridgeId)
+      const dir = path.join(uploadRoot, 'inspection_3d_assets', baseSegment)
       ensureDir(dir)
       return cb(null, dir)
     }
@@ -150,6 +228,62 @@ const OVERALL_BRIDGE_RATING_DESCRIPTIONS = {
     condition: 'Critical condition',
     description:
       'Extent of deficiencies is very large/extensive. Severity of deficiencies is very high. >40% of area affected by some of the following: Honeycombing, Delamination, Spalling, major cracks, exposed reinforcement, >6 mm visible cracks and >5 % of section loss of superstructure, unevenness due to wear and tear, potholes on concrete surface, drainage spouts are non-functional. Bridge closed.',
+  },
+}
+
+const APPROACHES_RATING_DESCRIPTIONS = {
+  1: {
+    condition: 'Excellent condition',
+    description:
+      'No visible distress/ deterioration observed. Only constructional deficiencies may be present. Extent of deficiencies is nil or insignificant. Severity of deficiencies is very low.',
+  },
+  2: {
+    condition: 'Good condition',
+    description:
+      '0 to 5% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure. 0 to 1mm visible cracks and 0 to 5% of exposed reinforcement of concrete superstructure. 1 to 5% of unevenness on concrete Superstructure. No Section loss of superstructure',
+  },
+  3: {
+    condition: 'Fair condition',
+    description:
+      '5 to 25 % of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure. 1 to 4mm visible cracks and 5 to 25 % of exposed reinforcement of concrete superstructure. 5 to 25% of unevenness on concrete Superstructure. 0 to 3 % of Section loss of superstructure.',
+  },
+  4: {
+    condition: 'Poor condition',
+    description:
+      '25 to 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure. 4 to 6mm visible cracks and 25 to 40 % of exposed reinforcement of concrete superstructure. 25 to 40% of unevenness on concrete Superstructure. 3 to 5 % of Section loss of superstructure.',
+  },
+  5: {
+    condition: 'Critical condition',
+    description:
+      '> 40% of area effect of Honeycombing, Delamination, Spalling, Scaling, corrosion, Efflorescence and Leaching of the total Superstructure. > 6mm visible cracks and >40 % of exposed reinforcement of concrete superstructure. >40% of unevenness on concrete Superstructure. >5 % of Section loss of superstructure.',
+  },
+}
+
+const FOUNDATION_RATING_DESCRIPTIONS = {
+  1: {
+    condition: 'Excellent condition',
+    description:
+      'Foundation not visible and surrounded by dense soil, and no visibility of soil erosion',
+  },
+  2: {
+    condition: 'Good Condition',
+    description:
+      'Footing not visible and surrounded by soil, soil erosion is evident.',
+  },
+  3: {
+    condition: 'Fair condition',
+    description:
+      'Foundation top is visible and erosion is noticeable',
+  },
+  4: {
+    condition: 'Poor condition',
+    description:
+      'Foundation top and partial Foundation depth is visible due to erosion; Footing bottom/ piles stems are visible',
+  },
+  5: {
+    condition: 'Critical condition',
+    description:
+      'Complete footing is exposed and piles stems are exposed for a certain length; Bridge Closing is required for immediate R&R of foundation',
   },
 }
 
@@ -587,9 +721,12 @@ router.get('/bridge-list', async (req, res) => {
 router.get('/bridges/:bridgeId', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT b.*, s.state_name, s.state_code
+      `SELECT b.*, s.state_name, s.state_code,
+              COALESCE(zc.zone_name, zi.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
+       LEFT JOIN zone zc ON zc.zone_code = TRIM(b.zone)
+       LEFT JOIN zone zi ON zi.zone_id = b.zone
        WHERE b.bridge_id = ? LIMIT 1`,
       [req.params.bridgeId]
     )
@@ -1085,10 +1222,34 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
     }
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
-              brc.comment AS rejection_comment, brc.comment_on AS rejection_date
+              brc.comment AS rejection_comment, brc.comment_on AS rejection_date,
+              sreg.si_id AS schedule_regular_si_id,
+              sreg.status AS schedule_regular_status,
+              sreg.updated_on AS schedule_regular_at,
+              sadh.adhoc_inspecion_id AS schedule_adhoc_id,
+              sadh.status AS schedule_adhoc_status,
+              sadh.updated_on AS schedule_adhoc_at
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
        LEFT JOIN bridge_rejection_comment brc ON brc.bridge_id = b.bridge_id
+       LEFT JOIN (
+         SELECT si1.*
+         FROM schedule_inspecion si1
+         INNER JOIN (
+           SELECT bridge_id, MAX(si_id) AS mx_si
+           FROM schedule_inspecion
+           GROUP BY bridge_id
+         ) zr ON zr.bridge_id = si1.bridge_id AND zr.mx_si = si1.si_id
+       ) sreg ON sreg.bridge_id = b.bridge_id
+       LEFT JOIN (
+         SELECT a1.*
+         FROM schedule_adhoc_inspecion a1
+         INNER JOIN (
+           SELECT bridge_id, MAX(adhoc_inspecion_id) AS mx_ad
+           FROM schedule_adhoc_inspecion
+           GROUP BY bridge_id
+         ) za ON za.bridge_id = a1.bridge_id AND za.mx_ad = a1.adhoc_inspecion_id
+       ) sadh ON sadh.bridge_id = b.bridge_id
        WHERE ${where}
        ORDER BY b.bridge_id DESC LIMIT 500`
     )
@@ -1257,7 +1418,52 @@ router.get('/inspection/foundation/:inspectionId', async (req, res) => {
        ORDER BY foundation_id ASC`,
       [inspectionId]
     )
-    res.json({ success: true, data: rows })
+    if (Array.isArray(rows) && rows.length) {
+      return res.json({ success: true, data: rows })
+    }
+
+    // Legacy fallback: pre-filled bridge master data may exist only in foundation_bridge.
+    const [inspectionRows] = await pool.query(
+      'SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1',
+      [inspectionId]
+    )
+    const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+    if (!bridgeId) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const [legacyRows] = await pool.query(
+      `SELECT foundation_type, material, status, updated_on
+       FROM foundation_bridge
+       WHERE bridge_id = ? AND (status IS NULL OR status <> 'In-Active')
+       ORDER BY foundation_bridge_id DESC
+       LIMIT 1`,
+      [bridgeId]
+    )
+
+    if (!Array.isArray(legacyRows) || !legacyRows.length) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const legacy = legacyRows[0] || {}
+    return res.json({
+      success: true,
+      data: [
+        {
+          foundation_id: null,
+          bridge_inspection_id: inspectionId,
+          foundation_name: '',
+          foundation_type: legacy.foundation_type || '',
+          material: legacy.material || '',
+          floating_bodies_boulders: '',
+          condition_of_foundation: '',
+          seepage_vehicle_impact: '',
+          status: legacy.status || 'Active',
+          created_on: null,
+          updated_on: legacy.updated_on || null,
+        },
+      ],
+    })
   } catch (e) {
     console.error(e)
     res.status(500).json({ success: false, message: e.message })
@@ -1399,16 +1605,18 @@ router.get('/inspection/distress/:inspectionId', async (req, res) => {
     const componentName = String(req.query?.component_name || '').trim()
     const where = ['bridge_inspection_id = ?']
     const params = [inspectionId]
+    const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
     if (tableType) {
       where.push('table_type = ?')
-      params.push(tableType)
+      params.push(nonStructuralTableType || tableType)
     }
     if (componentName) {
       where.push('id IN (SELECT inspection_distress_id FROM inspection_cause_rating WHERE bridge_inspection_id = ? AND component_name = ?)')
       params.push(inspectionId, componentName)
     }
+    const sourceTable = nonStructuralTableType ? 'non_structural_distress' : 'bridge_inspection_distress'
     const [rows] = await pool.query(
-      `SELECT * FROM bridge_inspection_distress WHERE ${where.join(' AND ')} ORDER BY id`,
+      `SELECT * FROM ${sourceTable} WHERE ${where.join(' AND ')} ORDER BY id`,
       params
     )
     res.json(rows)
@@ -1456,6 +1664,179 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
 
     await conn.beginTransaction()
 
+    const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
+    if (nonStructuralTableType) {
+      const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
+      if (incomingIds.length) {
+        await conn.query(
+          `DELETE FROM non_structural_distress
+           WHERE bridge_inspection_id = ? AND table_type = ? AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+          [inspectionId, nonStructuralTableType, ...incomingIds]
+        )
+      } else {
+        await conn.query(
+          'DELETE FROM non_structural_distress WHERE bridge_inspection_id = ? AND table_type = ?',
+          [inspectionId, nonStructuralTableType]
+        )
+      }
+
+      const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+      const distressNosOrNull = (v) => {
+        if (v === '' || v == null || v === undefined) return null
+        const n = Number(v)
+        if (!Number.isFinite(n) || n < 0) return null
+        return Math.floor(n)
+      }
+
+      for (const row of rows) {
+        const distressType = String(row?.distress_type || '').trim()
+        if (!distressType) continue
+
+        const id = Number(row?.id || 0)
+        const distressImagesValue = Array.isArray(row?.images)
+          ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
+          : String(row?.images || row?.distress_images || '').trim()
+
+        let distressId = id
+        if (distressId > 0) {
+          await conn.query(
+            `UPDATE non_structural_distress
+             SET table_type = ?, element_type = ?, element_description = ?, distress_type = ?, field_type = ?, name_of_span = ?,
+                 distress_length = ?, distress_width = ?, distress_depth = ?, distress_nos = ?,
+                 distance_of_distress_x = ?, distance_of_distress_y = ?,
+                 abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?, foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?,
+                 condition_rating = ?, material = ?, maintenance_required = ?, priority_level = ?, inspection_notes = ?, images = ?,
+                 repair_methodology = ?, status = 'Active', updated_by = ?, updated_on = NOW()
+             WHERE id = ? AND bridge_inspection_id = ?`,
+            [
+              nonStructuralTableType,
+              String(row?.element_type || row?.element || '').trim() || null,
+              String(row?.element_description || '').trim() || null,
+              distressType,
+              String(row?.field_type || '').trim() || null,
+              String(row?.name_of_span || '').trim() || null,
+              numeric(row?.distress_length),
+              numeric(row?.distress_width),
+              numeric(row?.distress_depth),
+              distressNosOrNull(row?.distress_nos),
+              numeric(row?.distance_of_distress_x),
+              numeric(row?.distance_of_distress_y),
+              numeric(row?.abutment_A1),
+              numeric(row?.abutment_A2),
+              numeric(row?.piers),
+              numeric(row?.spans),
+              numeric(row?.foundation),
+              numeric(row?.expansion),
+              numeric(row?.lhs_distress),
+              numeric(row?.rhs_distress),
+              String(row?.condition_rating || '').trim() || null,
+              String(row?.material || '').trim() || null,
+              String(row?.maintenance_required || '').trim() || null,
+              String(row?.priority_level || '').trim() || null,
+              String(row?.inspection_notes || '').trim() || null,
+              distressImagesValue || null,
+              String(row?.repair_methodology || '').trim() || null,
+              userId,
+              distressId,
+              inspectionId,
+            ]
+          )
+        } else {
+          const [ins] = await conn.query(
+            `INSERT INTO non_structural_distress
+             (bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
+              distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
+              abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
+              condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
+              created_by, created_on, repair_methodology)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Active',?,NOW(),?)`,
+            [
+              inspectionId,
+              nonStructuralTableType,
+              String(row?.element_type || row?.element || '').trim() || null,
+              String(row?.element_description || '').trim() || null,
+              distressType,
+              String(row?.field_type || '').trim() || null,
+              String(row?.name_of_span || '').trim() || null,
+              numeric(row?.distress_length),
+              numeric(row?.distress_width),
+              numeric(row?.distress_depth),
+              distressNosOrNull(row?.distress_nos),
+              numeric(row?.distance_of_distress_x),
+              numeric(row?.distance_of_distress_y),
+              numeric(row?.abutment_A1),
+              numeric(row?.abutment_A2),
+              numeric(row?.piers),
+              numeric(row?.spans),
+              numeric(row?.foundation),
+              numeric(row?.expansion),
+              numeric(row?.lhs_distress),
+              numeric(row?.rhs_distress),
+              String(row?.condition_rating || '').trim() || null,
+              String(row?.material || '').trim() || null,
+              String(row?.maintenance_required || '').trim() || null,
+              String(row?.priority_level || '').trim() || null,
+              String(row?.inspection_notes || '').trim() || null,
+              distressImagesValue || null,
+              userId,
+              String(row?.repair_methodology || '').trim() || null,
+            ]
+          )
+          distressId = Number(ins?.insertId || 0)
+        }
+
+        const ratings = row?.ratings && typeof row.ratings === 'object' ? row.ratings : {}
+        const [existingCR] = await conn.query(
+          'SELECT id FROM inspection_cause_rating WHERE inspection_distress_id = ? LIMIT 1',
+          [distressId]
+        )
+        const causeData = [
+          inspectionId,
+          componentName,
+          numeric(ratings.foundation),
+          numeric(ratings.wearing_coat),
+          numeric(ratings.expansion_joint),
+          numeric(ratings.superstructure),
+          distressType,
+          numeric(ratings.impact),
+          numeric(ratings.abrasion),
+          numeric(ratings.erosion),
+          numeric(ratings.overload),
+          numeric(ratings.fatigue),
+          numeric(ratings.temprature),
+          numeric(ratings.shrinkage),
+          numeric(ratings.settlement),
+          numeric(ratings.carbon_dioxide),
+          numeric(ratings.sulphates),
+          numeric(ratings.carbonation),
+          numeric(ratings.alkali),
+        ]
+        if (existingCR[0]?.id) {
+          await conn.query(
+            `UPDATE inspection_cause_rating
+             SET bridge_inspection_id = ?, component_name = ?, foundation = ?, wearing_coat = ?, expansion_joint = ?, superstructure = ?,
+                 distress_type = ?, impact = ?, abrasion = ?, erosion = ?, overload = ?, fatigue = ?, temprature = ?, shrinkage = ?,
+                 settlement = ?, carbon_dioxide = ?, sulphates = ?, carbonation = ?, alkali = ?, updated_by = ?, updated_on = CURDATE()
+             WHERE id = ?`,
+            [...causeData, userId, existingCR[0].id]
+          )
+        } else {
+          const causeId = await nextId('inspection_cause_rating', 'id')
+          await conn.query(
+            `INSERT INTO inspection_cause_rating
+             (id, inspection_distress_id, bridge_inspection_id, component_name, foundation, wearing_coat, expansion_joint, superstructure,
+              distress_type, impact, abrasion, erosion, overload, fatigue, temprature, shrinkage, settlement, carbon_dioxide, sulphates,
+              carbonation, alkali, updated_by, updated_on)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+            [causeId, distressId, ...causeData, userId]
+          )
+        }
+      }
+
+      await conn.commit()
+      return res.json({ success: true })
+    }
+
     const [distressCols] = await conn.query(
       `SELECT COLUMN_NAME
        FROM information_schema.COLUMNS
@@ -1464,6 +1845,13 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     const distressColSet = new Set((distressCols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
     const distressImagesCol =
       (['images', 'distress_images', 'distress_image', 'image'].find((c) => distressColSet.has(c)) || null)
+    const hasDistressNosCol = distressColSet.has('distress_nos')
+    const distressNosOrNull = (v) => {
+      if (v === '' || v == null || v === undefined) return null
+      const n = Number(v)
+      if (!Number.isFinite(n) || n < 0) return null
+      return Math.min(4294967295, Math.floor(n))
+    }
 
     // keep only ids submitted for this table_type
     const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
@@ -1485,6 +1873,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       if (!distressType) continue
       const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
       const id = Number(row?.id || 0)
+      const distressNosVal = hasDistressNosCol ? distressNosOrNull(row?.distress_nos) : null
       const baseData = [
         distressType,
         String(row?.name_of_span || '').trim() || null,
@@ -1492,6 +1881,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         numeric(row?.distress_length),
         numeric(row?.distress_width),
         numeric(row?.distress_depth),
+        ...(hasDistressNosCol ? [distressNosVal] : []),
         numeric(row?.distance_of_distress_x),
         numeric(row?.distance_of_distress_y),
         numeric(row?.abutment_A1),
@@ -1546,6 +1936,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
           `UPDATE bridge_inspection_distress
            SET distress_type = ?, name_of_span = ?, field_type = ?,
                distress_length = ?, distress_width = ?, distress_depth = ?,
+               ${hasDistressNosCol ? 'distress_nos = ?, ' : ''}
                distance_of_distress_x = ?, distance_of_distress_y = ?,
                abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?,
                foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?${updateSetImages}
@@ -1554,10 +1945,32 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         )
       } else {
         distressId = await nextId('bridge_inspection_distress', 'id')
+        const measureCols = hasDistressNosCol
+          ? [
+              'distress_length',
+              'distress_width',
+              'distress_depth',
+              'distress_nos',
+              'distance_of_distress_x',
+              'distance_of_distress_y',
+            ]
+          : ['distress_length', 'distress_width', 'distress_depth', 'distance_of_distress_x', 'distance_of_distress_y']
         const insertCols = [
-          'id', 'bridge_inspection_id', 'table_type', 'distress_type', 'name_of_span', 'field_type',
-          'distress_length', 'distress_width', 'distress_depth', 'distance_of_distress_x', 'distance_of_distress_y',
-          'abutment_A1', 'abutment_A2', 'piers', 'spans', 'foundation', 'expansion', 'lhs_distress', 'rhs_distress',
+          'id',
+          'bridge_inspection_id',
+          'table_type',
+          'distress_type',
+          'name_of_span',
+          'field_type',
+          ...measureCols,
+          'abutment_A1',
+          'abutment_A2',
+          'piers',
+          'spans',
+          'foundation',
+          'expansion',
+          'lhs_distress',
+          'rhs_distress',
         ]
         const insertVals = [distressId, inspectionId, tableType, ...baseData]
         if (distressImagesCol) {
@@ -1898,7 +2311,7 @@ router.get('/inspection/download_pdf/:inspectionId', requireAuth, async (req, re
   }
 })
 
-// PHP parity: bmc/Boq::save_repair_methodology (supports bridge_inspection_distress + non_structural_elements +
+// PHP parity: bmc/Boq::save_repair_methodology (supports bridge_inspection_distress + non_structural_distress +
 // inspection_component_rating (bearing) + bearing_and_pedistal_condition (pedestal))
 router.post('/index.php/bmc/boq/save_repair_methodology', requireAuth, async (req, res) => {
   try {
@@ -1943,19 +2356,19 @@ router.post('/index.php/bmc/boq/save_repair_methodology', requireAuth, async (re
       const tableType = String(item?.table_type || item?.tableType || '')
       const newRm = normalizeRm(item?.repair_methodology ?? item?.repairMethodology ?? '')
 
-      // 1) non_structural_elements
+      // 1) non_structural_distress
       try {
         const [nsRows] = await pool.query(
-          `SELECT repair_methodology FROM non_structural_elements
-           WHERE non_structural_element_id = ? AND bridge_inspection_id = ? LIMIT 1`,
+          `SELECT repair_methodology FROM non_structural_distress
+           WHERE id = ? AND bridge_inspection_id = ? LIMIT 1`,
           [id, bridgeInspectionId]
         )
         if (nsRows[0]) {
           const existing = String(nsRows[0].repair_methodology ?? '').trim()
           if (existing !== newRm) {
             await pool.query(
-              `UPDATE non_structural_elements SET repair_methodology = ?, updated_by = ?, updated_on = NOW()
-               WHERE non_structural_element_id = ? AND bridge_inspection_id = ?`,
+              `UPDATE non_structural_distress SET repair_methodology = ?, updated_by = ?, updated_on = NOW()
+               WHERE id = ? AND bridge_inspection_id = ?`,
               [newRm, req.user?.uid || 0, id, bridgeInspectionId]
             )
             savedCount++
@@ -2207,7 +2620,10 @@ router.post('/inspection/deleteDistress', requireAuth, async (req, res) => {
     const id = Number(req.body?.id || 0)
     if (!id) return res.status(400).json({ status: 'error', message: 'Invalid id' })
     await pool.query('DELETE FROM inspection_cause_rating WHERE inspection_distress_id = ?', [id]).catch(() => {})
-    const [r] = await pool.query('DELETE FROM bridge_inspection_distress WHERE id = ? LIMIT 1', [id])
+    let [r] = await pool.query('DELETE FROM bridge_inspection_distress WHERE id = ? LIMIT 1', [id])
+    if (!(r.affectedRows || 0)) {
+      ;[r] = await pool.query('DELETE FROM non_structural_distress WHERE id = ? LIMIT 1', [id])
+    }
     const ok = (r.affectedRows || 0) > 0
     return res.json({ status: ok ? 'success' : 'error' })
   } catch (e) {
@@ -3081,11 +3497,28 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
     if (!ratingId || !componentType) {
       return res.status(400).json({ message: 'rating_id and component_type are required' })
     }
+    const normalizedType = componentType.toLowerCase()
+    const foundationId = Number(body.foundation_id || 0)
+    const superstructureId = Number(body.superstructure_id || 0)
+    const expansionJointId = Number(body.expansion_joint_id || 0)
+    let scopedWhere = ''
+    const scopedParams = []
+    if (normalizedType === 'foundation' && foundationId > 0) {
+      scopedWhere = ' AND foundation_id = ?'
+      scopedParams.push(foundationId)
+    } else if (normalizedType === 'superstructure' && superstructureId > 0) {
+      scopedWhere = ' AND superstructure_id = ?'
+      scopedParams.push(superstructureId)
+    } else if ((normalizedType === 'expansion' || normalizedType === 'expansion_joint') && expansionJointId > 0) {
+      scopedWhere = ' AND expansion_joint_id = ?'
+      scopedParams.push(expansionJointId)
+    }
     const [existing] = await pool.query(
       `SELECT id FROM inspection_component_rating
        WHERE bridge_inspection_id = ? AND component_type = ? AND status = 'Active'
+       ${scopedWhere}
        ORDER BY id DESC LIMIT 1`,
-      [inspectionId, componentType]
+      [inspectionId, componentType, ...scopedParams]
     )
     if (existing[0]) {
       await pool.query(
@@ -3173,6 +3606,12 @@ router.get('/inspection/rating_descriptions/:ratingType', async (req, res) => {
   if (ratingType === 'overall_bridge_rating') {
     return res.json(OVERALL_BRIDGE_RATING_DESCRIPTIONS)
   }
+  if (ratingType === 'approaches_rating' || ratingType === 'subways_rating') {
+    return res.json(APPROACHES_RATING_DESCRIPTIONS)
+  }
+  if (ratingType === 'foundation_rating') {
+    return res.json(FOUNDATION_RATING_DESCRIPTIONS)
+  }
   return res.json(RATING_DESCRIPTION_DEFAULT)
 })
 
@@ -3188,28 +3627,78 @@ for (const sub of [
 router.post('/inspection/save_non_structural', requireAuth, async (req, res) => {
   try {
     const b = req.body || {}
+    const ALLOWED_NON_STRUCTURAL_TABLE_TYPES = new Map([
+      ['approaches', 'approaches'],
+      ['wearing coat', 'WEARING COAT'],
+      ['drainage spouts and vest holes', 'DRAINAGE SPOUTS AND VEST HOLES'],
+      ['handrails, parapets, crash barriers', 'HANDRAILS, PARAPETS, CRASH BARRIERS'],
+      ['footpaths', 'FOOTPATHS'],
+      ['utilities', 'UTILITIES'],
+      ['non-structural elements', 'NON-STRUCTURAL ELEMENTS'],
+    ])
+    const rawTableType = String(
+      b.table_type ||
+      b.tableType ||
+      b.element_type ||
+      b.component_name ||
+      b.componentName ||
+      'NON-STRUCTURAL ELEMENTS'
+    ).trim()
+    const tableTypeKey = rawTableType.toLowerCase()
+    const tableType = ALLOWED_NON_STRUCTURAL_TABLE_TYPES.get(tableTypeKey)
+    if (!tableType) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid table_type. Allowed values: approaches, WEARING COAT, DRAINAGE SPOUTS AND VEST HOLES, HANDRAILS, PARAPETS, CRASH BARRIERS, FOOTPATHS, UTILITIES, NON-STRUCTURAL ELEMENTS',
+      })
+    }
+    const numeric = (v) => {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    }
+    const nos = (() => {
+      if (b.distress_nos === '' || b.nos_value === '' || b.distress_nos == null || b.nos_value == null) return null
+      const n = Number(b.distress_nos ?? b.nos_value)
+      if (!Number.isFinite(n) || n < 0) return null
+      return Math.floor(n)
+    })()
     const [r] = await pool.query(
-      `INSERT INTO non_structural_elements
-       (bridge_inspection_id, element_type, element_description, l_value, w_value, d_value, nos_value,
-        condition_rating, location, material, distress_type, maintenance_required, priority_level,
-        inspection_notes, images, status, created_by, created_on, repair_methodology)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)`,
+      `INSERT INTO non_structural_distress
+       (bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
+        distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
+        abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
+        condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
+        created_by, created_on, repair_methodology)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)`,
       [
         b.bridge_inspection_id || b.inspection_id || null,
-        b.element_type || b.table_type || '',
+        tableType,
+        b.element_type || '',
         b.element_description || '',
-        b.l_value ?? b.distress_length ?? null,
-        b.w_value ?? b.distress_width ?? null,
-        b.d_value ?? b.distress_depth ?? null,
-        b.nos_value ?? null,
-        b.condition_rating ?? null,
-        b.location ?? `${b.distance_of_distress_x || ''},${b.distance_of_distress_y || ''}`.trim(),
-        b.material ?? '',
         b.distress_type ?? '',
+        b.field_type ?? null,
+        b.name_of_span ?? null,
+        numeric(b.distress_length ?? b.l_value),
+        numeric(b.distress_width ?? b.w_value),
+        numeric(b.distress_depth ?? b.d_value),
+        nos,
+        numeric(b.distance_of_distress_x),
+        numeric(b.distance_of_distress_y),
+        numeric(b.abutment_A1),
+        numeric(b.abutment_A2),
+        numeric(b.piers),
+        numeric(b.spans),
+        numeric(b.foundation),
+        numeric(b.expansion),
+        numeric(b.lhs_distress),
+        numeric(b.rhs_distress),
+        b.condition_rating ?? null,
+        b.material ?? '',
         b.maintenance_required ?? '',
         b.priority_level ?? '',
         b.inspection_notes ?? '',
-        b.images ? JSON.stringify(b.images) : null,
+        Array.isArray(b.images) ? b.images.filter(Boolean).map((x) => String(x).trim()).join(',') : (b.images || null),
         'Active',
         req.user?.uid || null,
         b.repair_methodology ?? '',
@@ -3223,12 +3712,14 @@ router.post('/inspection/save_non_structural', requireAuth, async (req, res) => 
 router.get('/inspection/non_structural/:id', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT non_structural_element_id AS id, bridge_inspection_id, element_type AS table_type,
-              distress_type, l_value AS distress_length, w_value AS distress_width, d_value AS distress_depth,
-              nos_value, images, location, repair_methodology, created_on
-       FROM non_structural_elements
+      `SELECT id, bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
+              distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
+              abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
+              condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
+              created_by, created_on, updated_by, updated_on, repair_methodology
+       FROM non_structural_distress
        WHERE bridge_inspection_id = ? AND status = 'Active'
-       ORDER BY non_structural_element_id DESC`,
+       ORDER BY id DESC`,
       [req.params.id]
     )
     res.json(rows)
@@ -3239,21 +3730,76 @@ router.get('/inspection/non_structural/:id', async (req, res) => {
 router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
   try {
     const b = req.body || {}
-    const imagesPayload = Array.isArray(b.images) ? JSON.stringify(b.images) : b.images ?? null
+    const ALLOWED_NON_STRUCTURAL_TABLE_TYPES = new Map([
+      ['approaches', 'approaches'],
+      ['wearing coat', 'WEARING COAT'],
+      ['drainage spouts and vest holes', 'DRAINAGE SPOUTS AND VEST HOLES'],
+      ['handrails, parapets, crash barriers', 'HANDRAILS, PARAPETS, CRASH BARRIERS'],
+      ['footpaths', 'FOOTPATHS'],
+      ['utilities', 'UTILITIES'],
+      ['non-structural elements', 'NON-STRUCTURAL ELEMENTS'],
+    ])
+    const rawTableType = String(
+      b.table_type || b.tableType || b.element_type || b.component_name || b.componentName || 'NON-STRUCTURAL ELEMENTS'
+    ).trim()
+    const tableTypeKey = rawTableType.toLowerCase()
+    const tableType = ALLOWED_NON_STRUCTURAL_TABLE_TYPES.get(tableTypeKey)
+    if (!tableType) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid table_type. Allowed values: approaches, WEARING COAT, DRAINAGE SPOUTS AND VEST HOLES, HANDRAILS, PARAPETS, CRASH BARRIERS, FOOTPATHS, UTILITIES, NON-STRUCTURAL ELEMENTS',
+      })
+    }
+    const numeric = (v) => {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    }
+    const nos = (() => {
+      if (b.distress_nos === '' || b.nos_value === '' || b.distress_nos == null || b.nos_value == null) return null
+      const n = Number(b.distress_nos ?? b.nos_value)
+      if (!Number.isFinite(n) || n < 0) return null
+      return Math.floor(n)
+    })()
+    const imagesPayload = Array.isArray(b.images)
+      ? b.images.filter(Boolean).map((x) => String(x).trim()).join(',')
+      : b.images ?? null
     await pool.query(
-      `UPDATE non_structural_elements
-       SET element_type = ?, distress_type = ?, l_value = ?, w_value = ?, d_value = ?, nos_value = ?, images = ?, location = ?,
+      `UPDATE non_structural_distress
+       SET table_type = ?, element_type = ?, element_description = ?, distress_type = ?, field_type = ?, name_of_span = ?,
+           distress_length = ?, distress_width = ?, distress_depth = ?, distress_nos = ?,
+           distance_of_distress_x = ?, distance_of_distress_y = ?,
+           abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?, foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?,
+           condition_rating = ?, material = ?, maintenance_required = ?, priority_level = ?, inspection_notes = ?, images = ?,
            repair_methodology = ?, updated_by = ?, updated_on = NOW()
-       WHERE non_structural_element_id = ?`,
+       WHERE id = ?`,
       [
-        b.element_type || b.table_type || '',
+        tableType,
+        b.element_type || '',
+        b.element_description || '',
         b.distress_type || '',
-        b.l_value ?? b.distress_length ?? null,
-        b.w_value ?? b.distress_width ?? null,
-        b.d_value ?? b.distress_depth ?? null,
-        b.nos_value ?? null,
+        b.field_type ?? null,
+        b.name_of_span ?? null,
+        numeric(b.distress_length ?? b.l_value),
+        numeric(b.distress_width ?? b.w_value),
+        numeric(b.distress_depth ?? b.d_value),
+        nos,
+        numeric(b.distance_of_distress_x),
+        numeric(b.distance_of_distress_y),
+        numeric(b.abutment_A1),
+        numeric(b.abutment_A2),
+        numeric(b.piers),
+        numeric(b.spans),
+        numeric(b.foundation),
+        numeric(b.expansion),
+        numeric(b.lhs_distress),
+        numeric(b.rhs_distress),
+        b.condition_rating ?? null,
+        b.material ?? '',
+        b.maintenance_required ?? '',
+        b.priority_level ?? '',
+        b.inspection_notes ?? '',
         imagesPayload,
-        b.location ?? `${b.distance_of_distress_x || ''},${b.distance_of_distress_y || ''}`.trim(),
         b.repair_methodology ?? '',
         req.user?.uid || null,
         req.params.id,
@@ -3267,8 +3813,8 @@ router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
 router.delete('/inspection/non_structural/:id', requireAuth, async (req, res) => {
   try {
     await pool.query(
-      `UPDATE non_structural_elements SET status = 'Inactive', updated_by = ?, updated_on = NOW()
-       WHERE non_structural_element_id = ?`,
+      `UPDATE non_structural_distress SET status = 'Inactive', updated_by = ?, updated_on = NOW()
+       WHERE id = ?`,
       [req.user?.uid || null, req.params.id]
     )
     res.json({ success: true })
@@ -3280,6 +3826,148 @@ router.post('/inspection/non_structural/upload_images', optionalAuth, upload.arr
   const files = (req.files || []).map((f) => f.filename)
   if (!files.length) return res.status(400).json({ status: 'error', message: 'No files selected' })
   res.json({ status: 'success', files, message: 'Images uploaded successfully' })
+})
+router.get('/inspection/3d-assets/:inspectionId', optionalAuth, async (req, res) => {
+  try {
+    await ensureInspection3DAssetsTable()
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ message: 'Invalid inspectionId' })
+
+    const [rows] = await pool.query(
+      `SELECT *
+       FROM bridge_inspection_3d_assets
+       WHERE bridge_inspection_id = ?
+       ORDER BY FIELD(asset_type, 'glb', 'panorama', 'distress_icon'), id ASC`,
+      [inspectionId]
+    )
+    res.json({ status: 'success', data: rows })
+  } catch (e) {
+    console.error('3D assets list error:', e)
+    res.status(500).json({ message: 'Failed to fetch 3D assets' })
+  }
+})
+router.get('/bridges/:bridgeId/3d-assets', optionalAuth, async (req, res) => {
+  try {
+    await ensureInspection3DAssetsTable()
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+
+    const [rows] = await pool.query(
+      `SELECT *
+       FROM bridge_inspection_3d_assets
+       WHERE bridge_id = ?
+       ORDER BY FIELD(asset_type, 'glb', 'panorama', 'distress_icon'), id ASC`,
+      [bridgeId]
+    )
+    res.json({ status: 'success', data: rows })
+  } catch (e) {
+    console.error('Bridge 3D assets list error:', e)
+    res.status(500).json({ message: 'Failed to fetch bridge 3D assets' })
+  }
+})
+router.post('/inspection/3d-assets/upload/:inspectionId', optionalAuth, upload.array('files', 20), async (req, res) => {
+  try {
+    await ensureInspection3DAssetsTable()
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ message: 'Invalid inspectionId' })
+
+    const assetType = String(req.body?.assetType || '').trim().toLowerCase()
+    const validAssetTypes = new Set(['glb', 'panorama', 'distress_icon'])
+    if (!validAssetTypes.has(assetType)) {
+      return res.status(400).json({ message: 'assetType must be glb, panorama, or distress_icon' })
+    }
+
+    const validPanoFaces = new Set(['right', 'left', 'top', 'bottom', 'front', 'back'])
+    const panoFaceRaw = String(req.body?.panoFace || '').trim().toLowerCase()
+    const panoFace = validPanoFaces.has(panoFaceRaw) ? panoFaceRaw : null
+
+    const files = Array.isArray(req.files) ? req.files : []
+    if (!files.length) return res.status(400).json({ message: 'No files uploaded' })
+
+    const bridgeId = await getBridgeIdByInspection(inspectionId)
+    if (!bridgeId) return res.status(400).json({ message: 'Inspection is not linked with a valid bridge' })
+    const userId = Number(req.user?.uid || req.user?.id || req.user?.userid || 0) || null
+    const title = String(req.body?.title || '').trim() || null
+    const distressType = String(req.body?.distressType || '').trim() || null
+    const distressNote = String(req.body?.distressNote || '').trim() || null
+    const distressX = req.body?.distressX === '' || req.body?.distressX == null ? null : Number(req.body?.distressX)
+    const distressY = req.body?.distressY === '' || req.body?.distressY == null ? null : Number(req.body?.distressY)
+    const distressZ = req.body?.distressZ === '' || req.body?.distressZ == null ? null : Number(req.body?.distressZ)
+
+    const inserted = []
+    for (const f of files) {
+      const relPath = `upload/inspection_3d_assets/${safeInspectionFolderSegment(inspectionId)}/${f.filename}`
+      const [result] = await pool.query(
+        `INSERT INTO bridge_inspection_3d_assets
+         (bridge_inspection_id, bridge_id, asset_type, pano_face, title, distress_type, distress_note, distress_x, distress_y, distress_z,
+          file_name, file_path, original_name, mime_type, size_bytes, uploaded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          inspectionId, bridgeId, assetType, panoFace, title, distressType, distressNote, distressX, distressY, distressZ,
+          f.filename, relPath, f.originalname || null, f.mimetype || null, f.size || null, userId,
+        ]
+      )
+      inserted.push({
+        id: result.insertId,
+        file_name: f.filename,
+        file_path: relPath,
+        asset_type: assetType,
+        pano_face: panoFace,
+      })
+    }
+
+    res.json({ status: 'success', data: inserted, message: '3D assets uploaded successfully' })
+  } catch (e) {
+    console.error('3D assets upload error:', e)
+    res.status(500).json({ message: 'Failed to upload 3D assets' })
+  }
+})
+router.post('/bridges/:bridgeId/3d-assets/upload', optionalAuth, upload.array('files', 20), async (req, res) => {
+  try {
+    await ensureInspection3DAssetsTable()
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+
+    const inspectionId = Number(req.body?.inspectionId || 0) || null
+    const assetType = String(req.body?.assetType || '').trim().toLowerCase()
+    const validAssetTypes = new Set(['glb', 'panorama', 'distress_icon'])
+    if (!validAssetTypes.has(assetType)) {
+      return res.status(400).json({ message: 'assetType must be glb, panorama, or distress_icon' })
+    }
+    const validPanoFaces = new Set(['right', 'left', 'top', 'bottom', 'front', 'back'])
+    const panoFaceRaw = String(req.body?.panoFace || '').trim().toLowerCase()
+    const panoFace = validPanoFaces.has(panoFaceRaw) ? panoFaceRaw : null
+    const files = Array.isArray(req.files) ? req.files : []
+    if (!files.length) return res.status(400).json({ message: 'No files uploaded' })
+
+    const userId = Number(req.user?.uid || req.user?.id || req.user?.userid || 0) || null
+    const title = String(req.body?.title || '').trim() || null
+    const distressType = String(req.body?.distressType || '').trim() || null
+    const distressNote = String(req.body?.distressNote || '').trim() || null
+    const distressX = req.body?.distressX === '' || req.body?.distressX == null ? null : Number(req.body?.distressX)
+    const distressY = req.body?.distressY === '' || req.body?.distressY == null ? null : Number(req.body?.distressY)
+    const distressZ = req.body?.distressZ === '' || req.body?.distressZ == null ? null : Number(req.body?.distressZ)
+
+    const inserted = []
+    for (const f of files) {
+      const relPath = `upload/inspection_3d_assets/${safeInspectionFolderSegment(inspectionId || bridgeId)}/${f.filename}`
+      const [result] = await pool.query(
+        `INSERT INTO bridge_inspection_3d_assets
+         (bridge_inspection_id, bridge_id, asset_type, pano_face, title, distress_type, distress_note, distress_x, distress_y, distress_z,
+          file_name, file_path, original_name, mime_type, size_bytes, uploaded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          inspectionId, bridgeId, assetType, panoFace, title, distressType, distressNote, distressX, distressY, distressZ,
+          f.filename, relPath, f.originalname || null, f.mimetype || null, f.size || null, userId,
+        ]
+      )
+      inserted.push({ id: result.insertId, file_name: f.filename, file_path: relPath, asset_type: assetType, pano_face: panoFace })
+    }
+    res.json({ status: 'success', data: inserted, message: 'Bridge 3D assets uploaded successfully' })
+  } catch (e) {
+    console.error('Bridge 3D assets upload error:', e)
+    res.status(500).json({ message: 'Failed to upload bridge 3D assets' })
+  }
 })
 router.get('/inspection/bridge_details/:bridgeId', async (req, res) => {
   const [rows] = await pool.query('SELECT * FROM bridge WHERE bridge_id = ?', [req.params.bridgeId])
@@ -3530,7 +4218,47 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
       `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
       [inspectionId]
     )
-    res.json(fromDbComponentPayload(key, rows[0] || null))
+    if (rows[0]) {
+      return res.json(fromDbComponentPayload(key, rows[0] || null))
+    }
+
+    // Legacy compatibility: some older datasets store protection works against bridge_id
+    // in `protection_works_bridge` only. Fallback so already-filled values are visible.
+    if (key === 'protection_works') {
+      const [inspectionRows] = await pool.query(
+        `SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1`,
+        [inspectionId]
+      )
+      const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+      if (bridgeId) {
+        const [legacyRows] = await pool.query(
+          `SELECT *
+           FROM protection_works_bridge
+           WHERE bridge_id = ?
+           ORDER BY protection_works_bridge_id DESC
+           LIMIT 1`,
+          [bridgeId]
+        )
+        if (legacyRows[0]) {
+          const d = legacyRows[0]
+          return res.json({
+            protection_works_id: null,
+            bridge_inspection_id: inspectionId,
+            type: d.type || '',
+            layout_cross_section_profile: '',
+            slope_pitching_apron_and_toe_walls: '',
+            floor_protection_works: '',
+            scour_for_abutments: '',
+            scour_for_abutments_image: '',
+            scour_for_piers: '',
+            scour_for_piers_image: '',
+            reserve_store_material: d.reserve_store_material || '',
+            status: d.status || 'Pending',
+          })
+        }
+      }
+    }
+    return res.json(fromDbComponentPayload(key, null))
   } catch (e) {
     console.error(e)
     res.status(500).json({ message: e.message })
@@ -3819,7 +4547,7 @@ router.get('/bridge/schedule_adhoc_inspecion/:bridgeId', requireAuth, async (req
   try {
     const bridgeId = Number(req.params.bridgeId)
     const [rows] = await pool.query(
-      `SELECT * FROM schedule_adhoc_inspecion WHERE bridge_id = ? ORDER BY adhoc_id DESC LIMIT 1`,
+      `SELECT * FROM schedule_adhoc_inspecion WHERE bridge_id = ? ORDER BY adhoc_inspecion_id DESC LIMIT 1`,
       [bridgeId]
     )
     res.json(rows[0] || null)
@@ -4075,6 +4803,13 @@ for (const step of [
   router.get(`/bridge/${step}/:bridgeId`, async (req, res) => {
     try {
       const cfg = STEP_TABLE_MAP[step]
+      if (step === 'expansion_joint') {
+        const [rows] = await pool.query(
+          `SELECT * FROM ${cfg.table} WHERE bridge_id = ? ORDER BY ${cfg.pk} ASC`,
+          [req.params.bridgeId]
+        )
+        return res.json(rows)
+      }
       const [rows] = await pool.query(
         `SELECT * FROM ${cfg.table} WHERE bridge_id = ? ORDER BY ${cfg.pk} DESC LIMIT 1`,
         [req.params.bridgeId]
@@ -4109,6 +4844,120 @@ for (const step of [
         [req.params.bridgeId]
       )
       const stepId = Number(existingByBridge[0]?.step_id || 0)
+
+      // Step 16 requirement:
+      // Save each expansion joint entry as a NEW row for the same bridge_id
+      // and store selected value in type_a1 column only.
+      if (step === 'expansion_joint') {
+        const rowsFromBody = Array.isArray(dataObj.expansion_rows) ? dataObj.expansion_rows : null
+        const incomingRows = (
+          rowsFromBody && rowsFromBody.length
+            ? rowsFromBody
+            : [dataObj.type_a1 ? { type_a1: dataObj.type_a1 } : null, dataObj.type_a2 ? { type_a1: dataObj.type_a2 } : null]
+        )
+          .filter(Boolean)
+          .map((r) => ({
+            id: Number(r?.expansion_joint_bridge_id || r?.id || 0) || null,
+            type: String(r?.type_a1 || r?.type || '').trim(),
+          }))
+          .filter((r) => r.type)
+
+        if (!incomingRows.length) {
+          return res.status(400).json({ success: false, message: 'No expansion joint values provided' })
+        }
+
+        // Default status value based on enum definition in target table.
+        const statusMeta = metaRows.find((r) => r.COLUMN_NAME === 'status') || null
+        let defaultStatus = 'Pending'
+        if (statusMeta?.DATA_TYPE === 'enum' && typeof statusMeta.COLUMN_TYPE === 'string') {
+          const ct = statusMeta.COLUMN_TYPE
+          if (ct.includes("'Active'")) defaultStatus = 'Active'
+          else if (ct.includes("'Pending'")) defaultStatus = 'Pending'
+        }
+
+        const [existingRows] = await pool.query(
+          `SELECT ${cfg.pk} AS row_id FROM ${cfg.table} WHERE bridge_id = ?`,
+          [req.params.bridgeId]
+        )
+        const existingIdSet = new Set(existingRows.map((r) => Number(r.row_id)).filter(Boolean))
+        const keptIds = []
+
+        for (const item of incomingRows) {
+          if (item.id && existingIdSet.has(item.id)) {
+            const updates = []
+            const vals = []
+            if (allowed.has('type_a1')) {
+              updates.push('type_a1 = ?')
+              vals.push(item.type)
+            }
+            if (allowed.has('type_a2')) {
+              updates.push('type_a2 = ?')
+              vals.push('')
+            }
+            if (allowed.has('updated_by')) {
+              updates.push('updated_by = ?')
+              vals.push(req.user?.uid || 0)
+            }
+            if (allowed.has('updated_on')) {
+              updates.push('updated_on = ?')
+              vals.push(new Date())
+            }
+            if (updates.length) {
+              vals.push(item.id, req.params.bridgeId)
+              await pool.query(
+                `UPDATE ${cfg.table} SET ${updates.join(', ')} WHERE ${cfg.pk} = ? AND bridge_id = ?`,
+                vals
+              )
+            }
+            keptIds.push(item.id)
+            continue
+          }
+
+          const payload = {}
+          if (allowed.has('bridge_id')) payload.bridge_id = req.params.bridgeId
+          if (allowed.has('type_a1')) payload.type_a1 = item.type
+          if (allowed.has('type_a2')) payload.type_a2 = ''
+          if (allowed.has('status')) payload.status = defaultStatus
+          if (allowed.has('updated_by')) payload.updated_by = req.user?.uid || 0
+          if (allowed.has('updated_on')) payload.updated_on = new Date()
+          if (allowed.has('created_by')) payload.created_by = req.user?.uid || 0
+          if (allowed.has('created_on')) payload.created_on = new Date()
+
+          const pkMeta = metaRows.find((r) => r.COLUMN_NAME === cfg.pk) || null
+          const isAutoPk = String(pkMeta?.EXTRA || '').toLowerCase().includes('auto_increment')
+          if (!isAutoPk && payload[cfg.pk] == null) {
+            const [nextRows] = await pool.query(
+              `SELECT COALESCE(MAX(${cfg.pk}), 0) + 1 AS next_id FROM ${cfg.table}`
+            )
+            payload[cfg.pk] = Number(nextRows?.[0]?.next_id || 1)
+          }
+
+          const cols = Object.keys(payload)
+          const vals = cols.map((k) => payload[k])
+          const [ins] = await pool.query(
+            `INSERT INTO ${cfg.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+            vals
+          )
+          keptIds.push(Number(ins.insertId || payload[cfg.pk] || 0))
+        }
+
+        const toDelete = [...existingIdSet].filter((id) => !keptIds.includes(id))
+        if (toDelete.length) {
+          await pool.query(
+            `DELETE FROM ${cfg.table} WHERE bridge_id = ? AND ${cfg.pk} IN (${toDelete.map(() => '?').join(', ')})`,
+            [req.params.bridgeId, ...toDelete]
+          )
+        }
+
+        try {
+          await pool.query(
+            `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
+            [req.user?.uid || 0, req.params.bridgeId]
+          )
+        } catch {}
+
+        return res.json({ success: true, ids: keptIds, created: true, count: keptIds.length })
+      }
 
       if (stepId > 0) {
         const keys = Object.keys(patch)
@@ -4386,9 +5235,9 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
     try {
       const [ns] = await pool.query(
         `SELECT *
-         FROM non_structural_elements
+         FROM non_structural_distress
          WHERE bridge_inspection_id = ?
-         ORDER BY non_structural_element_id ASC`,
+         ORDER BY id ASC`,
         [inspectionId]
       )
       nonStructural = ns || []

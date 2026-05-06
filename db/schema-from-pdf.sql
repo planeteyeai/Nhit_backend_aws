@@ -859,31 +859,31 @@ CREATE TABLE `material_of_construction_bkp` (
 -- ----------------------------
 -- Table: non_structural_elements
 -- ----------------------------
-DROP TABLE IF EXISTS `non_structural_elements`;
-CREATE TABLE `non_structural_elements` (
-  `non_structural_element_id` int NOT NULL,
-  `bridge_inspection_id` int DEFAULT NULL,
-  `element_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `element_description` text COLLATE utf8mb3_unicode_ci,
-  `l_value` float DEFAULT NULL,
-  `w_value` float DEFAULT NULL,
-  `d_value` float DEFAULT NULL,
-  `nos_value` int DEFAULT NULL,
-  `condition_rating` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `location` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `material` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `distress_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `maintenance_required` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `priority_level` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `inspection_notes` text COLLATE utf8mb3_unicode_ci,
-  `images` text COLLATE utf8mb3_unicode_ci,
-  `status` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
-  `created_by` int DEFAULT NULL,
-  `created_on` date DEFAULT NULL,
-  `updated_by` int DEFAULT NULL,
-  `updated_on` date DEFAULT NULL,
-  `repair_methodology` text COLLATE utf8mb3_unicode_ci
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
+-- DROP TABLE IF EXISTS `non_structural_elements`;
+-- CREATE TABLE `non_structural_elements` (
+--   `non_structural_element_id` int NOT NULL,
+--   `bridge_inspection_id` int DEFAULT NULL,
+--   `element_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `element_description` text COLLATE utf8mb3_unicode_ci,
+--   `l_value` float DEFAULT NULL,
+--   `w_value` float DEFAULT NULL,
+--   `d_value` float DEFAULT NULL,
+--   `nos_value` int DEFAULT NULL,
+--   `condition_rating` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `location` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `material` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `distress_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `maintenance_required` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `priority_level` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `inspection_notes` text COLLATE utf8mb3_unicode_ci,
+--   `images` text COLLATE utf8mb3_unicode_ci,
+--   `status` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
+--   `created_by` int DEFAULT NULL,
+--   `created_on` date DEFAULT NULL,
+--   `updated_by` int DEFAULT NULL,
+--   `updated_on` date DEFAULT NULL,
+--   `repair_methodology` text COLLATE utf8mb3_unicode_ci
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
 
 -- ----------------------------
 -- Table: overall_bridge_rating
