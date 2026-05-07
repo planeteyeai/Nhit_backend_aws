@@ -857,33 +857,60 @@ CREATE TABLE `material_of_construction_bkp` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ----------------------------
--- Table: non_structural_elements
+-- Table: non_structural_distress
 -- ----------------------------
--- DROP TABLE IF EXISTS `non_structural_elements`;
--- CREATE TABLE `non_structural_elements` (
---   `non_structural_element_id` int NOT NULL,
---   `bridge_inspection_id` int DEFAULT NULL,
---   `element_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `element_description` text COLLATE utf8mb3_unicode_ci,
---   `l_value` float DEFAULT NULL,
---   `w_value` float DEFAULT NULL,
---   `d_value` float DEFAULT NULL,
---   `nos_value` int DEFAULT NULL,
---   `condition_rating` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `location` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `material` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `distress_type` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `maintenance_required` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `priority_level` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `inspection_notes` text COLLATE utf8mb3_unicode_ci,
---   `images` text COLLATE utf8mb3_unicode_ci,
---   `status` varchar(255) COLLATE utf8mb3_unicode_ci DEFAULT NULL,
---   `created_by` int DEFAULT NULL,
---   `created_on` date DEFAULT NULL,
---   `updated_by` int DEFAULT NULL,
---   `updated_on` date DEFAULT NULL,
---   `repair_methodology` text COLLATE utf8mb3_unicode_ci
--- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
+ DROP TABLE IF EXISTS `non_structural_distress`;
+ CREATE TABLE `non_structural_distress` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `bridge_inspection_id` INT NOT NULL,
+
+  `table_type` VARCHAR(256) NOT NULL,
+  `element_type` VARCHAR(255) DEFAULT NULL,
+  `element_description` TEXT,
+
+  `distress_type` VARCHAR(256) NOT NULL,
+  `field_type` VARCHAR(256) DEFAULT NULL,
+  `name_of_span` VARCHAR(255) DEFAULT NULL,
+
+  `distress_length` DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  `distress_width` DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  `distress_depth` DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  `distress_nos` INT DEFAULT NULL,
+
+  `distance_of_distress_x` DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  `distance_of_distress_y` DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+
+  `abutment_A1` INT NOT NULL DEFAULT 0,
+  `abutment_A2` INT NOT NULL DEFAULT 0,
+  `piers` INT NOT NULL DEFAULT 0,
+  `spans` INT NOT NULL DEFAULT 0,
+  `foundation` INT NOT NULL DEFAULT 0,
+  `expansion` INT NOT NULL DEFAULT 0,
+
+  `lhs_distress` INT NOT NULL DEFAULT 0,
+  `rhs_distress` INT NOT NULL DEFAULT 0,
+
+  `condition_rating` VARCHAR(255) DEFAULT NULL,
+  `material` VARCHAR(255) DEFAULT NULL,
+  `maintenance_required` VARCHAR(255) DEFAULT NULL,
+  `priority_level` VARCHAR(255) DEFAULT NULL,
+
+  `inspection_notes` TEXT,
+  `images` TEXT,
+  `status` VARCHAR(255) DEFAULT NULL,
+
+  `created_by` INT DEFAULT NULL,
+  `created_on` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_by` INT DEFAULT NULL,
+  `updated_on` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  `repair_methodology` TEXT,
+
+  PRIMARY KEY (`id`),
+  INDEX `idx_bridge_inspection_id` (`bridge_inspection_id`)
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_general_ci;
 
 -- ----------------------------
 -- Table: overall_bridge_rating

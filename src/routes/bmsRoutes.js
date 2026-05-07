@@ -4258,6 +4258,55 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
         }
       }
     }
+
+    // Legacy: bridge master data may exist only in substructure_bridge (no inspection substructure row yet).
+    if (key === 'substructure') {
+      const [inspectionRows] = await pool.query(
+        `SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1`,
+        [inspectionId]
+      )
+      const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+      if (bridgeId) {
+        const [legacyRows] = await pool.query(
+          `SELECT *
+           FROM substructure_bridge
+           WHERE bridge_id = ?
+           ORDER BY substructure_bridge_id DESC
+           LIMIT 1`,
+          [bridgeId]
+        )
+        if (legacyRows[0]) {
+          const d = legacyRows[0]
+          return res.json({
+            substructure_id: null,
+            bridge_inspection_id: inspectionId,
+            type_a1: d.type_a1 || '',
+            type_a2: d.type_a2 || '',
+            substructure_material_a1: d.substructure_material_a1 || '',
+            substructure_material_a2: d.substructure_material_a2 || '',
+            max_depth_abutment_found_a1: d.max_depth_abutment_found_a1 || '',
+            max_depth_abutment_found_a2: d.max_depth_abutment_found_a2 || '',
+            condition_a1: '',
+            condition_a2: '',
+            substructure_name: '',
+            condition_distress_length: 0,
+            condition_distress_width: 0,
+            condition_distress_depth: 0,
+            distance_distress_x: '',
+            distance_distress_y: '',
+            efficiency_drainage_a1: '',
+            efficiency_drainage_a2: '',
+            efficiency_drainage_a1_images: '',
+            efficiency_drainage_a2_images: '',
+            max_depth_abutment_found_a1_images: '',
+            max_depth_abutment_found_a2_images: '',
+            condition_a1_images: '',
+            condition_a2_images: '',
+            status: d.status || 'Pending',
+          })
+        }
+      }
+    }
     return res.json(fromDbComponentPayload(key, null))
   } catch (e) {
     console.error(e)
