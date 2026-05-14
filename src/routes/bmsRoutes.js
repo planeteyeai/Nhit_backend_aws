@@ -13,6 +13,7 @@ import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
 import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/constants/repairOptions.js'
+import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -34,6 +35,22 @@ function canonicalNonStructuralTableType(value) {
   const key = String(value || '').trim().toLowerCase()
   if (!key) return null
   return NON_STRUCTURAL_TABLE_TYPES.get(key) || null
+}
+
+function nonStructuralTableTypeMatches(value) {
+  const canonical = canonicalNonStructuralTableType(value)
+  if (!canonical) return []
+  const key = String(value || '').trim().toLowerCase()
+  const legacyByKey = {
+    approaches: ['approaches', 'Approaches'],
+    'wearing coat': ['WEARING COAT', 'Wearing Coat'],
+    'drainage spouts and vest holes': ['DRAINAGE SPOUTS AND VEST HOLES', 'Drainage Spouts And Vest Holes'],
+    'handrails, parapets, crash barriers': ['HANDRAILS, PARAPETS, CRASH BARRIERS', 'Handrails Parapets Crash Barriers'],
+    footpaths: ['FOOTPATHS', 'Footpaths'],
+    utilities: ['UTILITIES', 'Utilities'],
+    'non-structural elements': ['NON-STRUCTURAL ELEMENTS'],
+  }
+  return [...new Set([canonical, ...(legacyByKey[key] || [])])]
 }
 
 function ensureDir(dir) {
@@ -362,6 +379,24 @@ function fallbackValueForDataType(dataType) {
     return new Date()
   }
   return ''
+}
+
+function enumValuesFromColumnType(columnType) {
+  if (typeof columnType !== 'string') return []
+  const m = columnType.match(/enum\((.*)\)/i)
+  if (!m) return []
+  return m[1].split(',').map((part) => part.trim().replace(/^'+|'+$/g, ''))
+}
+
+function ensureEnumValue(metaRow, value, fallback = '') {
+  if (!metaRow || String(metaRow.DATA_TYPE || '').toLowerCase() !== 'enum') {
+    return value ?? fallback
+  }
+  const allowed = enumValuesFromColumnType(metaRow.COLUMN_TYPE)
+  if (!allowed.length) return value ?? fallback
+  const v = String(value ?? '').trim()
+  if (v && allowed.includes(v)) return v
+  return allowed[0] || fallback
 }
 
 function stripPassword(row) {
@@ -1607,14 +1642,20 @@ router.get('/inspection/distress/:inspectionId', async (req, res) => {
     const params = [inspectionId]
     const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
     if (tableType) {
-      where.push('table_type = ?')
-      params.push(nonStructuralTableType || tableType)
+      const variants = nonStructuralTableTypeMatches(tableType)
+      if (variants.length) {
+        where.push(`table_type IN (${variants.map(() => '?').join(',')})`)
+        params.push(...variants)
+      } else {
+        where.push('table_type = ?')
+        params.push(tableType)
+      }
     }
     if (componentName) {
       where.push('id IN (SELECT inspection_distress_id FROM inspection_cause_rating WHERE bridge_inspection_id = ? AND component_name = ?)')
       params.push(inspectionId, componentName)
     }
-    const sourceTable = nonStructuralTableType ? 'non_structural_distress' : 'bridge_inspection_distress'
+    const sourceTable = nonStructuralTableTypeMatches(tableType).length ? 'non_structural_distress' : 'bridge_inspection_distress'
     const [rows] = await pool.query(
       `SELECT * FROM ${sourceTable} WHERE ${where.join(' AND ')} ORDER BY id`,
       params
@@ -1655,6 +1696,8 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     const tableType = String(req.body?.tableType || '').trim() || 'approaches'
     const componentName = String(req.body?.componentName || '').trim() || 'approaches'
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : []
+    const expansionScopeId = Number(req.body?.expansionId || req.body?.expansion_id || 0)
+    const spansScopeId = Number(req.body?.spansId || req.body?.spans_id || 0)
     const userId = Number(req.user?.uid || 0)
 
     const nextId = async (table, idColumn = 'id') => {
@@ -1666,17 +1709,21 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
 
     const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
     if (nonStructuralTableType) {
+      const tableTypeVariants = nonStructuralTableTypeMatches(tableType)
       const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
+      const spansClause = spansScopeId > 0 ? ' AND spans = ?' : ''
+      const spansParams = spansScopeId > 0 ? [spansScopeId] : []
+      const tableTypeClause = `table_type IN (${tableTypeVariants.map(() => '?').join(',')})`
       if (incomingIds.length) {
         await conn.query(
           `DELETE FROM non_structural_distress
-           WHERE bridge_inspection_id = ? AND table_type = ? AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
-          [inspectionId, nonStructuralTableType, ...incomingIds]
+           WHERE bridge_inspection_id = ? AND ${tableTypeClause}${spansClause} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+          [inspectionId, ...tableTypeVariants, ...spansParams, ...incomingIds]
         )
       } else {
         await conn.query(
-          'DELETE FROM non_structural_distress WHERE bridge_inspection_id = ? AND table_type = ?',
-          [inspectionId, nonStructuralTableType]
+          `DELETE FROM non_structural_distress WHERE bridge_inspection_id = ? AND ${tableTypeClause}${spansClause}`,
+          [inspectionId, ...tableTypeVariants, ...spansParams]
         )
       }
 
@@ -1853,18 +1900,20 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       return Math.min(4294967295, Math.floor(n))
     }
 
-    // keep only ids submitted for this table_type
+    // keep only ids submitted for this table_type (optionally scoped to one expansion joint)
     const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
+    const expansionClause = expansionScopeId > 0 ? ' AND expansion = ?' : ''
+    const expansionParams = expansionScopeId > 0 ? [expansionScopeId] : []
     if (incomingIds.length) {
       await conn.query(
         `DELETE FROM bridge_inspection_distress
-         WHERE bridge_inspection_id = ? AND table_type = ? AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
-        [inspectionId, tableType, ...incomingIds]
+         WHERE bridge_inspection_id = ? AND table_type = ?${expansionClause} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+        [inspectionId, tableType, ...expansionParams, ...incomingIds]
       )
     } else {
       await conn.query(
-        'DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?',
-        [inspectionId, tableType]
+        `DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?${expansionClause}`,
+        [inspectionId, tableType, ...expansionParams]
       )
     }
 
@@ -2645,7 +2694,7 @@ router.post('/inspection/deletePedestalList', requireAuth, async (req, res) => {
 })
 
 // Pedestal condition list (needed for delete UI parity)
-router.get('/inspection/pedestal_conditions/:inspectionId', requireAuth, async (req, res) => {
+router.get('/inspection/pedestal_conditions/:inspectionId', optionalAuth, async (req, res) => {
   try {
     const id = Number(req.params.inspectionId || 0)
     if (!id) return res.status(400).json({ message: 'Invalid inspection id' })
@@ -2666,7 +2715,12 @@ router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, r
     const inspectionId = Number(req.body?.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : []
+    const persistedRows = rows.filter((row) => String(row?.pedestal_condition || '').trim())
     const userId = Number(req.user?.uid || 0)
+
+    if (!persistedRows.length) {
+      return res.json({ success: true, skipped: true })
+    }
 
     await conn.beginTransaction()
 
@@ -2686,7 +2740,7 @@ router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, r
       return res.status(400).json({ success: false, message: 'Save bearing & pedestal first.' })
     }
 
-    const incomingIds = rows.map((r) => Number(r?.bpc_id || 0)).filter((n) => n > 0)
+    const incomingIds = persistedRows.map((r) => Number(r?.bpc_id || 0)).filter((n) => n > 0)
     if (incomingIds.length) {
       await conn.query(
         `DELETE FROM bearing_and_pedistal_condition
@@ -2703,18 +2757,17 @@ router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, r
     }
     const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
-    for (const row of rows) {
+    for (const row of persistedRows) {
       const pedestalCondition = String(row?.pedestal_condition || '').trim()
-      if (!pedestalCondition) continue
-      const payload = [
+      const conditionValues = [
         pedestalCondition,
         numeric(row?.pedestal_condition_length),
         numeric(row?.pedestal_condition_width),
         numeric(row?.pedestal_condition_depth),
         numeric(row?.pedestal_condition_distance_x),
         numeric(row?.pedestal_condition_distance_y),
-        String(row?.name_of_span || '').trim() || null,
       ]
+      const nameOfSpan = String(row?.name_of_span || '').trim() || null
       const bpcId = Number(row?.bpc_id || 0)
       if (bpcId > 0) {
         await conn.query(
@@ -2723,7 +2776,7 @@ router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, r
                pedestal_condition_depth = ?, pedestal_condition_distance_x = ?, pedestal_condition_distance_y = ?,
                name_of_span = ?
            WHERE bpc_id = ? AND bridge_inspection_id = ?`,
-          [...payload, bpcId, inspectionId]
+          [...conditionValues, nameOfSpan, bpcId, inspectionId]
         )
       } else {
         const id = await nextId()
@@ -2733,7 +2786,7 @@ router.post('/inspection/pedestal_conditions/upsert', requireAuth, async (req, r
             pedestal_condition_length, pedestal_condition_width, pedestal_condition_depth,
             pedestal_condition_distance_x, pedestal_condition_distance_y, created_by, created_on, name_of_span)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
-          [id, inspectionId, bearingAndPedistalId, ...payload, userId]
+          [id, inspectionId, bearingAndPedistalId, ...conditionValues, userId, nameOfSpan]
         )
       }
     }
@@ -3037,6 +3090,142 @@ async function detectWearingCoatTableAndRow(wearingCoatId) {
   return { table: t, row: null }
 }
 
+// Expansion joint inspection rows (PHP parity: Inspection_model::getExpansionList)
+router.get('/inspection/expansion_joints/:inspectionId', optionalAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.inspectionId || 0)
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+    const [rows] = await pool.query(
+      `SELECT * FROM expansion_joint
+       WHERE bridge_inspection_id = ?
+         AND (status IS NULL OR status <> 'Deleted')
+       ORDER BY expansion_joint_id ASC`,
+      [id]
+    )
+    return res.json(rows || [])
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.get('/inspection/expansion_joint/:inspectionId/:expansionJointId', optionalAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    const expansionJointId = Number(req.params.expansionJointId || 0)
+    if (!inspectionId || !expansionJointId) {
+      return res.status(400).json({ success: false, message: 'Invalid inspection or expansion joint id' })
+    }
+    const [rows] = await pool.query(
+      `SELECT * FROM expansion_joint
+       WHERE bridge_inspection_id = ? AND expansion_joint_id = ?
+       LIMIT 1`,
+      [inspectionId, expansionJointId]
+    )
+    return res.json({ success: true, data: rows[0] || null })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.post('/inspection/expansion_joint/upsert', optionalAuth, async (req, res) => {
+  try {
+    const inspectionId = Number(req.body?.inspectionId || req.body?.bridge_inspection_id || 0)
+    const expansionJointId = Number(req.body?.expansion_joint_id || 0)
+    const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}
+    if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    const table = 'expansion_joint'
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table]
+    )
+    const allowed = new Set((metaRows || []).map((r) => r.COLUMN_NAME))
+    const patch = {}
+    for (const [k, v] of Object.entries(dataObj || {})) {
+      if (k === 'expansion_joint_id') continue
+      if (k === 'expansion_joint_name' && allowed.has('expansion_name')) {
+        patch.expansion_name = v
+        continue
+      }
+      if (!allowed.has(k)) continue
+      patch[k] = v
+    }
+
+    patch.bridge_inspection_id = inspectionId
+    if (allowed.has('status') && (patch.status == null || patch.status === '')) patch.status = 'Pending'
+    if (allowed.has('updated_by') && patch.updated_by == null) patch.updated_by = req.user?.uid || 0
+    if (allowed.has('updated_on') && patch.updated_on == null) patch.updated_on = new Date()
+    if (!expansionJointId) {
+      if (allowed.has('created_by') && patch.created_by == null) patch.created_by = req.user?.uid || 0
+      if (allowed.has('created_on') && patch.created_on == null) patch.created_on = new Date()
+    }
+
+    for (const c of metaRows || []) {
+      const key = c.COLUMN_NAME
+      if (!allowed.has(key)) continue
+      if (key === 'expansion_joint_id') continue
+      if (patch[key] !== undefined && patch[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          patch[key] = first || 'Pending'
+        } else {
+          patch[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(patch).filter((k) => k !== 'expansion_joint_id' && patch[k] !== undefined)
+    if (!cols.length) return res.status(400).json({ success: false, message: 'No fields to save' })
+
+    if (expansionJointId) {
+      const setKeys = cols.filter((c) => c !== 'bridge_inspection_id' && c !== 'created_by' && c !== 'created_on')
+      const setSql = setKeys.map((c) => `\`${c}\` = ?`).join(', ')
+      const vals = setKeys.map((k) => patch[k])
+      const [r] = await pool.query(
+        `UPDATE \`${table}\` SET ${setSql} WHERE expansion_joint_id = ? AND bridge_inspection_id = ?`,
+        [...vals, expansionJointId, inspectionId]
+      )
+      return res.json({
+        success: true,
+        data: { expansion_joint_id: expansionJointId },
+        updated: (r.affectedRows || 0) > 0,
+      })
+    }
+
+    const qCols = cols.map((c) => `\`${c}\``)
+    const vals = cols.map((k) => patch[k])
+    const [ins] = await pool.query(
+      `INSERT INTO \`${table}\` (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals
+    )
+    const newId = Number(ins?.insertId || 0)
+    const [bridgeInspectionFlagRows] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'bridge_inspection'
+         AND COLUMN_NAME = 'expansion_joint'`
+    )
+    if (bridgeInspectionFlagRows.length) {
+      await pool.query(
+        `UPDATE bridge_inspection
+         SET expansion_joint = 'Yes', updated_by = ?, upadted_on = CURDATE()
+         WHERE bridge_inspection_id = ?`,
+        [req.user?.uid || 0, inspectionId]
+      )
+    }
+    return res.json({ success: true, data: { expansion_joint_id: newId } })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
 // Expansion joint pilers list (PHP parity: Inspection::add_expansion_joints_pilers)
 router.get('/inspection/expansion_pilers/:inspectionId', async (req, res) => {
   const id = Number(req.params.inspectionId || 0)
@@ -3057,9 +3246,9 @@ router.get('/inspection/expansion_distress/:inspectionId/:expansionPilersId', as
     if (!inspectionId || !expansionPilersId) return res.status(400).json({ message: 'Invalid parameters' })
     const [rows] = await pool.query(
       `SELECT * FROM bridge_inspection_distress
-       WHERE bridge_inspection_id = ? AND piers = ?
+       WHERE bridge_inspection_id = ? AND (expansion = ? OR piers = ?)
        ORDER BY id ASC`,
-      [inspectionId, expansionPilersId]
+      [inspectionId, expansionPilersId, expansionPilersId]
     )
     return res.json(rows || [])
   } catch (e) {
@@ -3104,6 +3293,10 @@ router.post('/inspection/wearing_coat/upsert', optionalAuth, async (req, res) =>
     const patch = {}
     for (const [k, v] of Object.entries(dataObj || {})) {
       if (k === 'wearing_coat_id') continue
+      if (k === 'details_of_water_proofing_system_if_any' && allowed.has('details_of_water_proofing_system')) {
+        patch.details_of_water_proofing_system = v
+        continue
+      }
       if (!allowed.has(k)) continue
       patch[k] = v
     }
@@ -3488,6 +3681,283 @@ router.get('/inspection/:inspectionId/rating/:componentType', async (req, res) =
   }
 })
 
+router.get('/inspection/:inspectionId/bearing_pedestal_totals', async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) {
+      return res.status(400).json({ success: false, message: 'inspectionId is required' })
+    }
+    const [rows] = await pool.query(
+      `SELECT (bearing_total + pier_bearing_total) AS total_bearing,
+              (pedestal_total + pier_pedestal_total) AS total_pedestal
+       FROM bearing_and_pedistal
+       WHERE bridge_inspection_id = ?
+       ORDER BY bearing_and_pedistal_id DESC
+       LIMIT 1`,
+      [inspectionId]
+    )
+    const row = rows[0] || {}
+    return res.json({
+      success: true,
+      total_bearing: Number(row.total_bearing || 0),
+      total_pedestal: Number(row.total_pedestal || 0),
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+const upsertBearingPedestalComponentRating = async ({
+  bridgeInspectionId,
+  componentType,
+  formNo,
+  ratingId,
+  bearingAndPedestalName,
+  bearingType = '',
+  userId = 0,
+}) => {
+  const [existing] = await pool.query(
+    `SELECT id FROM inspection_component_rating
+     WHERE bridge_inspection_id = ? AND component_type = ? AND form_no = ?
+     ORDER BY id DESC LIMIT 1`,
+    [bridgeInspectionId, componentType, formNo]
+  )
+
+  if (existing[0]) {
+    await pool.query(
+      `UPDATE inspection_component_rating
+       SET rating_id = ?, bearing_and_pedestal_name = ?, bearing_type = ?, status = 'Active',
+           updated_by = ?, updated_on = NOW()
+       WHERE id = ?`,
+      [ratingId, bearingAndPedestalName, bearingType, Number(userId || 0), existing[0].id]
+    )
+    return { id: existing[0].id, updated: true }
+  }
+
+  const actorId = Number(userId || 0)
+  const [r] = await pool.query(
+    `INSERT INTO inspection_component_rating
+     (bridge_inspection_id, rating_id, component_type, bearing_and_pedestal_name, bearing_type, component_name,
+      foundation_id, superstructure_id, expansion_joint_id, form_no, status, created_by, created_on, updated_by, updated_on, repair_methodology)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?,NOW(),?)`,
+    [
+      bridgeInspectionId,
+      ratingId,
+      componentType,
+      bearingAndPedestalName,
+      bearingType,
+      '',
+      0,
+      0,
+      0,
+      formNo,
+      'Active',
+      actorId,
+      actorId,
+      '',
+    ]
+  )
+  return { id: r.insertId, created: true }
+}
+
+const upsertBearingRatingDetails = async ({
+  bridgeInspectionId,
+  componentType,
+  formNo,
+  bearingName,
+  bearingType,
+  bearingCondition,
+  userId = 0,
+}) => {
+  const [existing] = await pool.query(
+    `SELECT id FROM bearing_rating_details
+     WHERE bridge_inspection_id = ? AND component_type = ? AND form_no = ?
+     ORDER BY id DESC LIMIT 1`,
+    [bridgeInspectionId, componentType, formNo]
+  )
+
+  if (existing[0]) {
+    await pool.query(
+      `UPDATE bearing_rating_details
+       SET bearing_name = ?, bearing_type = ?, bearing_condition = ?, updated_by = ?, updated_on = NOW()
+       WHERE id = ?`,
+      [bearingName, bearingType, bearingCondition, userId, existing[0].id]
+    )
+    return existing[0].id
+  }
+
+  const [r] = await pool.query(
+    `INSERT INTO bearing_rating_details
+     (bridge_inspection_id, component_type, form_no, bearing_name, bearing_type, bearing_condition, created_by, created_on, updated_by, updated_on)
+     VALUES (?,?,?,?,?,?,?,NOW(),?,NOW())`,
+    [bridgeInspectionId, componentType, formNo, bearingName, bearingType, bearingCondition, Number(userId || 0), Number(userId || 0)]
+  )
+  return r.insertId
+}
+
+router.post('/inspection/save_pedestal_rating', optionalAuth, async (req, res) => {
+  try {
+    const body = req.body || {}
+    const bridgeInspectionId = Number(body.bridge_inspection_id || body.inspection_id || 0)
+    const componentType = String(body.component_type || 'Pedestal').trim()
+    const formNo = Number(body.form_no || 0)
+    const ratingId = Number(body.rating ?? body.rating_id ?? 0)
+    const bearingAndPedestalName = String(body.bearing_and_pedestal_name || '').trim()
+    if (!bridgeInspectionId || !formNo || !ratingId || !bearingAndPedestalName) {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'bridge_inspection_id, form_no, rating, and bearing_and_pedestal_name are required',
+      })
+    }
+
+    const result = await upsertBearingPedestalComponentRating({
+      bridgeInspectionId,
+      componentType,
+      formNo,
+      ratingId,
+      bearingAndPedestalName,
+      userId: req.user?.uid || 0,
+    })
+
+    return res.json({
+      success: true,
+      status: 'success',
+      message: result.updated ? 'Pedestal Rating updated successfully' : 'Pedestal Rating added successfully',
+      id: result.id,
+      updated: Boolean(result.updated),
+      created: Boolean(result.created),
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, status: 'error', message: e.message })
+  }
+})
+
+router.post('/inspection/save_bearing_rating', optionalAuth, async (req, res) => {
+  try {
+    const body = req.body || {}
+    const bridgeInspectionId = Number(body.bridge_inspection_id || body.inspection_id || 0)
+    const componentType = String(body.component_type || 'bearing').trim()
+    const formNo = Number(body.form_no || 0)
+    const ratingId = Number(body.rating ?? body.rating_id ?? 0)
+    const bearingAndPedestalName = String(body.bearing_and_pedestal_name || '').trim()
+    const bearingType = String(body.bearing_type || '').trim()
+    const bearingCondition = String(body.bearing_condition || '').trim()
+    if (!bridgeInspectionId || !formNo || !ratingId || !bearingAndPedestalName || !bearingType) {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'bridge_inspection_id, form_no, rating, bearing_and_pedestal_name, and bearing_type are required',
+      })
+    }
+
+    const result = await upsertBearingPedestalComponentRating({
+      bridgeInspectionId,
+      componentType,
+      formNo,
+      ratingId,
+      bearingAndPedestalName,
+      bearingType,
+      userId: req.user?.uid || 0,
+    })
+
+    await upsertBearingRatingDetails({
+      bridgeInspectionId,
+      componentType,
+      formNo,
+      bearingName: bearingAndPedestalName,
+      bearingType,
+      bearingCondition,
+      userId: req.user?.uid || 0,
+    })
+
+    return res.json({
+      success: true,
+      status: 'success',
+      message: result.updated ? 'Bearing Rating updated successfully' : 'Bearing Rating added successfully',
+      id: result.id,
+      updated: Boolean(result.updated),
+      created: Boolean(result.created),
+      bearing_condition: bearingCondition,
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, status: 'error', message: e.message })
+  }
+})
+
+router.post('/inspection/save_substructure_rating', optionalAuth, async (req, res) => {
+  try {
+    const body = req.body || {}
+    const bridgeInspectionId = Number(body.bridge_inspection_id || body.inspection_id || 0)
+    const componentType = String(body.component_type || 'substructure').trim()
+    const componentName = String(body.component_name || '').trim()
+    const ratingId = Number(body.rating ?? body.rating_id ?? 0)
+    if (!bridgeInspectionId || !componentName || !ratingId) {
+      return res.status(400).json({ success: false, status: 'error', message: 'bridge_inspection_id, component_name, and rating are required' })
+    }
+
+    const [existing] = await pool.query(
+      `SELECT id FROM inspection_component_rating
+       WHERE bridge_inspection_id = ? AND component_type = ? AND component_name = ?
+       ORDER BY id DESC LIMIT 1`,
+      [bridgeInspectionId, componentType, componentName]
+    )
+
+    if (existing[0]) {
+      await pool.query(
+        `UPDATE inspection_component_rating
+         SET rating_id = ?, status = 'Active', updated_by = ?, updated_on = NOW()
+         WHERE id = ?`,
+        [ratingId, req.user?.uid || 0, existing[0].id]
+      )
+      return res.json({
+        success: true,
+        status: 'success',
+        message: 'Substructure Rating updated successfully',
+        id: existing[0].id,
+        updated: true,
+      })
+    }
+
+    const [r] = await pool.query(
+      `INSERT INTO inspection_component_rating
+       (bridge_inspection_id, rating_id, component_type, bearing_and_pedestal_name, bearing_type, component_name,
+        foundation_id, superstructure_id, expansion_joint_id, form_no, status, created_by, created_on, updated_by, updated_on, repair_methodology)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?,?,?)`,
+      [
+        bridgeInspectionId,
+        ratingId,
+        componentType,
+        '',
+        '',
+        componentName,
+        0,
+        0,
+        0,
+        0,
+        'Active',
+        req.user?.uid || 0,
+        req.user?.uid || 0,
+        new Date(),
+        '',
+      ]
+    )
+    return res.json({
+      success: true,
+      status: 'success',
+      message: 'Substructure Rating added successfully',
+      id: r.insertId,
+      created: true,
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, status: 'error', message: e.message })
+  }
+})
+
 router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) => {
   try {
     const { inspectionId } = req.params
@@ -3500,7 +3970,7 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
     const normalizedType = componentType.toLowerCase()
     const foundationId = Number(body.foundation_id || 0)
     const superstructureId = Number(body.superstructure_id || 0)
-    const expansionJointId = Number(body.expansion_joint_id || 0)
+    const expansionJointId = Number(body.expansion_joint_id || body.component_id || 0)
     let scopedWhere = ''
     const scopedParams = []
     if (normalizedType === 'foundation' && foundationId > 0) {
@@ -3543,7 +4013,7 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
         body.component_name || componentType,
         Number(body.foundation_id || req.query?.component_id || 0),
         Number(body.superstructure_id || req.query?.component_id || 0),
-        Number(body.expansion_joint_id || req.query?.component_id || 0),
+        Number(body.expansion_joint_id || body.component_id || req.query?.component_id || 0),
         Number(body.form_no || 0),
         'Active',
         req.user?.uid || 0,
@@ -3611,6 +4081,12 @@ router.get('/inspection/rating_descriptions/:ratingType', async (req, res) => {
   }
   if (ratingType === 'foundation_rating') {
     return res.json(FOUNDATION_RATING_DESCRIPTIONS)
+  }
+  if (ratingType === 'bearing_rating') {
+    return res.json(bearingRatingDesc)
+  }
+  if (componentRatingDesc[ratingType]) {
+    return res.json(componentRatingDesc[ratingType])
   }
   return res.json(RATING_DESCRIPTION_DEFAULT)
 })
@@ -4219,7 +4695,28 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
       [inspectionId]
     )
     if (rows[0]) {
-      return res.json(fromDbComponentPayload(key, rows[0] || null))
+      const row = fromDbComponentPayload(key, rows[0] || null)
+      if (key === 'handrails' && row && typeof row === 'object') {
+        const [inspectionRows] = await pool.query(
+          `SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1`,
+          [inspectionId]
+        )
+        const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+        if (bridgeId) {
+          const [bridgeRows] = await pool.query(
+            `SELECT material_lhs, material_rhs
+             FROM handrails_parapets_crash_barriers_bridge
+             WHERE bridge_id = ?
+             ORDER BY handrails_parapets_crash_barriers_bridge_id DESC
+             LIMIT 1`,
+            [bridgeId]
+          )
+          const bridgeRow = bridgeRows?.[0] || {}
+          row.material_lhs = String(row.material_lhs || bridgeRow.material_lhs || '').trim()
+          row.material_rhs = String(row.material_rhs || bridgeRow.material_rhs || '').trim()
+        }
+      }
+      return res.json(row)
     }
 
     // Legacy compatibility: some older datasets store protection works against bridge_id
@@ -4307,6 +4804,51 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
         }
       }
     }
+
+    // Legacy: bridge master handrails materials when no inspection row exists yet.
+    if (key === 'handrails') {
+      const [inspectionRows] = await pool.query(
+        `SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1`,
+        [inspectionId]
+      )
+      const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+      if (bridgeId) {
+        const [legacyRows] = await pool.query(
+          `SELECT material_lhs, material_rhs
+           FROM handrails_parapets_crash_barriers_bridge
+           WHERE bridge_id = ?
+           ORDER BY handrails_parapets_crash_barriers_bridge_id DESC
+           LIMIT 1`,
+          [bridgeId]
+        )
+        if (legacyRows[0]) {
+          const d = legacyRows[0]
+          return res.json({
+            handrails_parapets_crash_barriers_id: null,
+            bridge_inspection_id: inspectionId,
+            present_lhs: '',
+            present_rhs: '',
+            material_lhs: d.material_lhs || '',
+            material_rhs: d.material_rhs || '',
+            conditions_lhs: '',
+            conditions_rhs: '',
+            expansion_joint_gap_lhs: '',
+            expansion_joint_gap_rhs: '',
+            expansion_joint_gap_images: '',
+            present_of_additional_safety_measures_lhs: '',
+            present_of_additional_safety_measures_rhs: '',
+            present_of_additional_safety_measures_images: '',
+            presence_of_towers_lhs: '',
+            presence_of_towers_rhs: '',
+            presence_of_towers_images: '',
+            inspection_galley_ladder_platform_lhs: '',
+            inspection_galley_ladder_platform_rhs: '',
+            whether_guard_rail_or_crash_barrier: '',
+            status: 'Active',
+          })
+        }
+      }
+    }
     return res.json(fromDbComponentPayload(key, null))
   } catch (e) {
     console.error(e)
@@ -4343,16 +4885,9 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
     }
 
     patch.bridge_inspection_id = inspectionId
-    if (allowed.has('status') && (patch.status == null || patch.status === '')) {
-      // choose first enum
-      const statusMeta = metaRows.find((r) => r.COLUMN_NAME === 'status')
-      if (statusMeta?.DATA_TYPE === 'enum' && typeof statusMeta.COLUMN_TYPE === 'string') {
-        const m = statusMeta.COLUMN_TYPE.match(/enum\((.*)\)/i)
-        const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
-        patch.status = first || 'Pending'
-      } else {
-        patch.status = 'Pending'
-      }
+    const statusMeta = metaRows.find((r) => r.COLUMN_NAME === 'status')
+    if (allowed.has('status')) {
+      patch.status = ensureEnumValue(statusMeta, patch.status)
     }
     if (allowed.has('created_by')) patch.created_by = Number(req.user?.uid || 0)
     if (allowed.has('created_on')) patch.created_on = new Date()
@@ -4369,9 +4904,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
       const hasDefault = c.COLUMN_DEFAULT !== null
       if (!nullable && !hasDefault) {
         if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
-          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
-          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
-          patch[key] = first || 'Pending'
+          patch[key] = ensureEnumValue(c, patch[key])
         } else {
           patch[key] = fallbackValueForDataType(c.DATA_TYPE)
         }

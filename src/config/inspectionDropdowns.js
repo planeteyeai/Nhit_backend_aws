@@ -6,6 +6,7 @@
  */
 
 import * as C from './constants/inspectionDefines.js'
+import { utilitiesDamageType } from './constants/configForms.js'
 
 function opts(arrOrMap) {
   if (arrOrMap == null) return []
@@ -104,43 +105,82 @@ export const INSPECTION_DROPDOWNS = {
   },
 
   drainage_spouts_and_vest_holes: {
-    clogging_deterioration_lhs: opts(C.CHECK_CLOGGING_DETERIORATION_LHS),
-    clogging_deterioration_rhs: opts(C.CHECK_CLOGGING_DETERIORATION_RHS),
-    projection_of_spout_lhs: opts(C.CHECK_PROJECTION_OF_SPOUT_LHS),
-    projection_of_spout_rhs: opts(C.CHECK_PROJECTION_OF_SPOUT_RHS),
-    adequacy_therof_lhs: opts(C.CHECK_ADEQUACY_THEROF_LHS),
-    adequacy_therof_rhs: opts(C.CHECK_ADEQUACY_THEROF_RHS),
-    report_about_adequacy_lhs: opts(C.CHECK_REPORT_ABOUT_ADEQUACY_LHS),
-    report_about_adequacy_rhs: opts(C.CHECK_REPORT_ABOUT_ADEQUACY_RHS),
-    absence_of_drainage_spouts_lhs: opts(C.CHECK_ABSENCE_OF_DRAINAGE_SPOUTS_LHS),
-    absence_of_drainage_spouts_rhs: opts(C.CHECK_ABSENCE_OF_DRAINAGE_SPOUTS_RHS),
-    choking_of_drainage_holes_lhs: opts(C.CHECK_CHOKING_OF_DRAINAGE_HOLES_LHS),
-    choking_of_drainage_holes_rhs: opts(C.CHECK_CHOKING_OF_DRAINAGE_HOLES_RHS),
+    check_clogging_lhs: opts(C.CHECK_CLOGGING_DETERIORATION_LHS),
+    check_clogging_rhs: opts(C.CHECK_CLOGGING_DETERIORATION_RHS),
+    check_projection_of_spout_lhs: opts(C.CHECK_PROJECTION_OF_SPOUT_LHS),
+    check_projection_of_spout_rhs: opts(C.CHECK_PROJECTION_OF_SPOUT_RHS),
+    check_adequacy_thereof_lhs: opts(C.CHECK_ADEQUACY_THEROF_LHS),
+    check_adequacy_thereof_rhs: opts(C.CHECK_ADEQUACY_THEROF_RHS),
+    for_subway_reports_lhs: opts(C.CHECK_REPORT_ABOUT_ADEQUACY_LHS),
+    for_subway_reports_rhs: opts(C.CHECK_REPORT_ABOUT_ADEQUACY_RHS),
+    report_absence_of_drainage_spouts_lhs: opts(C.CHECK_ABSENCE_OF_DRAINAGE_SPOUTS_LHS),
+    report_absence_of_drainage_spouts_rhs: opts(C.CHECK_ABSENCE_OF_DRAINAGE_SPOUTS_RHS),
+    check_choking_of_drainage_holes_lhs: opts(C.CHECK_CHOKING_OF_DRAINAGE_HOLES_LHS),
+    check_choking_of_drainage_holes_rhs: opts(C.CHECK_CHOKING_OF_DRAINAGE_HOLES_RHS),
+    drainage_distress_type: [
+      { value: '', label: 'NA' },
+      { value: 'Clogging', label: 'Clogging' },
+      { value: 'Deterioration', label: 'Deterioration' },
+      { value: 'Damage', label: 'Damage' },
+    ],
   },
 
   handrails: {
+    present_lhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+    present_rhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
     material_lhs: opts(C.MATERIAL_LHS),
     material_rhs: opts(C.MATERIAL_RHS),
-    condition_lhs: opts(C.CONDITION_LHS),
-    condition_rhs: opts(C.CONDITION_RHS),
+    conditions_lhs: opts(C.CONDITION_LHS),
+    conditions_rhs: opts(C.CONDITION_RHS),
     expansion_joint_gap_lhs: opts(C.EXPANSION_JOINT_GAP_LHS),
     expansion_joint_gap_rhs: opts(C.EXPANSION_JOINT_GAP_RHS),
-    inspection_gallery_ladder_platform_lhs: opts(C.INSPECTION_GALLERY_LADDER_PLATFORM_LHS),
-    inspection_gallery_ladder_platform_rhs: opts(C.INSPECTION_GALLERY_LADDER_PLATFORM_RHS),
+    inspection_galley_ladder_platform_lhs: opts(C.INSPECTION_GALLERY_LADDER_PLATFORM_LHS),
+    inspection_galley_ladder_platform_rhs: opts(C.INSPECTION_GALLERY_LADDER_PLATFORM_RHS),
+    whether_guard_rail_or_crash_barrier: opts(C.WHETHER_GUARD_RAIL_CASH_BARRIER),
+    handrails_distress_type: opts(C.HANDRAILS_EXPANSION_JOINT_DISTRESS_TYPE),
   },
 
   footpaths: {
-    footpath_material_lhs: opts(C.FOOTPATH_MATERIAL_LHS),
-    footpath_material_rhs: opts(C.FOOTPATH_MATERIAL_RHS),
-    footpath_condition_lhs: opts(C.FOOTPATH_CONDITION_LHS),
-    footpath_condition_rhs: opts(C.FOOTPATH_CONDITION_RHS),
+    present_lhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+    present_rhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+    material_lhs: opts(C.FOOTPATH_MATERIAL_LHS),
+    material_rhs: opts(C.FOOTPATH_MATERIAL_RHS),
+    conditions_lhs: opts(C.FOOTPATH_CONDITION_LHS),
+    conditions_rhs: opts(C.FOOTPATH_CONDITION_RHS),
   },
 
   utilities: {
+    present_lhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+    present_rhs: [
+      { value: '', label: 'Select' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
     type_of_utility_lhs: opts(C.TYPE_OF_UTILITY_LHS),
     type_of_utility_rhs: opts(C.TYPE_OF_UTILITY_RHS),
-    type_of_encroachment_lhs: opts(C.TYPE_OF_ENCROACHMENT_LHS),
-    type_of_encroachment_rhs: opts(C.TYPE_OF_ENCROACHMENT_RHS),
+    any_type_of_encroachment_lhs: opts(C.TYPE_OF_ENCROACHMENT_LHS),
+    any_type_of_encroachment_rhs: opts(C.TYPE_OF_ENCROACHMENT_RHS),
+    utilities_distress_type: opts({ '': 'Select Distress', ...utilitiesDamageType }),
   },
 
   foundation: {
@@ -170,6 +210,9 @@ export const INSPECTION_DROPDOWNS = {
     large_excavations_done: opts(C.CHECK_LARGE_EXCAVATIONS_DONE),
     damages_to_protective_measures: opts(C.CHECK_DAMAGES_TO_PROTECTIVE_MEASURES),
     damages_to_protective_coating_or_paint: opts(C.CHECK_DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT),
+    condition_distress: opts(C.CHECK_PIER_CONDITION),
+    excavations_distress: opts(C.CHECK_SUBWAYS_EXCAVATIONS_DISTRESS),
+    protective_measures_distress: opts(C.CHECK_SUBWAYS_PROTECTIVE_MEASURES_DISTRESS),
   },
 
   bearing_and_pedestal: {

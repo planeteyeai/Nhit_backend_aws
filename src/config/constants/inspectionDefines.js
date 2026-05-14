@@ -273,10 +273,10 @@ export const EFFICIENCY_OF_DRAINAGE_A1 = {
 export const EFFICIENCY_OF_DRAINAGE_A2 = { ...EFFICIENCY_OF_DRAINAGE_A1 };
 
 export const PIER_CONDITION = {
-  '': 'Select Pier Condition',
-  'Pier is in good condition': 'Pier is in good condition',
-  'Pier is not in good condition enter observed distress':
-    'Pier is not in good condition enter observed distress',
+  'Not Applicable': 'Not Applicable',
+  'Cracking': 'Cracking',
+  'Disintegration': 'Disintegration',
+  'Seepage': 'Seepage',
 };
 
 export const LARGE_EXCAVATIONS_DONE = {
@@ -287,12 +287,30 @@ export const LARGE_EXCAVATIONS_DONE = {
     'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct',
 };
 
+/** Distress-row type options for Subways excavations (PHP excavations_distress_type[]); separate from main large_excavations_done field. */
+export const SUBWAYS_EXCAVATIONS_DISTRESS = {
+  'Not Applicable': 'Not Applicable',
+  'Vicinity Of Flyover': 'Vicinity Of Flyover',
+  'Road Over Bridge Of Viaduct': 'Road Over Bridge Of Viaduct',
+};
+
 export const DAMAGES_TO_PROTECTIVE_MEASURES = {
   'Not Applicable': 'Not Applicable',
   'Yes, damages to protective measures to piers and abutments':
     'Yes, damages to protective measures to piers and abutments',
   'No, damages to protective measures to piers and abutments':
     'No, damages to protective measures to piers and abutments',
+};
+
+/** Distress-row options for Subways protective-measure distress (main field stays Yes/No/NA above). */
+export const SUBWAYS_PROTECTIVE_MEASURES_DISTRESS = {
+  'Not Applicable': 'Not Applicable',
+  'Coating Failure': 'Coating Failure',
+  'Joint Leakage': 'Joint Leakage',
+  'Cathodic Protection Faults': 'Cathodic Protection Faults',
+  'Viaducts': 'Viaducts',
+  'Flyover': 'Flyover',
+  'R.O.Bs': 'R.O.Bs',
 };
 
 export const DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT = {
@@ -630,6 +648,16 @@ export const EXPANSION_JOINT_GAP_LHS = {
 
 export const EXPANSION_JOINT_GAP_RHS = { ...EXPANSION_JOINT_GAP_LHS };
 
+export const HANDRAILS_EXPANSION_JOINT_DISTRESS_TYPE = {
+  '': 'Select Distress',
+  'Handrail Major Damage': 'Handrail Major Damage',
+  'Handrail Minor Damage': 'Handrail Minor Damage',
+  'Parapets Major Damage': 'Parapets Major Damage',
+  'Parapets Minor Damage': 'Parapets Minor Damage',
+  'Crash Barriers Major Damage': 'Crash Barriers Major Damage',
+  'Crash Barriers Minor Damage': 'Crash Barriers Minor Damage',
+};
+
 export const INSPECTION_GALLERY_LADDER_PLATFORM_LHS = {
   '': 'Select Gallery Ladder Platform',
   MBIU: 'MBIU',
@@ -727,6 +755,8 @@ export const CHECK_EFFICIENCY_OF_DRAINAGE_A2 = _m(EFFICIENCY_OF_DRAINAGE_A2);
 export const CHECK_PIER_CONDITION = _m(PIER_CONDITION);
 export const CHECK_LARGE_EXCAVATIONS_DONE = _m(LARGE_EXCAVATIONS_DONE);
 export const CHECK_DAMAGES_TO_PROTECTIVE_MEASURES = _m(DAMAGES_TO_PROTECTIVE_MEASURES);
+export const CHECK_SUBWAYS_EXCAVATIONS_DISTRESS = _m(SUBWAYS_EXCAVATIONS_DISTRESS);
+export const CHECK_SUBWAYS_PROTECTIVE_MEASURES_DISTRESS = _m(SUBWAYS_PROTECTIVE_MEASURES_DISTRESS);
 export const CHECK_DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT = _m(DAMAGES_TO_PROTECTIVE_COATING_OR_PAINT);
 
 export const CHECK_TYPE_AND_ALLOWABLE_MOVEMENTS_BEARING = _m(TYPE_AND_ALLOWABLE_MOVEMENTS_BEARING);

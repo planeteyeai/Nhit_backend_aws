@@ -79,6 +79,16 @@ app.get(['/health', '/api/health'], (_req, res) => {
   res.json({ ok: true, service: 'bms-backend' })
 })
 
+// Exact GET /api (no further path) — otherwise this hits no bmsRoutes handler and returns 404.
+app.get('/api', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'bms-backend',
+    health: '/api/health',
+    hint: 'REST routes live under this host with paths like /api/inspection/... or /inspection/... (see server mounts).',
+  })
+})
+
 app.use('/api', bmsRoutes)
 
 // Always enable diag so we can check DB connectivity in production
@@ -86,8 +96,13 @@ app.use('/api/diag', diagnosticsRoutes)
 
 app.use('/', bmsRoutes)
 
-app.use((_req, res) => {
-  res.status(404).json({ ok: false, error: 'Not found' })
+app.use((req, res) => {
+  const body = { ok: false, error: 'Not found' }
+  if (!isProduction()) {
+    body.path = req.originalUrl
+    body.method = req.method
+  }
+  res.status(404).json(body)
 })
 
 app.use((err, _req, res, _next) => {

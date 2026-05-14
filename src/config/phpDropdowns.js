@@ -110,30 +110,37 @@ export const INSPECTION_DROPDOWNS = {
 
   // ── HANDRAILS, PARAPETS, CRASH BARRIERS ────────────────────────────────────
   handrails: {
+    present_lhs: sel('Select', 'Yes', 'No'),
+    present_rhs: sel('Select', 'Yes', 'No'),
     material_lhs: sel('Select Material', 'NA', 'RCC', 'Steel', 'Timber', 'Masonary'),
     material_rhs: sel('Select Material', 'NA', 'RCC', 'Steel', 'Timber', 'Masonary'),
-    condition_lhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
-    condition_rhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
+    conditions_lhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
+    conditions_rhs: sel('Select Condition', 'Hand Rail , parapets and Crash barriers is in Good Condition', 'Hand Rail , parapets and Crash barriers is Not in good Condition', 'Hand Rail , parapets and Crash barriers is not present'),
     expansion_joint_gap_lhs: sel('Select Expansion Joint Gap', 'Expansion joint gaps observed', 'No expansion joint gaps found'),
     expansion_joint_gap_rhs: sel('Select Expansion Joint Gap', 'Expansion joint gaps observed', 'No expansion joint gaps found'),
-    inspection_gallery_ladder_platform_lhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
-    inspection_gallery_ladder_platform_rhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
+    inspection_galley_ladder_platform_lhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
+    inspection_galley_ladder_platform_rhs: sel('Select Gallery Ladder Platform', 'MBIU', 'Ladder', 'Man Lift', 'Other'),
+    whether_guard_rail_or_crash_barrier: sel('Guard rail', 'Crash Barrier', 'Parapets Wall/head wall', 'Not Available'),
   },
 
   // ── FOOTPATHS ──────────────────────────────────────────────────────────────
   footpaths: {
-    footpath_material_lhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
-    footpath_material_rhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
-    footpath_condition_lhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
-    footpath_condition_rhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
+    present_lhs: sel('Select', 'Yes', 'No'),
+    present_rhs: sel('Select', 'Yes', 'No'),
+    material_lhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
+    material_rhs: [o('', 'select material'), o('NA', 'NA'), ...s('Concrete', 'Masonary', 'Timber', 'Others')],
+    conditions_lhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
+    conditions_rhs: [o('', 'select condition'), o('NA', 'NA'), ...s('Footpath observed to be in good condition', 'Footpath is not in good condition', 'Others')],
   },
 
   // ── UTILITIES ──────────────────────────────────────────────────────────────
   utilities: {
+    present_lhs: sel('Select', 'Yes', 'No'),
+    present_rhs: sel('Select', 'Yes', 'No'),
     type_of_utility_lhs: sel('Select Utility Type', 'Drainage Pipe lines', 'Electrical Lines', 'Telephonic lines', 'Gas Pipe Lines', 'Lighting Facilities', 'Water Pipe Lines', 'Others', 'No utilities Found'),
     type_of_utility_rhs: sel('Select Utility Type', 'Drainage Pipe lines', 'Electrical Lines', 'Telephonic lines', 'Gas Pipe Lines', 'Lighting Facilities', 'Water Pipe Lines', 'Others', 'No utilities Found'),
-    type_of_encroachment_lhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
-    type_of_encroachment_rhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
+    any_type_of_encroachment_lhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
+    any_type_of_encroachment_rhs: sel('Select Encroachment Under The Bridge', 'Yes', 'No', 'Other'),
   },
 
   // ── FOUNDATION ─────────────────────────────────────────────────────────────
@@ -155,7 +162,11 @@ export const INSPECTION_DROPDOWNS = {
     efficiency_of_drainage_a1: s('NA', 'Weep holes functioning good and no evidence of moisture on abutment faces', 'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed', 'weep holes functioning good and shows the evidence of moisture', 'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed'),
     efficiency_of_drainage_a2: s('NA', 'Weep holes functioning good and no evidence of moisture on abutment faces', 'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed', 'weep holes functioning good and shows the evidence of moisture', 'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed'),
     pier_condition: sel('Select Pier Condition', 'Pier is in good condition', 'Pier is not in good condition enter observed distress'),
-    large_excavations_done: s('Not Applicable', 'Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct', 'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct'),
+    large_excavations_done: s(
+      'Not Applicable',
+      'Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct',
+      'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct'
+    ),
     damages_to_protective_measures: s('Not Applicable', 'Yes, damages to protective measures to piers and abutments', 'No, damages to protective measures to piers and abutments'),
     damages_to_protective_coating_or_paint: s('Not Applicable', 'Yes, damages to protective coating or paint', 'No, damages to protective coating or paint'),
   },

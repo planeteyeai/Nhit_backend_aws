@@ -75,8 +75,10 @@ export const checkConditionOfSide = {
 
 export const checkLargeExcavationsDoneType = {
   'Not Applicable': 'Not Applicable',
-  'Vicinity Of Flyover': 'Vicinity Of Flyover',
-  'Road Over Bridge Of Viaduct': 'Road Over Bridge Of Viaduct',
+  'Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct':
+    'Yes, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct',
+  'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct':
+    'No, Excavation done in the road below in the vicinity of flyover or road over bridge of viaduct',
 };
 
 export const checkDamagesToProtectiveMeasuresType = {
