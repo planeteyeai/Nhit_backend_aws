@@ -15,13 +15,15 @@ On deploy, **real GLB binaries** must be on disk (not Git LFS pointer text files
 
 ### Railway (recommended — this repo)
 
-This project includes **`nixpacks.toml`** at the backend root. Railway should use it automatically.
+Use the **`Dockerfile`** builder (see `railway.toml`) so `git lfs pull` runs on every deploy.
 
-1. Railway Dashboard → your **backend** service → **Settings**
-2. **Root Directory**: leave empty if the connected repo is `nhit-backend` only; otherwise set the folder that contains `package.json` and `nixpacks.toml`
-3. **Builder**: Nixpacks (default)
-4. Do **not** override the install step with plain `npm ci` only — that skips LFS
-5. **Redeploy** the latest commit from GitHub
+1. Railway Dashboard → **nhit-backend** service → **Settings**
+2. **Root Directory**: empty if repo is `nhit-backend` only; else `Backend/nhit-backend`
+3. **Builder**: **Dockerfile** (not Nixpacks-only with plain `npm ci`)
+4. **Redeploy** latest commit from GitHub
+5. Build logs should show `git lfs pull` downloading large `.glb` files
+
+Alternative: Nixpacks via `nixpacks.toml` (only if Dockerfile is not used).
 
 After deploy, open:
 

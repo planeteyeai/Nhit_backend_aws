@@ -1,6 +1,8 @@
 # Railway deploy config (backend with Git LFS GLB models)
+# Prefer Dockerfile builder so git-lfs pull runs reliably in CI.
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "npm start"
