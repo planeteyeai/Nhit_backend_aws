@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start": "node scripts/verify-glb-deploy.js && node src/server.js",
+    "dev": "node --watch src/server.js",
+    "verify:glb": "node scripts/verify-glb-deploy.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.17",
