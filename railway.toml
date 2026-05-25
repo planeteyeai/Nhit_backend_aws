@@ -1,8 +1,7 @@
-# Railway deploy config (backend with Git LFS GLB models)
-# Prefer Dockerfile builder so git-lfs pull runs reliably in CI.
+# Railway — Nixpacks keeps .git during build so git lfs pull works (recommended).
+# Alternative: set builder = "DOCKERFILE" if you prefer Dockerfile + clone fallback.
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+builder = "NIXPACKS"
 
 [deploy]
 startCommand = "npm start"

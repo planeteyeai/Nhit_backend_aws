@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node scripts/verify-glb-deploy.js && node src/server.js",
+    "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "verify:glb": "node scripts/verify-glb-deploy.js"
   },

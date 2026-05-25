@@ -1,58 +1,105 @@
-# Deploy BMS backend on Railway (with 3D GLB models)
+# Live setup: Railway (backend) + Render (frontend)
 
-## Why you see "GLB files missing on server"
+Local works because GLB files are on your disk. Live needs the same files on Railway.
 
-The `.glb` files are stored with **Git LFS**. If the Railway build only runs `npm ci`, you get tiny pointer files (~130 bytes), not real models.
+---
 
-## One-time: push LFS files to GitHub (on your PC)
+## A. One-time on your PC (push LFS to GitHub)
 
 ```powershell
-cd Backend\nhit-backend
+cd "c:\Users\Vishal.Bhor\Desktop\BMS 2\Backend\nhit-backend"
 git lfs install
 git lfs pull
 git lfs push --all origin
 ```
 
-Confirm on GitHub: repo → **Settings** → **Git LFS** (objects should exist).
+Repo must be **public** OR Railway must have access if private.
 
-## Railway service settings
+---
 
-1. Open **Railway** → project → **nhit-backend** service.
-2. **Settings** → **Source** → repo: `nhit-backend` (or correct subfolder).
-3. **Root Directory**:
-   - Repo is only backend: leave **empty**
-   - Monorepo: `Backend/nhit-backend`
-4. **Settings** → **Build**:
-   - **Builder**: **Dockerfile**
-   - **Dockerfile path**: `Dockerfile`
-   - Remove any custom build that is only `npm ci`
-5. **Settings** → **Deploy** → **Start Command**: `npm start`
-6. **Variables** (required):
-   - `NODE_ENV` = `production`
-   - `CORS_ORIGIN` = `https://nhit-frontend.onrender.com`
-   - (your DB and JWT vars as before)
-7. **Deployments** → **Redeploy** latest commit.
+## B. Railway — backend (`nhit-backend.up.railway.app`)
 
-## Build log must show
+### Recommended: **Nixpacks** (fix for failed Docker build)
 
-- `git lfs pull` downloading objects
-- `[verify-glb] OK ... (XX.X MB)` for each model
-- `[verify-glb] 10/10 valid GLB files`
+1. Railway → **nhit-backend** service → **Settings**
+2. **Root Directory**: empty (repo = `nhit-backend` only) OR `Backend/nhit-backend` for monorepo
+3. **Build**:
+   - **Builder**: **Nixpacks** (not Dockerfile, if Docker keeps failing)
+   - **Custom Build Command**: leave **empty** (uses `nixpacks.toml` → runs `git lfs pull`)
+4. **Deploy** → **Start Command**: `npm start`
+5. **Variables** (required):
 
-If verify fails, the **build fails** (fix LFS before the app goes live).
+| Variable | Example |
+|----------|---------|
+| `NODE_ENV` | `production` |
+| `CORS_ORIGIN` | `https://nhit-frontend.onrender.com` |
+| `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | your MySQL |
+| `JWT_SECRET` | your secret |
 
-## After deploy — test in browser
+6. **Deployments** → **Redeploy** (latest commit)
 
-| URL | Expected |
-|-----|----------|
-| `/health` | `{"ok":true,...}` |
-| `/model-3d/catalog` | `"models": [ ... ]` with **10** items |
-| `/model-3d/status` | `"ok": true`, `"validCount": 10` |
+**Build log should show:** `git lfs pull` and large downloads.
 
-## Render frontend
+### If you use Dockerfile instead
+
+- **Builder**: Dockerfile  
+- Dockerfile clones GitHub when `.git` is missing (see `scripts/pull-model-glbs.sh`)
+
+---
+
+## C. Test backend (browser)
+
+| URL | OK when |
+|-----|---------|
+| `https://nhit-backend.up.railway.app/health` | `{"ok":true}` |
+| `https://nhit-backend.up.railway.app/model-3d/catalog` | `"models"` has **10** items |
+| `https://nhit-backend.up.railway.app/model-3d/status` | `"ok":true`, `"validCount":10` |
+
+If catalog shows `"models":[]` → GLB still missing; check build log for `git lfs` / `[verify-glb]`.
+
+---
+
+## D. Render — frontend (`nhit-frontend.onrender.com`)
+
+1. Render → **nhit-frontend** → **Environment**
+2. Add:
 
 ```env
 VITE_API_BASE_URL=https://nhit-backend.up.railway.app
 ```
 
-Redeploy frontend after catalog shows models.
+(No trailing slash. Must be **Railway**, not the Render URL.)
+
+3. **Build Command**: `npm ci && npm run build`
+4. **Save** → **Manual Deploy**
+
+---
+
+## E. Test 3D viewer
+
+```
+https://nhit-frontend.onrender.com/?view=3D+Viewer&bridgeId=41
+```
+
+Log in → open **3D Viewer** → choose a model from the dropdown.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Railway build **FAILED** (Docker) | Switch builder to **Nixpacks**, redeploy |
+| `GLB files missing on server` | Backend build did not run `git lfs pull`; fix B above |
+| `Not a valid GLB` | Wrong `VITE_API_BASE_URL` or backend has no files |
+| CORS errors in browser | Set `CORS_ORIGIN` on Railway to your Render URL |
+
+---
+
+## Checklist
+
+- [ ] `git lfs push --all origin` done  
+- [ ] Railway redeploy succeeded (green)  
+- [ ] `/model-3d/catalog` shows 10 models  
+- [ ] Render `VITE_API_BASE_URL` = Railway URL  
+- [ ] Render frontend redeployed  
