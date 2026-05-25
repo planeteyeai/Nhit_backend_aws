@@ -10,7 +10,7 @@ const MIN_BYTES = 1_000_000
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const modelDir = path.join(rootDir, 'upload', 'model_3d')
 
-const GITHUB_REPO = (process.env.GITHUB_LFS_REPO || 'vishalbhor-45/nhit-backend').trim()
+const GITHUB_REPO = (process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1').trim()
 const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim()
 
 export const glbEnsureStatus = {

@@ -10,10 +10,12 @@ Local works because GLB files are on your disk. Live needs the same files on Rai
 cd "c:\Users\Vishal.Bhor\Desktop\BMS 2\Backend\nhit-backend"
 git lfs install
 git lfs pull
+git lfs push --all planeteye
 git lfs push --all origin
 ```
 
-Repo must be **public** OR Railway must have access if private.
+**Live GitHub repo:** `https://github.com/planeteyeai/nhit-backend1`  
+Connect **Railway** to this repo (not only `vishalbhor-45/nhit-backend`).
 
 ---
 
@@ -40,7 +42,7 @@ Repo must be **public** OR Railway must have access if private.
 
 | Variable | Value |
 |----------|--------|
-| `GITHUB_LFS_REPO` | `vishalbhor-45/nhit-backend` |
+| `GITHUB_LFS_REPO` | `planeteyeai/nhit-backend1` |
 | `GITHUB_TOKEN` | **Required** — GitHub PAT with `repo` read (repo is private) |
 
 Create token: GitHub → Settings → Developer settings → Personal access tokens → Generate → scope **repo**.

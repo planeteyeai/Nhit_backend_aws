@@ -33,7 +33,7 @@ for (const entry of entries) {
 }
 
 const manifest = {
-  repo: process.env.GITHUB_LFS_REPO || 'vishalbhor-45/nhit-backend',
+  repo: process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1',
   branch: 'main',
   files,
 }

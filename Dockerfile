@@ -10,7 +10,7 @@ WORKDIR /app
 
 COPY . .
 
-ARG GIT_REPO_URL=https://github.com/vishalbhor-45/nhit-backend.git
+ARG GIT_REPO_URL=https://github.com/planeteyeai/nhit-backend1.git
 ARG GIT_BRANCH=main
 ENV GIT_LFS_SKIP_SMUDGE=0
 
