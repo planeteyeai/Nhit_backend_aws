@@ -1,0 +1,14 @@
+# Railway uses Nixpacks — install git-lfs and pull GLB binaries before npm ci.
+[phases.setup]
+nixPkgs = ["nodejs", "git", "git-lfs"]
+
+[phases.install]
+dependsOn = ["setup"]
+cmds = [
+  "git lfs install",
+  "git lfs pull",
+  "npm ci",
+]
+
+[start]
+cmd = "npm start"

@@ -1,0 +1,8 @@
+# Railway deploy config (backend with Git LFS GLB models)
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

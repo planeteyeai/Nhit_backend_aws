@@ -11,15 +11,33 @@ git lfs pull
 
 `models.json` lists which GLB filenames the 3D viewer dropdown uses.
 
-On deploy (Render / Railway / VPS), **required**:
+On deploy, **real GLB binaries** must be on disk (not Git LFS pointer text files).
 
-```bash
-git lfs install
-git lfs pull
+### Railway (recommended — this repo)
+
+This project includes **`nixpacks.toml`** at the backend root. Railway should use it automatically.
+
+1. Railway Dashboard → your **backend** service → **Settings**
+2. **Root Directory**: leave empty if the connected repo is `nhit-backend` only; otherwise set the folder that contains `package.json` and `nixpacks.toml`
+3. **Builder**: Nixpacks (default)
+4. Do **not** override the install step with plain `npm ci` only — that skips LFS
+5. **Redeploy** the latest commit from GitHub
+
+After deploy, open:
+
+```text
+https://YOUR-RAILWAY-URL/model-3d/status
 ```
 
-Without this, only tiny LFS pointer text files are deployed — the 3D viewer shows
-"not a valid GLB". After pull, each `.glb` should be tens/hundreds of MB.
+You want `"ok": true` and `"validCount": 10` (or similar). Each file should have `sizeBytes` in the **millions**, not ~130.
+
+### Render / VPS (manual build command)
+
+```bash
+git lfs install && git lfs pull && npm ci
+```
+
+Without LFS pull, the 3D viewer shows *"GLB files missing on server"*.
 
 Check on server:
 

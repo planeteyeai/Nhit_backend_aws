@@ -4671,7 +4671,7 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
       skipped,
       deployHint:
         skipped > 0 && models.length === 0
-          ? 'GLB files missing on server. Run: git lfs install && git lfs pull — then redeploy the backend.'
+          ? 'GLB files missing on server. On Railway: ensure nixpacks.toml is deployed, then redeploy (build runs git lfs pull). See upload/model_3d/README.md.'
           : skipped > 0
             ? 'Some catalog entries are missing or are Git LFS placeholders; only valid GLB files are listed.'
             : undefined,
@@ -4679,6 +4679,55 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
   } catch (e) {
     console.error('model-3d catalog error:', e)
     res.status(500).json({ message: 'Failed to load model catalog' })
+  }
+})
+
+/** Debug: list catalog files and whether each is a real GLB on disk (for Railway deploy checks). */
+router.get('/model-3d/status', optionalAuth, (_req, res) => {
+  try {
+    const jsonPath = path.join(model3dRoot, 'models.json')
+    let catalog = { models: [] }
+    if (fs.existsSync(jsonPath)) {
+      catalog = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+    }
+    const entries = Array.isArray(catalog.models) ? catalog.models : []
+    const files = entries.map((entry) => {
+      const file = normalizeModel3dFileName(entry)
+      if (!file) return null
+      const fullPath = path.join(model3dRoot, file)
+      const exists = fs.existsSync(fullPath)
+      let sizeBytes = 0
+      if (exists) {
+        try {
+          sizeBytes = fs.statSync(fullPath).size
+        } catch {
+          sizeBytes = 0
+        }
+      }
+      return {
+        file,
+        exists,
+        sizeBytes,
+        validGlb: exists && isValidGlbFile(fullPath),
+        likelyLfsPointer: exists && sizeBytes > 0 && sizeBytes < 512 && !isValidGlbFile(fullPath),
+      }
+    }).filter(Boolean)
+    const validCount = files.filter((f) => f.validGlb).length
+    res.json({
+      status: 'success',
+      model3dRoot,
+      validCount,
+      totalInCatalog: files.length,
+      files,
+      ok: validCount > 0,
+      hint:
+        validCount === 0
+          ? 'Redeploy Railway with nixpacks.toml (git lfs pull in build). Check GET /model-3d/status after deploy.'
+          : undefined,
+    })
+  } catch (e) {
+    console.error('model-3d status error:', e)
+    res.status(500).json({ message: 'Failed to read model_3d status' })
   }
 })
 
