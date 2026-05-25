@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import fs from 'fs'
 import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -16,6 +17,35 @@ const PORT = Number(process.env.PORT || 3001)
 const HOST = (process.env.HOST || '0.0.0.0').trim()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const uploadDir = path.resolve(__dirname, '../upload')
+
+/** Resolve a safe path under upload/ (blocks path traversal). */
+function resolveUploadFile(urlPath) {
+  const rel = decodeURIComponent(String(urlPath || '').replace(/^\/+/, ''))
+  const target = path.normalize(path.join(uploadDir, rel))
+  if (!target.startsWith(uploadDir)) return null
+  return target
+}
+
+/**
+ * express.static + Range on 0-byte files (e.g. .gitkeep) throws RangeNotSatisfiableError.
+ * GLB loaders also probe with Range — skip empty placeholder files before send().
+ */
+function uploadStaticGuard(req, res, next) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+  const target = resolveUploadFile(req.path)
+  if (!target) return next()
+  fs.stat(target, (err, stat) => {
+    if (err || !stat.isFile()) return next()
+    if (stat.size === 0 || path.basename(target) === '.gitkeep') {
+      return res.status(404).end()
+    }
+    if (req.headers.range && stat.size < 1024) {
+      delete req.headers.range
+    }
+    next()
+  })
+}
 
 if (isProduction()) {
   app.set('trust proxy', 1)
@@ -73,7 +103,7 @@ app.use(
 app.options('*', cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
-app.use('/upload', express.static(path.resolve(__dirname, '../upload')))
+app.use('/upload', uploadStaticGuard, express.static(uploadDir))
 
 app.get(['/health', '/api/health'], (_req, res) => {
   res.json({ ok: true, service: 'bms-backend' })
@@ -106,6 +136,9 @@ app.use((req, res) => {
 })
 
 app.use((err, _req, res, _next) => {
+  if (err?.status === 416 || err?.name === 'RangeNotSatisfiableError') {
+    return res.status(404).json({ ok: false, error: 'File not found or empty' })
+  }
   console.error(err)
   const status = err.status && Number.isInteger(err.status) ? err.status : 500
   const body = { ok: false, error: 'Internal server error' }
