@@ -15,8 +15,12 @@ dist/
 build/
 coverage/
 
-# uploads / generated files
-upload/
+# uploads / generated files (GLB/images stay local; track catalog JSON only)
+upload/*
+!upload/model_3d/
+upload/model_3d/*
+!upload/model_3d/models.json
+!upload/model_3d/README.md
 download/
 tmp-*.txt
 *.log
