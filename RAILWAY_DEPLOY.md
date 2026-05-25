@@ -41,13 +41,23 @@ Repo must be **public** OR Railway must have access if private.
 | Variable | Value |
 |----------|--------|
 | `GITHUB_LFS_REPO` | `vishalbhor-45/nhit-backend` |
-| `GITHUB_TOKEN` | only if repo is **private** |
+| `GITHUB_TOKEN` | **Required** — GitHub PAT with `repo` read (repo is private) |
+
+Create token: GitHub → Settings → Developer settings → Personal access tokens → Generate → scope **repo**.
 
 7. **Deployments** → **Redeploy** (latest commit)
 
 **On first start**, the server downloads GLB files from GitHub LFS in the **background** (~800 MB total).  
 Check Railway **Deploy logs** for `[ensure-glb] downloading …` / `saved …`.  
 Wait **10–20 minutes**, then open `/model-3d/catalog` again.
+
+Or trigger manually (browser extension POST, or curl):
+
+```bash
+curl -X POST https://nhit-backend.up.railway.app/model-3d/sync
+```
+
+Check progress: `GET /model-3d/status` → `"sync": { "running": true, "ready": 3, "total": 10 }`
 
 Build may still show `git lfs pull` (optional); startup download is the main fix.
 

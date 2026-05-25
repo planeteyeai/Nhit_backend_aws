@@ -4,8 +4,8 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import helmet from 'helmet'
 import path from 'path'
-import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
+import { runEnsureGlbAssets } from './lib/glbEnsure.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { assertProductionConfig, isProduction } from './lib/envValidate.js'
@@ -164,15 +164,8 @@ app.use((err, _req, res, _next) => {
 function startBackgroundGlbDownload() {
   if (process.env.SKIP_GLB_ENSURE === '1') return
   if (!isProduction()) return
-  const script = path.resolve(__dirname, '../scripts/ensure-glb-assets.js')
-  if (!fs.existsSync(script)) return
-  console.log('[server] Starting background GLB download from GitHub LFS (first deploy may take 10–20 min)…')
-  const child = spawn(process.execPath, [script], {
-    detached: true,
-    stdio: 'inherit',
-    env: { ...process.env, NODE_ENV: 'production' },
-  })
-  child.unref()
+  console.log('[server] Background GLB sync from GitHub LFS (needs GITHUB_TOKEN if repo is private)…')
+  runEnsureGlbAssets().catch((e) => console.error('[server] GLB sync error:', e.message))
 }
 
 const server = app.listen(PORT, HOST, () => {

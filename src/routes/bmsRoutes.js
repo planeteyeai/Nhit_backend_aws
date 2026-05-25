@@ -16,6 +16,7 @@ import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/cons
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload } from '../lib/threedPanorama.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
+import { glbEnsureStatus, runEnsureGlbAssets, countValidGlbs } from '../lib/glbEnsure.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -4626,6 +4627,23 @@ function normalizeModel3dFileName(name) {
   return /\.glb$/i.test(s) ? s : `${s}.glb`
 }
 
+/** Trigger GitHub LFS download (Railway). POST once if catalog is empty. */
+router.post('/model-3d/sync', optionalAuth, async (_req, res) => {
+  try {
+    if (glbEnsureStatus.running) {
+      return res.json({ status: 'running', ...glbEnsureStatus })
+    }
+    runEnsureGlbAssets().catch((e) => console.error('[model-3d/sync]', e.message))
+    res.json({
+      status: 'started',
+      message: 'GLB download started. Set GITHUB_TOKEN on Railway if repo is private. Check /model-3d/status in 10–20 min.',
+      tokenSet: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+    })
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
 /** GLB library catalog from upload/model_3d/models.json (only files that are real GLBs on disk). */
 router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
   try {
@@ -4669,11 +4687,16 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
       status: 'success',
       models,
       skipped,
+      sync: glbEnsureStatus,
       deployHint:
         skipped > 0 && models.length === 0
-          ? 'GLB files still loading or missing. Restart the backend once (npm start downloads from GitHub LFS). Set GITHUB_LFS_REPO=vishalbhor-45/nhit-backend on Railway. First start may take several minutes.'
+          ? glbEnsureStatus.running
+            ? `Downloading GLBs (${glbEnsureStatus.ready}/${glbEnsureStatus.total})… Wait 10–20 min, then refresh.`
+            : !process.env.GITHUB_TOKEN && !process.env.GH_TOKEN
+              ? 'Set GITHUB_TOKEN on Railway (private repo). Then POST /model-3d/sync or redeploy.'
+              : 'GLB not ready. POST https://nhit-backend.up.railway.app/model-3d/sync then wait 10–20 min and refresh catalog.'
           : skipped > 0
-            ? 'Some catalog entries are missing or are Git LFS placeholders; only valid GLB files are listed.'
+            ? 'Some catalog entries are missing; only valid GLB files are listed.'
             : undefined,
     })
   } catch (e) {
@@ -4713,6 +4736,7 @@ router.get('/model-3d/status', optionalAuth, (_req, res) => {
       }
     }).filter(Boolean)
     const validCount = files.filter((f) => f.validGlb).length
+    const counts = countValidGlbs()
     res.json({
       status: 'success',
       model3dRoot,
@@ -4720,9 +4744,16 @@ router.get('/model-3d/status', optionalAuth, (_req, res) => {
       totalInCatalog: files.length,
       files,
       ok: validCount > 0,
+      githubTokenSet: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+      sync: glbEnsureStatus,
+      counts,
       hint:
         validCount === 0
-          ? 'Redeploy Railway with nixpacks.toml (git lfs pull in build). Check GET /model-3d/status after deploy.'
+          ? !process.env.GITHUB_TOKEN && !process.env.GH_TOKEN
+            ? 'Add GITHUB_TOKEN in Railway Variables (repo is private), redeploy, POST /model-3d/sync'
+            : glbEnsureStatus.running
+              ? `Downloading… ${glbEnsureStatus.ready}/${glbEnsureStatus.total} (${glbEnsureStatus.currentFile || ''})`
+              : 'POST /model-3d/sync to start download, wait 10–20 min'
           : undefined,
     })
   } catch (e) {

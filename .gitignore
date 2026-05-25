@@ -23,6 +23,7 @@ upload/**/*
 !upload/**/.gitkeep
 !upload/README.md
 !upload/model_3d/models.json
+!upload/model_3d/lfs-manifest.json
 !upload/model_3d/README.md
 !upload/model_3d/*.glb
 download/
