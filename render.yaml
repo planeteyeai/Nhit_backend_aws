@@ -1,0 +1,12 @@
+# Render.com — BMS backend (must pull Git LFS GLB files on build)
+services:
+  - type: web
+    name: nhit-backend
+    runtime: node
+    buildCommand: git lfs install && git lfs pull && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        sync: false

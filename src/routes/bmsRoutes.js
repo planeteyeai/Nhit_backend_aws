@@ -15,7 +15,7 @@ import { createGzip } from 'zlib'
 import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/constants/repairOptions.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload } from '../lib/threedPanorama.js'
-import { assertValid3dUploadFiles } from '../lib/glbValidate.js'
+import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -4626,7 +4626,7 @@ function normalizeModel3dFileName(name) {
   return /\.glb$/i.test(s) ? s : `${s}.glb`
 }
 
-/** GLB library catalog from upload/model_3d/models.json */
+/** GLB library catalog from upload/model_3d/models.json (only files that are real GLBs on disk). */
 router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
   try {
     const jsonPath = path.join(model3dRoot, 'models.json')
@@ -4635,25 +4635,81 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
       catalog = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
     }
     const entries = Array.isArray(catalog.models) ? catalog.models : []
-    const models = entries
+    const all = entries
       .map((entry) => {
         const file = normalizeModel3dFileName(entry)
         if (!file) return null
         const fullPath = path.join(model3dRoot, file)
-        const urlPath = file.split('/').map((s) => encodeURIComponent(s)).join('/')
+        const exists = fs.existsSync(fullPath)
+        let sizeBytes = 0
+        if (exists) {
+          try {
+            sizeBytes = fs.statSync(fullPath).size
+          } catch {
+            sizeBytes = 0
+          }
+        }
+        const validGlb = exists && isValidGlbFile(fullPath)
         return {
           id: file,
           name: file.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
           file,
-          path: `/upload/model_3d/${urlPath}`,
-          exists: fs.existsSync(fullPath),
+          path: `/model-3d/file?name=${encodeURIComponent(file)}`,
+          exists,
+          sizeBytes,
+          validGlb,
         }
       })
       .filter(Boolean)
-    res.json({ status: 'success', models })
+
+    const models = all.filter((m) => m.validGlb)
+    const skipped = all.length - models.length
+
+    res.json({
+      status: 'success',
+      models,
+      skipped,
+      deployHint:
+        skipped > 0 && models.length === 0
+          ? 'GLB files missing on server. Run: git lfs install && git lfs pull — then redeploy the backend.'
+          : skipped > 0
+            ? 'Some catalog entries are missing or are Git LFS placeholders; only valid GLB files are listed.'
+            : undefined,
+    })
   } catch (e) {
     console.error('model-3d catalog error:', e)
     res.status(500).json({ message: 'Failed to load model catalog' })
+  }
+})
+
+/** Serve a catalog GLB with correct Content-Type and Range support (avoids static + LFS pointer issues). */
+router.get('/model-3d/file', optionalAuth, (req, res, next) => {
+  try {
+    const file = normalizeModel3dFileName(req.query.name)
+    if (!file) return res.status(400).json({ message: 'Missing ?name=' })
+
+    const fullPath = path.join(model3dRoot, file)
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({
+        message: 'GLB file not found on server. Deploy backend with git lfs pull.',
+      })
+    }
+
+    if (!isValidGlbFile(fullPath)) {
+      return res.status(404).json({
+        message:
+          'File on server is not a valid GLB (often a Git LFS pointer). Run: git lfs install && git lfs pull',
+      })
+    }
+
+    res.setHeader('Content-Type', 'model/gltf-binary')
+    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.sendFile(fullPath, { acceptRanges: true }, (err) => {
+      if (err) next(err)
+    })
+  } catch (e) {
+    next(e)
   }
 })
 

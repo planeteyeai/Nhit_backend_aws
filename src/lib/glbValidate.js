@@ -3,14 +3,26 @@ import fs from 'fs'
 const GLB_MAGIC = 0x46546c67 // "glTF" little-endian
 
 export function isValidGlbBuffer(buf) {
-  if (!buf || buf.length < 12) return false
+  if (!buf || buf.length < 4) return false
   return buf.readUInt32LE(0) === GLB_MAGIC
+}
+
+export function isLfsPointerFile(filePath) {
+  try {
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile() || stat.size > 512) return false
+    const head = fs.readFileSync(filePath, { encoding: 'utf8' }).slice(0, 64)
+    return head.startsWith('version https://git-lfs.github.com/spec/v1')
+  } catch {
+    return false
+  }
 }
 
 export function isValidGlbFile(filePath) {
   try {
     const stat = fs.statSync(filePath)
     if (!stat.isFile() || stat.size < 12) return false
+    if (isLfsPointerFile(filePath)) return false
     const fd = fs.openSync(filePath, 'r')
     const head = Buffer.alloc(4)
     fs.readSync(fd, head, 0, 4, 0)
