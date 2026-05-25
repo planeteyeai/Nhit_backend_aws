@@ -1,8 +1,15 @@
 # 3D model library (manual setup)
 
-GLB files in this folder are **not** stored in Git (too large). After clone/pull, copy your `.glb` files here.
+GLB files in this folder are stored with **Git LFS** (they are too large for normal Git).
 
-`models.json` **is** tracked in Git — it lists which GLB filenames the app shows in the 3D viewer dropdown.
+After clone:
+
+```bash
+git lfs install
+git lfs pull
+```
+
+`models.json` lists which GLB filenames the 3D viewer dropdown uses.
 
 On deploy, ensure:
 

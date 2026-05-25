@@ -24,6 +24,7 @@ upload/**/*
 !upload/README.md
 !upload/model_3d/models.json
 !upload/model_3d/README.md
+!upload/model_3d/*.glb
 download/
 tmp-*.txt
 *.log
