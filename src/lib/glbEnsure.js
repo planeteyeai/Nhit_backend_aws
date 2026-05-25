@@ -23,11 +23,13 @@ export const glbEnsureStatus = {
 }
 
 function authHeaders() {
-  if (!GITHUB_TOKEN) return {}
-  return {
-    Authorization: `Bearer ${GITHUB_TOKEN}`,
-    'User-Agent': 'nhit-bms-backend',
-  }
+  const h = { 'User-Agent': 'nhit-bms-backend' }
+  if (!GITHUB_TOKEN) return h
+  // GitHub LFS works best with Basic x-access-token (PAT); Bearer also sent for APIs.
+  const basic = Buffer.from(`x-access-token:${GITHUB_TOKEN}`).toString('base64')
+  h.Authorization = `Basic ${basic}`
+  h['X-GitHub-Authorization'] = `Bearer ${GITHUB_TOKEN}`
+  return h
 }
 
 function normalizeName(entry) {
@@ -131,6 +133,19 @@ async function downloadFromGitHubLfs(oid, size, repo = GITHUB_REPO) {
     throw new Error(`Invalid GLB after download (${buf.length} bytes)`)
   }
   return buf
+}
+
+/** Download one GLB if missing or still an LFS pointer (used by /model-3d/file on demand). */
+export async function ensureSingleModelFile(fileName) {
+  const file = normalizeName(fileName)
+  if (!file) return { ok: false, error: 'Invalid file name' }
+  try {
+    const ok = await ensureFile(file)
+    return { ok, error: ok ? null : glbEnsureStatus.lastError || 'Download failed' }
+  } catch (e) {
+    glbEnsureStatus.lastError = e.message
+    return { ok: false, error: e.message }
+  }
 }
 
 async function ensureFile(fileName) {

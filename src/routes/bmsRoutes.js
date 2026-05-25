@@ -16,7 +16,12 @@ import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/cons
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload } from '../lib/threedPanorama.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
-import { glbEnsureStatus, runEnsureGlbAssets, countValidGlbs } from '../lib/glbEnsure.js'
+import {
+  glbEnsureStatus,
+  runEnsureGlbAssets,
+  countValidGlbs,
+  ensureSingleModelFile,
+} from '../lib/glbEnsure.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -4700,6 +4705,15 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
     const models = all.filter((m) => m.validGlb)
     const skipped = all.length - models.length
 
+    if (
+      models.length === 0 &&
+      skipped > 0 &&
+      (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) &&
+      !glbEnsureStatus.running
+    ) {
+      runEnsureGlbAssets().catch((e) => console.error('[model-3d/catalog] sync', e.message))
+    }
+
     res.json({
       status: 'success',
       models,
@@ -4779,24 +4793,32 @@ router.get('/model-3d/status', optionalAuth, (_req, res) => {
   }
 })
 
-/** Serve a catalog GLB with correct Content-Type and Range support (avoids static + LFS pointer issues). */
-router.get('/model-3d/file', optionalAuth, (req, res, next) => {
+/** Serve a catalog GLB; downloads from GitHub LFS first if file is still a pointer. */
+router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
   try {
     const file = normalizeModel3dFileName(req.query.name)
     if (!file) return res.status(400).json({ message: 'Missing ?name=' })
 
     const fullPath = path.join(model3dRoot, file)
-    if (!fs.existsSync(fullPath)) {
-      return res.status(404).json({
-        message: 'GLB file not found on server. Deploy backend with git lfs pull.',
-      })
+    if (!fs.existsSync(fullPath) && !loadManifestEntry(file)) {
+      return res.status(404).json({ message: 'Unknown model name' })
     }
 
     if (!isValidGlbFile(fullPath)) {
-      return res.status(404).json({
-        message:
-          'File on server is not a valid GLB (often a Git LFS pointer). Run: git lfs install && git lfs pull',
-      })
+      if (!process.env.GITHUB_TOKEN && !process.env.GH_TOKEN) {
+        return res.status(503).json({
+          message:
+            'GLB not on server. Set GITHUB_TOKEN on Railway (repo planeteyeai/nhit-backend1), redeploy, open /model-3d/sync',
+          syncUrl: '/model-3d/sync',
+        })
+      }
+      const dl = await ensureSingleModelFile(file)
+      if (!dl.ok || !isValidGlbFile(fullPath)) {
+        return res.status(503).json({
+          message: dl.error || 'Could not download GLB from GitHub LFS yet. Try /model-3d/sync and wait.',
+          syncUrl: '/model-3d/sync',
+        })
+      }
     }
 
     res.setHeader('Content-Type', 'model/gltf-binary')
@@ -4809,6 +4831,17 @@ router.get('/model-3d/file', optionalAuth, (req, res, next) => {
     next(e)
   }
 })
+
+function loadManifestEntry(fileName) {
+  try {
+    const p = path.join(model3dRoot, 'lfs-manifest.json')
+    if (!fs.existsSync(p)) return false
+    const manifest = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return Array.isArray(manifest.files) && manifest.files.some((f) => f.file === fileName)
+  } catch {
+    return false
+  }
+}
 
 /** 360 panorama upload (ported from Backend/threed/main.py) */
 router.post('/upload-panorama', optionalAuth, uploadPanoramaMem.single('file'), async (req, res) => {
