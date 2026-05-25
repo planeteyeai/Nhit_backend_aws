@@ -4710,8 +4710,8 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
           ? glbEnsureStatus.running
             ? `Downloading GLBs (${glbEnsureStatus.ready}/${glbEnsureStatus.total})… Wait 10–20 min, then refresh.`
             : !process.env.GITHUB_TOKEN && !process.env.GH_TOKEN
-              ? 'Set GITHUB_TOKEN on Railway (private repo). Then POST /model-3d/sync or redeploy.'
-              : 'GLB not ready. POST https://nhit-backend.up.railway.app/model-3d/sync then wait 10–20 min and refresh catalog.'
+              ? 'Set GITHUB_TOKEN on Railway, redeploy, then open /model-3d/sync in the browser.'
+              : 'GLB not ready. Open https://nhit-backend.up.railway.app/model-3d/sync then wait 10–20 min and refresh catalog.'
           : skipped > 0
             ? 'Some catalog entries are missing; only valid GLB files are listed.'
             : undefined,
