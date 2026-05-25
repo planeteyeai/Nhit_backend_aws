@@ -4627,22 +4627,39 @@ function normalizeModel3dFileName(name) {
   return /\.glb$/i.test(s) ? s : `${s}.glb`
 }
 
-/** Trigger GitHub LFS download (Railway). POST once if catalog is empty. */
-router.post('/model-3d/sync', optionalAuth, async (_req, res) => {
-  try {
-    if (glbEnsureStatus.running) {
-      return res.json({ status: 'running', ...glbEnsureStatus })
-    }
-    runEnsureGlbAssets().catch((e) => console.error('[model-3d/sync]', e.message))
-    res.json({
-      status: 'started',
-      message: 'GLB download started. Set GITHUB_TOKEN on Railway if repo is private. Check /model-3d/status in 10–20 min.',
-      tokenSet: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+function startModel3dSync(res) {
+  const tokenSet = Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN)
+  if (!tokenSet) {
+    return res.status(400).json({
+      status: 'error',
+      message:
+        'Set GITHUB_TOKEN in Railway Variables (GitHub PAT with repo scope for planeteyeai/nhit-backend1), redeploy, then open this URL again.',
+      githubLfsRepo: process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1',
+      tokenSet: false,
     })
-  } catch (e) {
-    res.status(500).json({ message: e.message })
   }
-})
+  if (glbEnsureStatus.running) {
+    return res.json({
+      status: 'running',
+      message: 'Download already in progress. Check /model-3d/status',
+      tokenSet: true,
+      sync: { ...glbEnsureStatus },
+    })
+  }
+  runEnsureGlbAssets().catch((e) => console.error('[model-3d/sync]', e.message))
+  return res.json({
+    status: 'started',
+    message: 'GLB download started (~800 MB). Wait 10–20 min, then open /model-3d/catalog',
+    tokenSet: true,
+    githubLfsRepo: process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1',
+    statusUrl: '/model-3d/status',
+    catalogUrl: '/model-3d/catalog',
+  })
+}
+
+/** Trigger GitHub LFS download (Railway). GET or POST if catalog is empty. */
+router.get('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
+router.post('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 
 /** GLB library catalog from upload/model_3d/models.json (only files that are real GLBs on disk). */
 router.get('/model-3d/catalog', optionalAuth, (_req, res) => {

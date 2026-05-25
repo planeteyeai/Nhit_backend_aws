@@ -53,10 +53,10 @@ Create token: GitHub → Settings → Developer settings → Personal access tok
 Check Railway **Deploy logs** for `[ensure-glb] downloading …` / `saved …`.  
 Wait **10–20 minutes**, then open `/model-3d/catalog` again.
 
-Or trigger manually (browser extension POST, or curl):
+Or open in your browser (after `GITHUB_TOKEN` is set):
 
-```bash
-curl -X POST https://nhit-backend.up.railway.app/model-3d/sync
+```text
+https://nhit-backend.up.railway.app/model-3d/sync
 ```
 
 Check progress: `GET /model-3d/status` → `"sync": { "running": true, "ready": 3, "total": 10 }`
