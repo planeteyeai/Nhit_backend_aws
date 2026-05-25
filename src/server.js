@@ -109,6 +109,18 @@ app.get(['/health', '/api/health'], (_req, res) => {
   res.json({ ok: true, service: 'bms-backend' })
 })
 
+app.get('/', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'bms-backend',
+    message: 'API is running. Use the paths below (not this page alone for 3D models).',
+    health: '/health',
+    model3dCatalog: '/model-3d/catalog',
+    model3dStatus: '/model-3d/status',
+    apiPrefix: '/api',
+  })
+})
+
 // Exact GET /api (no further path) — otherwise this hits no bmsRoutes handler and returns 404.
 app.get('/api', (_req, res) => {
   res.json({
