@@ -18,6 +18,7 @@ coverage/
 # uploads / generated files (GLB/images stay local; track folder markers + catalog only)
 upload/*
 !upload/**/
+!upload/**/.gitkeep
 upload/**/*
 !upload/**/.gitkeep
 !upload/README.md
