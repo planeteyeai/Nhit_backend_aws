@@ -115,6 +115,18 @@ app.use((err, _req, res, _next) => {
   res.status(status).json(body)
 })
 
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`BMS backend listening on http://${HOST}:${PORT} (${isProduction() ? 'production' : 'development'})`)
+})
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} is already in use. Stop the other BMS backend process, or use only one of:\n` +
+        `  - npm run dev (frontend folder, starts API if needed)\n` +
+        `  - npm run dev (backend folder)\n`
+    )
+    process.exit(1)
+  }
+  throw err
 })
