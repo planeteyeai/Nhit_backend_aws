@@ -14,10 +14,7 @@ ARG GIT_REPO_URL=https://github.com/vishalbhor-45/nhit-backend.git
 ARG GIT_BRANCH=main
 ENV GIT_LFS_SKIP_SMUDGE=0
 
-RUN chmod +x scripts/pull-model-glbs.sh \
-  && ./scripts/pull-model-glbs.sh \
-  && npm ci --omit=dev \
-  && NODE_ENV=production node scripts/verify-glb-deploy.js
+RUN npm ci --omit=dev
 
 ENV NODE_ENV=production
 EXPOSE 3001

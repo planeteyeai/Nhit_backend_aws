@@ -36,9 +36,20 @@ Repo must be **public** OR Railway must have access if private.
 | `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | your MySQL |
 | `JWT_SECRET` | your secret |
 
-6. **Deployments** → **Redeploy** (latest commit)
+6. **Variables** (optional but recommended):
 
-**Build log should show:** `git lfs pull` and large downloads.
+| Variable | Value |
+|----------|--------|
+| `GITHUB_LFS_REPO` | `vishalbhor-45/nhit-backend` |
+| `GITHUB_TOKEN` | only if repo is **private** |
+
+7. **Deployments** → **Redeploy** (latest commit)
+
+**On first start**, the server downloads GLB files from GitHub LFS in the **background** (~800 MB total).  
+Check Railway **Deploy logs** for `[ensure-glb] downloading …` / `saved …`.  
+Wait **10–20 minutes**, then open `/model-3d/catalog` again.
+
+Build may still show `git lfs pull` (optional); startup download is the main fix.
 
 ### If you use Dockerfile instead
 

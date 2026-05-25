@@ -4671,7 +4671,7 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
       skipped,
       deployHint:
         skipped > 0 && models.length === 0
-          ? 'GLB files missing on server. On Railway: ensure nixpacks.toml is deployed, then redeploy (build runs git lfs pull). See upload/model_3d/README.md.'
+          ? 'GLB files still loading or missing. Restart the backend once (npm start downloads from GitHub LFS). Set GITHUB_LFS_REPO=vishalbhor-45/nhit-backend on Railway. First start may take several minutes.'
           : skipped > 0
             ? 'Some catalog entries are missing or are Git LFS placeholders; only valid GLB files are listed.'
             : undefined,

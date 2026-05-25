@@ -5,8 +5,8 @@ nixPkgs = ["nodejs", "git", "git-lfs"]
 [phases.install]
 dependsOn = ["setup"]
 cmds = [
-  "git lfs install",
-  "git lfs pull",
+  "git lfs install || true",
+  "git lfs pull --include=\"upload/model_3d/*.glb\" || true",
   "npm ci",
 ]
 
