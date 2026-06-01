@@ -13,6 +13,8 @@ import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
 import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/constants/repairOptions.js'
+import { RM_MEASUREMENT_MAP } from '../config/constants/measurementMap.js'
+import { BOQ_Items } from '../config/constants/boqItemsMeta.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload } from '../lib/threedPanorama.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
@@ -22,6 +24,10 @@ import {
   countValidGlbs,
   ensureSingleModelFile,
 } from '../lib/glbEnsure.js'
+import {
+  computeBridgeLifecycleStage,
+  bridgeTrackingStatusHint,
+} from '../lib/bridgeLifecycle.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -466,7 +472,7 @@ function inspectionWhereClause(mode) {
     case 'ongoing':
       return `i.status = 'Confirmed'`
     case 'approved':
-      return `i.status = 'Approved'`
+      return `i.status = 'Approved' AND i.bmc_inspection_status = 'Approved'`
     case 'rejected':
       return `i.bmc_inspection_status = 'Rejected'`
     case 'pending_approval':
@@ -714,8 +720,108 @@ router.get('/users/:userId/signature/download', requireAuth, async (req, res) =>
   }
 })
 
+let _inspectionIdColCache = null
+async function getInspectionIdColumn() {
+  if (_inspectionIdColCache) return _inspectionIdColCache
+  const [iIdRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'bridge_inspection_id'`)
+  _inspectionIdColCache = iIdRows.length ? 'bridge_inspection_id' : 'inspection_id'
+  return _inspectionIdColCache
+}
+
+function bridgeTrackingJoinsSql(inspectionIdCol) {
+  const idCol = inspectionIdCol
+  return `
+    LEFT JOIN (
+      SELECT i1.*
+      FROM bridge_inspection i1
+      INNER JOIN (
+        SELECT
+          bridge_id,
+          CAST(
+            SUBSTRING_INDEX(
+              GROUP_CONCAT(
+                CAST(\`${idCol}\` AS CHAR)
+                ORDER BY
+                  CASE
+                    WHEN status = 'Approved' THEN 4
+                    WHEN status = 'Confirmed' THEN 3
+                    WHEN status = 'Pending' THEN 2
+                    WHEN status = 'Closed' THEN 1
+                    ELSE 0
+                  END DESC,
+                  \`${idCol}\` DESC
+              ),
+              ',',
+              1
+            ) AS UNSIGNED
+          ) AS pick_id
+        FROM bridge_inspection
+        GROUP BY bridge_id
+      ) pick ON pick.bridge_id = i1.bridge_id AND pick.pick_id = i1.\`${idCol}\`
+    ) li ON li.bridge_id = b.bridge_id
+    LEFT JOIN (
+      SELECT si1.*
+      FROM schedule_inspecion si1
+      INNER JOIN (
+        SELECT bridge_id, MAX(si_id) AS mx_si
+        FROM schedule_inspecion
+        GROUP BY bridge_id
+      ) zr ON zr.bridge_id = si1.bridge_id AND zr.mx_si = si1.si_id
+    ) sreg ON sreg.bridge_id = b.bridge_id
+    LEFT JOIN (
+      SELECT a1.*
+      FROM schedule_adhoc_inspecion a1
+      INNER JOIN (
+        SELECT bridge_id, MAX(adhoc_inspecion_id) AS mx_ad
+        FROM schedule_adhoc_inspecion
+        GROUP BY bridge_id
+      ) za ON za.bridge_id = a1.bridge_id AND za.mx_ad = a1.adhoc_inspecion_id
+    ) sadh ON sadh.bridge_id = b.bridge_id`
+}
+
+function latestBridgeRejectionJoinSql() {
+  return `
+    LEFT JOIN (
+      SELECT rc1.*
+      FROM bridge_rejection_comment rc1
+      INNER JOIN (
+        SELECT bridge_id, MAX(rejection_id) AS mx_rejection_id
+        FROM bridge_rejection_comment
+        GROUP BY bridge_id
+      ) rmx ON rmx.bridge_id = rc1.bridge_id AND rmx.mx_rejection_id = rc1.rejection_id
+    ) brc ON brc.bridge_id = b.bridge_id`
+}
+
+function bridgeTrackingSelectSql(inspectionIdCol) {
+  const idCol = inspectionIdCol
+  return `
+    li.\`${idCol}\` AS latest_bridge_inspection_id,
+    li.status AS latest_inspection_status,
+    li.bmc_inspection_status AS latest_bmc_inspection_status,
+    sreg.si_id AS schedule_regular_si_id,
+    sreg.status AS schedule_regular_status,
+    sreg.updated_on AS schedule_regular_at,
+    sadh.adhoc_inspecion_id AS schedule_adhoc_id,
+    sadh.status AS schedule_adhoc_status,
+    sadh.updated_on AS schedule_adhoc_at,
+    li.boq_conclusion_report AS latest_boq_conclusion_report,
+    li.boq_structure_layout_images AS latest_boq_structure_layout_images`
+}
+
+function enrichBridgeTrackingRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const lifecycle_stage = computeBridgeLifecycleStage(row)
+    return {
+      ...row,
+      lifecycle_stage,
+      tracking_status_hint: bridgeTrackingStatusHint(row),
+    }
+  })
+}
+
 router.get('/bridge-list', async (req, res) => {
   try {
+    const inspectionIdCol = await getInspectionIdColumn()
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 10))
     const offset = (page - 1) * limit
@@ -754,17 +860,19 @@ router.get('/bridge-list', async (req, res) => {
     const total = countRows[0].c
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
-              brc.comment AS rejection_comment, brc.comment_on AS rejection_date
+              brc.comment AS rejection_comment, brc.comment_on AS rejection_date,
+              ${bridgeTrackingSelectSql(inspectionIdCol)}
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
-       LEFT JOIN bridge_rejection_comment brc ON brc.bridge_id = b.bridge_id
+       ${latestBridgeRejectionJoinSql()}
+       ${bridgeTrackingJoinsSql(inspectionIdCol)}
        WHERE ${where}
        ORDER BY b.bridge_id DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     )
     res.json({
-      data: rows,
+      data: enrichBridgeTrackingRows(rows),
       total,
       page,
       limit,
@@ -1289,7 +1397,7 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
               sadh.updated_on AS schedule_adhoc_at
        FROM bridge b
        LEFT JOIN state s ON s.state_id = b.state_id
-       LEFT JOIN bridge_rejection_comment brc ON brc.bridge_id = b.bridge_id
+       ${latestBridgeRejectionJoinSql()}
        LEFT JOIN (
          SELECT si1.*
          FROM schedule_inspecion si1
@@ -2181,7 +2289,11 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
 router.get('/inspection/last_approved/:bridgeId', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM bridge_inspection WHERE bridge_id = ? AND status = 'Approved' ORDER BY created_on DESC LIMIT 1`,
+      `SELECT * FROM bridge_inspection
+       WHERE bridge_id = ?
+         AND status = 'Approved'
+         AND bmc_inspection_status = 'Approved'
+       ORDER BY created_on DESC LIMIT 1`,
       [req.params.bridgeId]
     )
     res.json(rows[0] || null)
@@ -2193,7 +2305,11 @@ router.get('/inspection/last_approved/:bridgeId', async (req, res) => {
 router.get('/boq/last_approved/:bridgeId', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM bridge_inspection WHERE bridge_id = ? AND status = 'Approved' ORDER BY created_on DESC LIMIT 1`,
+      `SELECT * FROM bridge_inspection
+       WHERE bridge_id = ?
+         AND status = 'Approved'
+         AND bmc_inspection_status = 'Approved'
+       ORDER BY created_on DESC LIMIT 1`,
       [req.params.bridgeId]
     )
     res.json(rows[0] || null)
@@ -2209,6 +2325,111 @@ router.get('/boq/distress/:inspectionId', async (req, res) => {
       [req.params.inspectionId]
     )
     res.json(rows)
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
+router.get('/boq/distress-data/:inspectionId', async (req, res) => {
+  try {
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
+
+    const [structural] = await pool.query(
+      `SELECT * FROM bridge_inspection_distress
+       WHERE bridge_inspection_id = ?
+       ORDER BY id ASC`,
+      [inspectionId]
+    )
+
+    let nonStructural = []
+    try {
+      const [ns] = await pool.query(
+        `SELECT * FROM non_structural_distress
+         WHERE bridge_inspection_id = ?
+         ORDER BY id ASC`,
+        [inspectionId]
+      )
+      nonStructural = ns || []
+    } catch {
+      nonStructural = []
+    }
+
+    let manual = []
+    try {
+      const [m] = await pool.query(
+        `SELECT * FROM manual_distress
+         WHERE bridge_inspection_id = ?
+         ORDER BY id ASC`,
+        [inspectionId]
+      )
+      manual = m || []
+    } catch {
+      manual = []
+    }
+
+    let bearings = []
+    try {
+      const [b] = await pool.query(
+        `SELECT *
+         FROM inspection_component_rating
+         WHERE bridge_inspection_id = ? AND status = 'Active'
+         ORDER BY id ASC`,
+        [inspectionId]
+      )
+      bearings = (b || []).map((row) => ({
+        ...row,
+        table_type: 'Bearing Name',
+        distress_type: row.component_name || row.component_type || 'Bearing',
+        distress_length: 0,
+        distress_width: 0,
+        distress_depth: 0,
+      }))
+    } catch {
+      bearings = []
+    }
+
+    let pedestals = []
+    try {
+      const [p] = await pool.query(
+        `SELECT bpc_id, bridge_inspection_id, pedestal_condition, repair_methodology
+         FROM bearing_and_pedistal_condition
+         WHERE bridge_inspection_id = ?
+         ORDER BY bpc_id ASC`,
+        [inspectionId]
+      )
+      pedestals = (p || []).map((row) => ({
+        ...row,
+        id: row.bpc_id,
+        table_type: 'Pedestal Name',
+        distress_type: row.pedestal_condition || 'Pedestal',
+        distress_length: 0,
+        distress_width: 0,
+        distress_depth: 0,
+      }))
+    } catch {
+      pedestals = []
+    }
+
+    let nseTable = []
+    try {
+      const [nse] = await pool.query(
+        `SELECT * FROM non_structural_elements
+         WHERE bridge_inspection_id = ?
+         ORDER BY non_structural_element_id ASC`,
+        [inspectionId]
+      )
+      nseTable = nse || []
+    } catch {
+      nseTable = []
+    }
+
+    res.json({
+      structural: [...(structural || []), ...bearings, ...pedestals],
+      nonStructural,
+      manual,
+      nseTable,
+    })
   } catch (e) {
     res.status(500).json({ message: e.message })
   }
@@ -2579,6 +2800,29 @@ router.post('/index.php/bmc/boq/save_repair_methodology', requireAuth, async (re
           continue
         }
       } catch (e) {
+        // ignore and fall through
+      }
+
+      // 5) manual_distress
+      try {
+        const [mRows] = await pool.query(
+          `SELECT repair_methodology FROM manual_distress
+           WHERE id = ? AND bridge_inspection_id = ? LIMIT 1`,
+          [id, bridgeInspectionId]
+        )
+        if (mRows[0]) {
+          const existing = String(mRows[0].repair_methodology ?? '').trim()
+          if (existing !== newRm) {
+            await pool.query(
+              `UPDATE manual_distress SET repair_methodology = ?, updated_on = NOW()
+               WHERE id = ? AND bridge_inspection_id = ?`,
+              [newRm, id, bridgeInspectionId]
+            )
+            savedCount++
+          }
+          continue
+        }
+      } catch {
         // ignore and fall through
       }
 
@@ -3793,6 +4037,80 @@ router.get('/dashboard/approved_bridges', async (_req, res) => {
 router.get('/dashboard/rejected_bridges', async (_req, res) => {
   const [r] = await pool.query(`SELECT COUNT(*) AS c FROM bridge WHERE bmc_status = 'Rejected'`)
   res.json({ count: r[0].c })
+})
+
+const DASHBOARD_COUNTS_TTL_MS = 10_000
+let dashboardCountsCache = {
+  ts: 0,
+  data: null,
+}
+
+async function fetchDashboardCounts() {
+  const now = Date.now()
+  if (dashboardCountsCache.data && now - dashboardCountsCache.ts < DASHBOARD_COUNTS_TTL_MS) {
+    return dashboardCountsCache.data
+  }
+
+  const [
+    scheduledRows,
+    ongoingRows,
+    approvedRows,
+    rejectedRows,
+    pendingApprovalRows,
+    approvedForBmcRows,
+    pendingBridgeRows,
+    approvedBridgeRows,
+    rejectedBridgeRows,
+    totalBridgeRows,
+  ] = await Promise.all([
+    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Pending'`),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Confirmed'`),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Approved'`),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE bmc_inspection_status = 'Rejected'`),
+    pool.query(
+      `SELECT COUNT(*) AS c
+       FROM bridge_inspection
+       WHERE status IN ('Pending', 'Confirmed')
+         AND (bmc_inspection_status IS NULL OR TRIM(bmc_inspection_status) = '' OR bmc_inspection_status = 'No')`,
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS c
+       FROM bridge_inspection
+       WHERE status = 'Approved' AND bmc_inspection_status = 'Approved'`,
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS c FROM bridge b WHERE (b.bmc_status IS NULL OR b.bmc_status NOT IN ('Approved','Rejected')) AND b.status IN ('Completed','Pending')`,
+    ),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge WHERE bmc_status = 'Approved'`),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge WHERE bmc_status = 'Rejected'`),
+    pool.query(`SELECT COUNT(*) AS c FROM bridge`),
+  ])
+
+  const data = {
+    scheduled: Number(scheduledRows?.[0]?.[0]?.c || 0),
+    ongoing: Number(ongoingRows?.[0]?.[0]?.c || 0),
+    approved: Number(approvedRows?.[0]?.[0]?.c || 0),
+    rejected: Number(rejectedRows?.[0]?.[0]?.c || 0),
+    pendingInspections: Number(pendingApprovalRows?.[0]?.[0]?.c || 0),
+    approvedInspections: Number(approvedForBmcRows?.[0]?.[0]?.c || 0),
+    rejectedInspections: Number(rejectedRows?.[0]?.[0]?.c || 0),
+    pendingBridges: Number(pendingBridgeRows?.[0]?.[0]?.c || 0),
+    approvedBridges: Number(approvedBridgeRows?.[0]?.[0]?.c || 0),
+    rejectedBridges: Number(rejectedBridgeRows?.[0]?.[0]?.c || 0),
+    totalBridges: Number(totalBridgeRows?.[0]?.[0]?.c || 0),
+  }
+
+  dashboardCountsCache = { ts: now, data }
+  return data
+}
+
+router.get('/dashboard/counts', async (_req, res) => {
+  try {
+    const data = await fetchDashboardCounts()
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
 })
 
 router.get('/dashboard/statistics', async (_req, res) => {
@@ -5027,6 +5345,12 @@ router.get('/php/constants/:name', async (req, res) => {
         NON_STRUCTURAL_RM_OPTIONS,
       },
       config: {},
+    }
+    if (name === 'RM_MEASUREMENT_MAP') {
+      return res.json({ success: true, scope: 'constants', name, data: RM_MEASUREMENT_MAP })
+    }
+    if (name === 'BOQ_Items') {
+      return res.json({ success: true, scope: 'constants', name, data: BOQ_Items })
     }
     const c = phpConstants?.constants?.[name]
     if (c !== undefined) return res.json({ success: true, scope: 'constants', name, data: c })
@@ -6264,6 +6588,11 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       'D (M)',
       'Area of Repair',
       'Repair Methodology',
+      'No',
+      'L',
+      'W',
+      'D',
+      'Qty',
     ]
     ws.addRow(headers)
     ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -6288,6 +6617,29 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       return X && Y ? `X = ${X} m | Y = ${Y} m` : ''
     }
 
+    const findRmItemNo = (rmText) => {
+      const t = String(rmText || '').trim()
+      if (!t) return ''
+      if (RM_MEASUREMENT_MAP[t]) return RM_MEASUREMENT_MAP[t].item_no
+      const key = Object.keys(RM_MEASUREMENT_MAP).find((k) => {
+        const kl = k.toLowerCase()
+        const tl = t.toLowerCase()
+        return kl === tl || tl.includes(kl) || kl.includes(tl)
+      })
+      return key ? RM_MEASUREMENT_MAP[key].item_no : ''
+    }
+
+    const boqMeasureExtras = (rm, unit, area, L, B, D, nos) => {
+      const n = Number(nos || 0)
+      const itemNo = findRmItemNo(rm)
+      const no =
+        itemNo !== '' && itemNo != null ? itemNo : unit === 'Nos' && n > 0 ? n : ''
+      return [no, Number(L || 0), Number(B || 0), Number(D || 0), Number(area || 0)]
+    }
+
+    const emptySection = (label) =>
+      Array.from({ length: headers.length }, (_, i) => (i === 0 ? label : ''))
+
     // STRUCTURAL
     for (const d of structural || []) {
       const tableType = d.table_type || d.element_name || ''
@@ -6295,7 +6647,13 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       const L = d.distress_length ?? 0
       const B = d.distress_width ?? 0
       const D = d.distress_depth ?? 0
-      const { unit, area } = unitAndArea(L, B, D, tableType === 'Bearing Name' ? 1 : 0)
+      const nos =
+        d.distress_nos != null && d.distress_nos !== ''
+          ? d.distress_nos
+          : tableType === 'Bearing Name'
+            ? 1
+            : 0
+      const { unit, area } = unitAndArea(L, B, D, nos)
       addRow([
         tableType,
         notationMap[obs] || obs,
@@ -6308,12 +6666,13 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
         Number(D || 0),
         Number(area || 0),
         d.repair_methodology || '-',
+        ...boqMeasureExtras(d.repair_methodology, unit, area, L, B, D, nos),
       ])
     }
 
     // NON-STRUCTURAL
     if (nonStructural.length) {
-      addRow(['NON-STRUCTURAL ELEMENTS', '', '', '', '', '', '', '', '', '', ''])
+      addRow(emptySection('NON-STRUCTURAL ELEMENTS'))
     }
     for (const n of nonStructural || []) {
       const element = n.element_type || n.table_type || 'Non Structural'
@@ -6321,7 +6680,7 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       const L = n.distress_length ?? n.l_value ?? 0
       const B = n.distress_width ?? n.w_value ?? 0
       const D = n.distress_depth ?? n.d_value ?? 0
-      const nos = n.nos_value ?? 0
+      const nos = n.distress_nos ?? n.nos_value ?? 0
       const { unit, area } = unitAndArea(L, B, D, nos)
       addRow([
         element,
@@ -6335,12 +6694,13 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
         Number(D || 0),
         Number(area || 0),
         n.repair_methodology || '-',
+        ...boqMeasureExtras(n.repair_methodology, unit, area, L, B, D, nos),
       ])
     }
 
     // MANUAL DISTRESS
     if (manual.length) {
-      addRow(['MANUAL DISTRESS', '', '', '', '', '', '', '', '', '', ''])
+      addRow(emptySection('MANUAL DISTRESS'))
     }
     for (const m of manual || []) {
       const element = m.element_type || 'Manual'
@@ -6362,6 +6722,7 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
         Number(D || 0),
         Number(area || 0),
         '-',
+        ...boqMeasureExtras('', unit, area, L, B, D, nos),
       ])
     }
 
