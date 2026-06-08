@@ -5,7 +5,7 @@ import fs from 'fs'
 import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { runEnsureGlbAssets } from './lib/glbEnsure.js'
+import { countValidGlbs, runEnsureGlbAssets } from './lib/glbEnsure.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { assertProductionConfig, isProduction } from './lib/envValidate.js'
@@ -163,8 +163,21 @@ app.use((err, _req, res, _next) => {
 
 function startBackgroundGlbDownload() {
   if (process.env.SKIP_GLB_ENSURE === '1') return
-  if (!isProduction()) return
-  console.log('[server] Background GLB sync from GitHub LFS (needs GITHUB_TOKEN if repo is private)…')
+
+  const { valid, total } = countValidGlbs()
+  if (valid >= total && total > 0) return
+
+  const tokenSet = Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN)
+  if (!isProduction() && !tokenSet) {
+    console.warn(
+      // '[server] 3D GLB files missing locally. Add GITHUB_TOKEN to nhit-backend/.env then run: npm run sync:glb'
+    )
+    return
+  }
+
+  console.log(
+    `[server] GLB sync starting (${valid}/${total} ready). Needs GITHUB_TOKEN if repo is private…`
+  )
   runEnsureGlbAssets().catch((e) => console.error('[server] GLB sync error:', e.message))
 }
 

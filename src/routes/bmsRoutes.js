@@ -16,7 +16,7 @@ import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/cons
 import { RM_MEASUREMENT_MAP } from '../config/constants/measurementMap.js'
 import { BOQ_Items } from '../config/constants/boqItemsMeta.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
-import { processPanoramaUpload } from '../lib/threedPanorama.js'
+import { processPanoramaUpload, listBridgePanoramas, deleteBridgePanorama } from '../lib/panaroma_3d.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import {
   glbEnsureStatus,
@@ -4945,9 +4945,89 @@ const model3dRoot = path.join(uploadRoot, 'model_3d')
 ensureDir(model3dRoot)
 
 function normalizeModel3dFileName(name) {
-  const s = String(name || '').trim()
+  let s = String(name || '').trim()
   if (!s) return ''
-  return /\.glb$/i.test(s) ? s : `${s}.glb`
+  s = s.replace(/(\.glb)+$/gi, '.glb')
+  if (!/\.glb$/i.test(s)) s = `${s}.glb`
+  return s
+}
+
+function listModel3dFileNames() {
+  const fromJson = new Set()
+  const jsonPath = path.join(model3dRoot, 'models.json')
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const catalog = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+      for (const entry of Array.isArray(catalog?.models) ? catalog.models : []) {
+        const file = normalizeModel3dFileName(entry)
+        if (file) fromJson.add(file)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let fromDisk = []
+  try {
+    fromDisk = fs
+      .readdirSync(model3dRoot, { withFileTypes: true })
+      .filter((d) => d.isFile() && /\.glb(\.glb)?$/i.test(d.name))
+      .map((d) => normalizeModel3dFileName(d.name))
+  } catch {
+    fromDisk = []
+  }
+
+  return [...new Set([...fromJson, ...fromDisk])]
+}
+
+function resolveModel3dPath(fileName) {
+  const normalized = normalizeModel3dFileName(fileName)
+  if (!normalized) return null
+
+  const candidates = new Set([
+    normalized,
+    `${normalized}.glb`,
+    normalized.replace(/\.glb$/i, '.glb.glb'),
+  ])
+
+  for (const name of candidates) {
+    const candidatePath = path.join(model3dRoot, name)
+    if (fs.existsSync(candidatePath)) return candidatePath
+  }
+
+  let diskNames = []
+  try {
+    diskNames = fs.readdirSync(model3dRoot)
+  } catch {
+    return path.join(model3dRoot, normalized)
+  }
+
+  const canonical = normalized.toLowerCase()
+  const match = diskNames.find((name) => normalizeModel3dFileName(name).toLowerCase() === canonical)
+  if (match) return path.join(model3dRoot, match)
+
+  return path.join(model3dRoot, normalized)
+}
+
+function loadLfsExpectedBytes(fileName) {
+  try {
+    const p = path.join(model3dRoot, 'lfs-manifest.json')
+    if (!fs.existsSync(p)) return null
+    const manifest = JSON.parse(fs.readFileSync(p, 'utf8'))
+    const entry = manifest?.files?.find(
+      (f) => String(f.file || '').toLowerCase() === String(fileName || '').toLowerCase()
+    )
+    return entry?.size > 0 ? entry.size : null
+  } catch {
+    return null
+  }
+}
+
+/** Reject GLBs that are likely corrupted (e.g. 1 GB file when manifest says 58 MB). */
+function isPlausibleGlbSize(fileName, sizeBytes) {
+  const expected = loadLfsExpectedBytes(fileName)
+  if (!expected) return true
+  return sizeBytes >= expected * 0.4 && sizeBytes <= expected * 1.6
 }
 
 function startModel3dSync(res) {
@@ -4987,17 +5067,12 @@ router.post('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 /** GLB library catalog from upload/model_3d/models.json (only files that are real GLBs on disk). */
 router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
   try {
-    const jsonPath = path.join(model3dRoot, 'models.json')
-    let catalog = { models: [] }
-    if (fs.existsSync(jsonPath)) {
-      catalog = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
-    }
-    const entries = Array.isArray(catalog.models) ? catalog.models : []
+    const entries = listModel3dFileNames()
     const all = entries
       .map((entry) => {
         const file = normalizeModel3dFileName(entry)
         if (!file) return null
-        const fullPath = path.join(model3dRoot, file)
+        const fullPath = resolveModel3dPath(file)
         const exists = fs.existsSync(fullPath)
         let sizeBytes = 0
         if (exists) {
@@ -5007,7 +5082,7 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
             sizeBytes = 0
           }
         }
-        const validGlb = exists && isValidGlbFile(fullPath)
+        const validGlb = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(file, sizeBytes)
         return {
           id: file,
           name: file.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -5016,6 +5091,10 @@ router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
           exists,
           sizeBytes,
           validGlb,
+          sizeWarning:
+            exists && isValidGlbFile(fullPath) && !isPlausibleGlbSize(file, sizeBytes)
+              ? 'File size looks wrong (corrupted copy). Re-download from Git LFS.'
+              : undefined,
         }
       })
       .filter(Boolean)
@@ -5117,9 +5196,11 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
     const file = normalizeModel3dFileName(req.query.name)
     if (!file) return res.status(400).json({ message: 'Missing ?name=' })
 
-    const fullPath = path.join(model3dRoot, file)
+    const fullPath = resolveModel3dPath(file)
     if (!fs.existsSync(fullPath) && !loadManifestEntry(file)) {
-      return res.status(404).json({ message: 'Unknown model name' })
+      return res.status(404).json({
+        message: `Model not found: ${file}. Put the .glb in nhit-backend/upload/model_3d/ and restart the backend.`,
+      })
     }
 
     if (!isValidGlbFile(fullPath)) {
@@ -5169,6 +5250,43 @@ router.post('/upload-panorama', optionalAuth, uploadPanoramaMem.single('file'), 
   } catch (e) {
     console.error('upload-panorama error:', e)
     res.status(e.status || 500).json({ message: e.message || 'Panorama upload failed' })
+  }
+})
+
+router.get('/bridges/:bridgeId/panoramas', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+    const stations = listBridgePanoramas(uploadRoot, bridgeId, req)
+    res.json({ status: 'success', data: stations })
+  } catch (e) {
+    console.error('bridge panoramas list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list panoramas' })
+  }
+})
+
+router.post('/bridges/:bridgeId/panoramas/upload', optionalAuth, uploadPanoramaMem.single('file'), async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+    const data = await processPanoramaUpload(req, uploadRoot, { bridgeId: String(bridgeId) })
+    res.json({ status: 'success', ...data })
+  } catch (e) {
+    console.error('bridge panorama upload error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Panorama upload failed' })
+  }
+})
+
+router.delete('/bridges/:bridgeId/panoramas/:stationId', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const stationId = String(req.params.stationId || '').trim()
+    if (!bridgeId || !stationId) return res.status(400).json({ message: 'Invalid parameters' })
+    const result = deleteBridgePanorama(uploadRoot, bridgeId, stationId)
+    res.json({ status: 'success', ...result })
+  } catch (e) {
+    console.error('bridge panorama delete error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to delete panorama' })
   }
 })
 
@@ -6038,7 +6156,7 @@ router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async
     res.status(500).json({ message: e.message })
   }
 })
-router.get('/bridge/images/:bridgeId', async (req, res) => {
+router.get('/upload/bridge_images/:bridgeId', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [req.params.bridgeId])
     const raw = rows[0]?.bridge_images
