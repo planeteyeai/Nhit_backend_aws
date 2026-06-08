@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "verify:glb": "node scripts/verify-glb-deploy.js"
+    "verify:glb": "node scripts/verify-glb-deploy.js",
+    "test:bucket": "node scripts/test-bucket-connection.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1063.0",
+    "@aws-sdk/s3-request-presigner": "^3.1063.0",
     "adm-zip": "^0.5.17",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

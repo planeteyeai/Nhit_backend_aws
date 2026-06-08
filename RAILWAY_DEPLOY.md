@@ -47,7 +47,20 @@ Connect **Railway** to this repo (not only `vishalbhor-45/nhit-backend`).
 
 Create token: GitHub → Settings → Developer settings → Personal access tokens → Generate → scope **repo**.
 
-7. **Deployments** → **Redeploy** (latest commit)
+7. **Connect Railway Bucket** (NHIT-bucket-bms → nhit-backend1):
+
+   - Open bucket **NHIT-bucket-bms** → tab **Credentials** → **+ Add to Service**
+   - Select service **nhit-backend1** → style **AWS SDK (Generic)** → **Add Variables**
+
+   This adds: `AWS_ENDPOINT_URL`, `AWS_S3_BUCKET_NAME`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+
+   Optional: `PRESIGNED_URL_EXPIRY_SEC=86400`
+
+   Test locally: `npm run test:bucket` (uses `.env` AWS_* vars).
+
+   After deploy, verify: `GET /health` → `"storage": { "enabled": true }`.
+
+8. **Deployments** → **Redeploy** (latest commit)
 
 **On first start**, the server downloads GLB files from GitHub LFS in the **background** (~800 MB total).  
 Check Railway **Deploy logs** for `[ensure-glb] downloading …` / `saved …`.  

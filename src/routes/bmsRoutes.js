@@ -28,6 +28,15 @@ import {
   computeBridgeLifecycleStage,
   bridgeTrackingStatusHint,
 } from '../lib/bridgeLifecycle.js'
+import {
+  enrichRowsWithUrls,
+  getPresignedUrl,
+  isStorageEnabled,
+  mirrorUploadRelPath,
+  objectExists,
+  storageStatus,
+  toObjectKey,
+} from '../lib/storage.js'
 
 const router = Router()
 const uploadNone = multer().none()
@@ -4771,9 +4780,14 @@ router.delete('/inspection/non_structural/:id', requireAuth, async (req, res) =>
     res.status(500).json({ message: e.message })
   }
 })
-router.post('/inspection/non_structural/upload_images', optionalAuth, upload.array('images', 10), (req, res) => {
-  const files = (req.files || []).map((f) => f.filename)
+router.post('/inspection/non_structural/upload_images', optionalAuth, upload.array('images', 10), async (req, res) => {
+  const uploaded = req.files || []
+  const files = uploaded.map((f) => f.filename)
   if (!files.length) return res.status(400).json({ status: 'error', message: 'No files selected' })
+  const subfolder = normalizeUploadSubfolder(req.query?.folder, 'non_structural_elements')
+  for (const f of uploaded) {
+    await mirrorUploadRelPath(`upload/${subfolder}/${f.filename}`, uploadRoot)
+  }
   res.json({ status: 'success', files, message: 'Images uploaded successfully' })
 })
 router.get('/inspection/3d-assets/:inspectionId', optionalAuth, async (req, res) => {
@@ -4789,7 +4803,7 @@ router.get('/inspection/3d-assets/:inspectionId', optionalAuth, async (req, res)
        ORDER BY FIELD(asset_type, 'glb', 'panorama', 'distress_icon'), id ASC`,
       [inspectionId]
     )
-    res.json({ status: 'success', data: rows })
+    res.json({ status: 'success', data: await enrichRowsWithUrls(rows) })
   } catch (e) {
     console.error('3D assets list error:', e)
     res.status(500).json({ message: 'Failed to fetch 3D assets' })
@@ -4808,7 +4822,7 @@ router.get('/bridges/:bridgeId/3d-assets', optionalAuth, async (req, res) => {
        ORDER BY FIELD(asset_type, 'glb', 'panorama', 'distress_icon'), id ASC`,
       [bridgeId]
     )
-    res.json({ status: 'success', data: rows })
+    res.json({ status: 'success', data: await enrichRowsWithUrls(rows) })
   } catch (e) {
     console.error('Bridge 3D assets list error:', e)
     res.status(500).json({ message: 'Failed to fetch bridge 3D assets' })
@@ -4862,6 +4876,7 @@ router.post('/inspection/3d-assets/upload/:inspectionId', optionalAuth, upload3d
           f.filename, relPath, f.originalname || null, f.mimetype || null, f.size || null, userId,
         ]
       )
+      await mirrorUploadRelPath(relPath, uploadRoot)
       inserted.push({
         id: result.insertId,
         file_name: f.filename,
@@ -4871,7 +4886,7 @@ router.post('/inspection/3d-assets/upload/:inspectionId', optionalAuth, upload3d
       })
     }
 
-    res.json({ status: 'success', data: inserted, message: '3D assets uploaded successfully' })
+    res.json({ status: 'success', data: await enrichRowsWithUrls(inserted), message: '3D assets uploaded successfully' })
   } catch (e) {
     console.error('3D assets upload error:', e)
     res.status(500).json({ message: 'Failed to upload 3D assets' })
@@ -4922,9 +4937,10 @@ router.post('/bridges/:bridgeId/3d-assets/upload', optionalAuth, upload3d.array(
           f.filename, relPath, f.originalname || null, f.mimetype || null, f.size || null, userId,
         ]
       )
+      await mirrorUploadRelPath(relPath, uploadRoot)
       inserted.push({ id: result.insertId, file_name: f.filename, file_path: relPath, asset_type: assetType, pano_face: panoFace })
     }
-    res.json({ status: 'success', data: inserted, message: 'Bridge 3D assets uploaded successfully' })
+    res.json({ status: 'success', data: await enrichRowsWithUrls(inserted), message: 'Bridge 3D assets uploaded successfully' })
   } catch (e) {
     console.error('Bridge 3D assets upload error:', e)
     res.status(500).json({ message: 'Failed to upload bridge 3D assets' })
@@ -7183,6 +7199,7 @@ router.post('/inspection/upload_lidar_pdf/:inspectionId', optionalAuth, upload.s
   const finalPath = path.join(uploadRoot, 'download', finalName)
   try {
     fs.renameSync(f.path, finalPath)
+    await mirrorUploadRelPath(`upload/download/${finalName}`, uploadRoot)
   } catch {
     // ignore
   }
@@ -7198,23 +7215,59 @@ router.post('/inspection/upload_sar_pdf/:inspectionId', optionalAuth, upload.sin
   const finalPath = path.join(uploadRoot, 'download', finalName)
   try {
     fs.renameSync(f.path, finalPath)
+    await mirrorUploadRelPath(`upload/download/${finalName}`, uploadRoot)
   } catch {
     // ignore
   }
   res.json({ success: true, filename: finalName })
 })
 
-router.get('/index.php/bmc/inspection/download_lidar_pdf/:inspectionId', (req, res) => {
+router.get('/api/storage/status', optionalAuth, (_req, res) => {
+  res.json({ ok: true, storage: storageStatus() })
+})
+
+router.get('/api/files/presign', optionalAuth, async (req, res) => {
+  try {
+    const key = toObjectKey(req.query?.key || req.query?.path || '')
+    if (!key) return res.status(400).json({ message: 'Missing key' })
+    if (!isStorageEnabled()) {
+      return res.status(503).json({ message: 'Object storage is not configured' })
+    }
+    if (!(await objectExists(key))) {
+      return res.status(404).json({ message: 'File not found in bucket' })
+    }
+    const url = await getPresignedUrl(key)
+    if (!url) return res.status(500).json({ message: 'Could not create presigned URL' })
+    res.json({ ok: true, key, url, expiresIn: Number(process.env.PRESIGNED_URL_EXPIRY_SEC || 3600) })
+  } catch (e) {
+    console.error('presign error:', e)
+    res.status(500).json({ message: e.message || 'Presign failed' })
+  }
+})
+
+router.get('/index.php/bmc/inspection/download_lidar_pdf/:inspectionId', async (req, res) => {
   const inspectionId = Number(req.params.inspectionId || 0)
-  const p = path.join(uploadRoot, 'download', `${inspectionId}_Lidar.pdf`)
+  const finalName = `${inspectionId}_Lidar.pdf`
+  const p = path.join(uploadRoot, 'download', finalName)
+  const s3Key = `upload/download/${finalName}`
   if (inspectionId && fs.existsSync(p)) return res.download(p)
+  if (isStorageEnabled() && (await objectExists(s3Key))) {
+    const url = await getPresignedUrl(s3Key)
+    if (url) return res.redirect(url)
+  }
   sendPlaceholderPdf(res, `lidar-${req.params.inspectionId}.pdf`)
 })
 
-router.get('/index.php/bmc/inspection/download_sar_pdf/:inspectionId', (req, res) => {
+router.get('/index.php/bmc/inspection/download_sar_pdf/:inspectionId', async (req, res) => {
   const inspectionId = Number(req.params.inspectionId || 0)
-  const p = path.join(uploadRoot, 'download', `${inspectionId}_Sar.pdf`)
+  const finalName = `${inspectionId}_Sar.pdf`
+  const p = path.join(uploadRoot, 'download', finalName)
+  const s3Key = `upload/download/${finalName}`
   if (inspectionId && fs.existsSync(p)) return res.download(p)
+  if (isStorageEnabled() && (await objectExists(s3Key))) {
+    const url = await getPresignedUrl(s3Key)
+    if (url) return res.redirect(url)
+  }
   sendPlaceholderPdf(res, `sar-${req.params.inspectionId}.pdf`)
 })
 

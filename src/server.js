@@ -6,6 +6,7 @@ import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { countValidGlbs, runEnsureGlbAssets } from './lib/glbEnsure.js'
+import { getPresignedUrl, isStorageEnabled, objectExists, storageStatus } from './lib/storage.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { assertProductionConfig, isProduction } from './lib/envValidate.js'
@@ -32,6 +33,34 @@ function resolveUploadFile(urlPath) {
  * express.static + Range on 0-byte files (e.g. .gitkeep) throws RangeNotSatisfiableError.
  * GLB loaders also probe with Range — skip empty placeholder files before send().
  */
+/** If file is not on local disk, redirect to Railway bucket presigned URL. */
+async function uploadS3Fallback(req, res, next) {
+  if (!isStorageEnabled() || (req.method !== 'GET' && req.method !== 'HEAD')) return next()
+  const target = resolveUploadFile(req.path)
+  if (target) {
+    try {
+      const stat = fs.statSync(target)
+      if (stat.isFile() && stat.size > 0 && path.basename(target) !== '.gitkeep') {
+        return next()
+      }
+    } catch {
+      /* try bucket */
+    }
+  }
+  const rel = String(req.path || '').replace(/^\/+/, '')
+  if (!rel) return next()
+  const key = `upload/${rel}`
+  try {
+    if (await objectExists(key)) {
+      const url = await getPresignedUrl(key)
+      if (url) return res.redirect(302, url)
+    }
+  } catch (e) {
+    console.error('[upload] bucket fallback:', e.message)
+  }
+  return next()
+}
+
 function uploadStaticGuard(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next()
   const target = resolveUploadFile(req.path)
@@ -104,10 +133,10 @@ app.use(
 app.options('*', cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
-app.use('/upload', uploadStaticGuard, express.static(uploadDir))
+app.use('/upload', uploadS3Fallback, uploadStaticGuard, express.static(uploadDir))
 
 app.get(['/health', '/api/health'], (_req, res) => {
-  res.json({ ok: true, service: 'bms-backend' })
+  res.json({ ok: true, service: 'bms-backend', storage: storageStatus() })
 })
 
 app.get('/', (_req, res) => {
@@ -183,6 +212,8 @@ function startBackgroundGlbDownload() {
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`BMS backend listening on http://${HOST}:${PORT} (${isProduction() ? 'production' : 'development'})`)
+  const st = storageStatus()
+  console.log(`[storage] bucket ${st.enabled ? 'enabled' : 'disabled'}${st.bucket ? ` (${st.bucket})` : ''}`)
   startBackgroundGlbDownload()
 })
 
