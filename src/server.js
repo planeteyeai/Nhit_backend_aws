@@ -9,6 +9,8 @@ import { countValidGlbs, runEnsureGlbAssets } from './lib/glbEnsure.js'
 import { getPresignedUrl, isStorageEnabled, objectExists, storageStatus } from './lib/storage.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
+import { diagGuard } from './middleware/diagGuard.js'
+import { requireAuth } from './middleware/auth.js'
 import { assertProductionConfig, isProduction } from './lib/envValidate.js'
 
 dotenv.config()
@@ -133,13 +135,28 @@ app.use(
 app.options('*', cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
-app.use('/upload', uploadS3Fallback, uploadStaticGuard, express.static(uploadDir))
+/** Block direct static access to signatures and PDFs without login (production). */
+function uploadSensitiveGuard(req, res, next) {
+  if (!isProduction()) return next()
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+  const rel = String(req.path || '').replace(/^\/+/, '')
+  if (!rel.startsWith('download/')) return next()
+  return requireAuth(req, res, next)
+}
+
+app.use('/upload', uploadSensitiveGuard, uploadS3Fallback, uploadStaticGuard, express.static(uploadDir))
 
 app.get(['/health', '/api/health'], (_req, res) => {
+  if (isProduction()) {
+    return res.json({ ok: true })
+  }
   res.json({ ok: true, service: 'bms-backend', storage: storageStatus() })
 })
 
 app.get('/', (_req, res) => {
+  if (isProduction()) {
+    return res.json({ ok: true })
+  }
   res.json({
     ok: true,
     service: 'bms-backend',
@@ -151,8 +168,10 @@ app.get('/', (_req, res) => {
   })
 })
 
-// Exact GET /api (no further path) — otherwise this hits no bmsRoutes handler and returns 404.
 app.get('/api', (_req, res) => {
+  if (isProduction()) {
+    return res.json({ ok: true })
+  }
   res.json({
     ok: true,
     service: 'bms-backend',
@@ -163,8 +182,7 @@ app.get('/api', (_req, res) => {
 
 app.use('/api', bmsRoutes)
 
-// Always enable diag so we can check DB connectivity in production
-app.use('/api/diag', diagnosticsRoutes)
+app.use('/api/diag', diagGuard, diagnosticsRoutes)
 
 app.use('/', bmsRoutes)
 

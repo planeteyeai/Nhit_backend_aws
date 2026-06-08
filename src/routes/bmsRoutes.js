@@ -9,6 +9,7 @@ import { pool } from '../config/db.js'
 import { normalizeAppRole } from '../lib/roles.js'
 import { verifyPassword, md5Hex } from '../lib/password.js'
 import { signToken, requireAuth, optionalAuth } from '../middleware/auth.js'
+import { productionRouteGuard } from '../middleware/routeGuard.js'
 import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
@@ -43,6 +44,7 @@ import {
 } from '../lib/storage.js'
 
 const router = Router()
+router.use(productionRouteGuard)
 const uploadNone = multer().none()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

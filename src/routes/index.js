@@ -14,18 +14,18 @@ router.get('/db', async (_req, res) => {
     res.json({ ok: true, database: result.info })
   } catch (err) {
     console.error('DB ping failed:', err.message)
-    res.status(503).json({
-      ok: false,
-      error: 'Database unavailable',
-      detail: err.message,
-      config: {
+    const body = { ok: false, error: 'Database unavailable' }
+    if (!isProduction()) {
+      body.detail = err.message
+      body.config = {
         host: process.env.MYSQL_HOST || '(not set)',
         port: process.env.MYSQL_PORT || '(not set)',
         user: process.env.MYSQL_USER || '(not set)',
         database: process.env.MYSQL_DATABASE || '(not set)',
         ssl: process.env.MYSQL_SSL || '(not set)',
-      },
-    })
+      }
+    }
+    res.status(503).json(body)
   }
 })
 
