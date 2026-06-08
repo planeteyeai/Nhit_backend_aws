@@ -36,6 +36,7 @@ import {
   mirrorUploadRelPaths,
   mirrorPanoramaUploadResult,
   objectExists,
+  pipeBucketObjectToResponse,
   redirectToBucketObject,
   storageStatus,
   toObjectKey,
@@ -5231,7 +5232,7 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
       })
     }
 
-    if (await redirectToBucketObject(res, bucketKey)) return
+    if (await pipeBucketObjectToResponse(res, bucketKey)) return
 
     if (!fs.existsSync(fullPath) && !loadManifestEntry(file)) {
       return res.status(404).json({

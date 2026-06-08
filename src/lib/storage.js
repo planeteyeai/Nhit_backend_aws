@@ -240,6 +240,39 @@ export async function mirrorPanoramaUploadResult(uploadRootDir, { bridgeId, payl
   return { ok, failed }
 }
 
+/** Stream bucket object through API (avoids CORS issues with presigned redirect in browser). */
+export async function pipeBucketObjectToResponse(res, key) {
+  if (!isStorageEnabled()) return false
+  const k = toObjectKey(key)
+  if (!k || !(await objectExists(k))) return false
+  const client = getClient()
+  if (!client) return false
+  try {
+    const out = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: k }))
+    const body = out.Body
+    if (!body) return false
+    res.setHeader('Content-Type', out.ContentType || guessContentType(k))
+    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    if (out.ContentLength != null) {
+      res.setHeader('Content-Length', String(out.ContentLength))
+    }
+    if (typeof body.pipe === 'function') {
+      body.pipe(res)
+      return true
+    }
+    const chunks = []
+    for await (const chunk of body) {
+      chunks.push(chunk)
+    }
+    res.end(Buffer.concat(chunks))
+    return true
+  } catch (e) {
+    console.error('[storage] pipe failed:', k, e.message)
+    return false
+  }
+}
+
 /** Redirect to presigned bucket URL when the object exists. Returns true if redirected. */
 export async function redirectToBucketObject(res, key, statusCode = 302) {
   if (!isStorageEnabled()) return false
