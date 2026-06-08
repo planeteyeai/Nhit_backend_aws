@@ -33,7 +33,10 @@ import {
   getPresignedUrl,
   isStorageEnabled,
   mirrorUploadRelPath,
+  mirrorUploadRelPaths,
+  mirrorPanoramaUploadResult,
   objectExists,
+  redirectToBucketObject,
   storageStatus,
   toObjectKey,
 } from '../lib/storage.js'
@@ -2515,6 +2518,7 @@ router.post(
       const kept = (existing || []).filter((p) => !removed.includes(p))
       const uploaded = (req.files || []).map((f) => `upload/structure_layout/${f.filename}`)
       const merged = [...kept, ...uploaded]
+      await mirrorUploadRelPaths(uploaded, uploadRoot)
 
       await pool.query(
         `UPDATE bridge_inspection
@@ -5080,40 +5084,43 @@ function startModel3dSync(res) {
 router.get('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 router.post('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 
-/** GLB library catalog from upload/model_3d/models.json (only files that are real GLBs on disk). */
-router.get('/model-3d/catalog', optionalAuth, (_req, res) => {
+/** GLB library catalog from upload/model_3d/models.json (disk and/or Railway bucket). */
+router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
   try {
     const entries = listModel3dFileNames()
-    const all = entries
-      .map((entry) => {
-        const file = normalizeModel3dFileName(entry)
-        if (!file) return null
-        const fullPath = resolveModel3dPath(file)
-        const exists = fs.existsSync(fullPath)
-        let sizeBytes = 0
-        if (exists) {
-          try {
-            sizeBytes = fs.statSync(fullPath).size
-          } catch {
-            sizeBytes = 0
-          }
+    const all = []
+    for (const entry of entries) {
+      const file = normalizeModel3dFileName(entry)
+      if (!file) continue
+      const fullPath = resolveModel3dPath(file)
+      const exists = fs.existsSync(fullPath)
+      let sizeBytes = 0
+      if (exists) {
+        try {
+          sizeBytes = fs.statSync(fullPath).size
+        } catch {
+          sizeBytes = 0
         }
-        const validGlb = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(file, sizeBytes)
-        return {
-          id: file,
-          name: file.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
-          file,
-          path: `/model-3d/file?name=${encodeURIComponent(file)}`,
-          exists,
-          sizeBytes,
-          validGlb,
-          sizeWarning:
-            exists && isValidGlbFile(fullPath) && !isPlausibleGlbSize(file, sizeBytes)
-              ? 'File size looks wrong (corrupted copy). Re-download from Git LFS.'
-              : undefined,
-        }
+      }
+      const validLocal = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(file, sizeBytes)
+      const bucketKey = `upload/model_3d/${file}`
+      const inBucket = !validLocal && isStorageEnabled() && (await objectExists(bucketKey))
+      const validGlb = validLocal || inBucket
+      all.push({
+        id: file,
+        name: file.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
+        file,
+        path: `/model-3d/file?name=${encodeURIComponent(file)}`,
+        exists: exists || inBucket,
+        sizeBytes,
+        validGlb,
+        bucketOnly: inBucket && !validLocal,
+        sizeWarning:
+          exists && isValidGlbFile(fullPath) && !isPlausibleGlbSize(file, sizeBytes)
+            ? 'File size looks wrong (corrupted copy). Re-download from Git LFS.'
+            : undefined,
       })
-      .filter(Boolean)
+    }
 
     const models = all.filter((m) => m.validGlb)
     const skipped = all.length - models.length
@@ -5206,16 +5213,29 @@ router.get('/model-3d/status', optionalAuth, (_req, res) => {
   }
 })
 
-/** Serve a catalog GLB; downloads from GitHub LFS first if file is still a pointer. */
+/** Serve a catalog GLB (GET only — files live in upload/model_3d/ or Railway bucket). */
 router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
   try {
     const file = normalizeModel3dFileName(req.query.name)
     if (!file) return res.status(400).json({ message: 'Missing ?name=' })
 
     const fullPath = resolveModel3dPath(file)
+    const bucketKey = `upload/model_3d/${file}`
+
+    if (fs.existsSync(fullPath) && isValidGlbFile(fullPath)) {
+      res.setHeader('Content-Type', 'model/gltf-binary')
+      res.setHeader('Accept-Ranges', 'bytes')
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      return res.sendFile(fullPath, { acceptRanges: true }, (err) => {
+        if (err) next(err)
+      })
+    }
+
+    if (await redirectToBucketObject(res, bucketKey)) return
+
     if (!fs.existsSync(fullPath) && !loadManifestEntry(file)) {
       return res.status(404).json({
-        message: `Model not found: ${file}. Put the .glb in nhit-backend/upload/model_3d/ and restart the backend.`,
+        message: `Model not found: ${file}. Place the .glb in upload/model_3d/ or the Railway bucket at ${bucketKey}.`,
       })
     }
 
@@ -5262,6 +5282,7 @@ function loadManifestEntry(fileName) {
 router.post('/upload-panorama', optionalAuth, uploadPanoramaMem.single('file'), async (req, res) => {
   try {
     const data = await processPanoramaUpload(req, uploadRoot)
+    await mirrorPanoramaUploadResult(uploadRoot, { payload: data })
     res.json(data)
   } catch (e) {
     console.error('upload-panorama error:', e)
@@ -5286,6 +5307,7 @@ router.post('/bridges/:bridgeId/panoramas/upload', optionalAuth, uploadPanoramaM
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
     const data = await processPanoramaUpload(req, uploadRoot, { bridgeId: String(bridgeId) })
+    await mirrorPanoramaUploadResult(uploadRoot, { bridgeId: String(bridgeId), payload: data })
     res.json({ status: 'success', ...data })
   } catch (e) {
     console.error('bridge panorama upload error:', e)
@@ -6162,6 +6184,10 @@ router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async
     }
     const added = files.map((f) => f.filename)
     const merged = [...existing, ...added]
+    await mirrorUploadRelPaths(
+      added.map((name) => `upload/bridge_images/${bridgeId}/${name}`),
+      uploadRoot
+    )
     await pool.query('UPDATE bridge SET bridge_images = ?, updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?', [
       merged.join(','),
       req.user?.uid || 0,
@@ -7245,29 +7271,25 @@ router.get('/api/files/presign', optionalAuth, async (req, res) => {
   }
 })
 
+/** Lidar PDF — GET only; file at upload/download/{inspectionId}_Lidar.pdf (disk or bucket). */
 router.get('/index.php/bmc/inspection/download_lidar_pdf/:inspectionId', async (req, res) => {
   const inspectionId = Number(req.params.inspectionId || 0)
   const finalName = `${inspectionId}_Lidar.pdf`
   const p = path.join(uploadRoot, 'download', finalName)
   const s3Key = `upload/download/${finalName}`
   if (inspectionId && fs.existsSync(p)) return res.download(p)
-  if (isStorageEnabled() && (await objectExists(s3Key))) {
-    const url = await getPresignedUrl(s3Key)
-    if (url) return res.redirect(url)
-  }
+  if (await redirectToBucketObject(res, s3Key)) return
   sendPlaceholderPdf(res, `lidar-${req.params.inspectionId}.pdf`)
 })
 
+/** SAR PDF — GET only; file at upload/download/{inspectionId}_Sar.pdf (disk or bucket). */
 router.get('/index.php/bmc/inspection/download_sar_pdf/:inspectionId', async (req, res) => {
   const inspectionId = Number(req.params.inspectionId || 0)
   const finalName = `${inspectionId}_Sar.pdf`
   const p = path.join(uploadRoot, 'download', finalName)
   const s3Key = `upload/download/${finalName}`
   if (inspectionId && fs.existsSync(p)) return res.download(p)
-  if (isStorageEnabled() && (await objectExists(s3Key))) {
-    const url = await getPresignedUrl(s3Key)
-    if (url) return res.redirect(url)
-  }
+  if (await redirectToBucketObject(res, s3Key)) return
   sendPlaceholderPdf(res, `sar-${req.params.inspectionId}.pdf`)
 })
 

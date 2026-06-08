@@ -153,6 +153,105 @@ export async function mirrorUploadRelPath(relPath, uploadRootDir) {
   }
 }
 
+/** Mirror many files under upload/ (inspection images, bridge images, etc.). */
+export async function mirrorUploadRelPaths(relPaths, uploadRootDir) {
+  if (!isStorageEnabled() || !Array.isArray(relPaths)) return { ok: 0, failed: 0 }
+  let ok = 0
+  let failed = 0
+  for (const rel of relPaths) {
+    const done = await mirrorUploadRelPath(rel, uploadRootDir)
+    if (done) ok += 1
+    else failed += 1
+  }
+  return { ok, failed }
+}
+
+/** Recursively mirror a folder under upload/ to the bucket (panorama faces, stations.json). */
+export async function mirrorUploadDirectory(relDir, uploadRootDir) {
+  if (!isStorageEnabled()) return { ok: 0, failed: 0 }
+  const keyPrefix = toObjectKey(relDir)
+  if (!keyPrefix) return { ok: 0, failed: 0 }
+  const safeRoot = path.resolve(uploadRootDir)
+  const rel = keyPrefix.startsWith('upload/') ? keyPrefix.slice('upload/'.length) : keyPrefix
+  const dirPath = path.normalize(path.join(safeRoot, rel))
+  if (!dirPath.startsWith(safeRoot) || !fs.existsSync(dirPath)) {
+    return { ok: 0, failed: 0 }
+  }
+
+  let ok = 0
+  let failed = 0
+
+  async function walk(currentDir, keyRel) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    for (const ent of entries) {
+      const full = path.join(currentDir, ent.name)
+      const objectKey = `upload/${keyRel}/${ent.name}`.replace(/\\/g, '/')
+      if (ent.isDirectory()) {
+        await walk(full, `${keyRel}/${ent.name}`)
+      } else if (ent.isFile() && ent.name !== '.gitkeep') {
+        try {
+          await uploadFromFile(full, objectKey, guessContentType(objectKey))
+          ok += 1
+        } catch (e) {
+          failed += 1
+          console.error('[storage] mirror dir failed:', objectKey, e.message)
+        }
+      }
+    }
+  }
+
+  try {
+    await walk(dirPath, rel)
+  } catch (e) {
+    console.error('[storage] mirror directory failed:', keyPrefix, e.message)
+  }
+  return { ok, failed }
+}
+
+/** After panorama upload — mirror station folder(s) and optional stations index. */
+export async function mirrorPanoramaUploadResult(uploadRootDir, { bridgeId, payload } = {}) {
+  if (!isStorageEnabled() || !payload) return { ok: 0, failed: 0 }
+  let ok = 0
+  let failed = 0
+
+  const stations = Array.isArray(payload.stations)
+    ? payload.stations
+    : payload.id
+      ? [payload]
+      : []
+
+  for (const station of stations) {
+    const stationId = String(station?.id || '').trim()
+    if (!stationId) continue
+    const relDir = bridgeId
+      ? `upload/bridge_panoramas/${bridgeId}/${stationId}`
+      : `upload/panaroma_3d/${stationId}`
+    const r = await mirrorUploadDirectory(relDir, uploadRootDir)
+    ok += r.ok
+    failed += r.failed
+  }
+
+  if (bridgeId) {
+    const idx = await mirrorUploadRelPath(`upload/bridge_panoramas/${bridgeId}/stations.json`, uploadRootDir)
+    if (idx) ok += 1
+    else failed += 1
+  }
+
+  return { ok, failed }
+}
+
+/** Redirect to presigned bucket URL when the object exists. Returns true if redirected. */
+export async function redirectToBucketObject(res, key, statusCode = 302) {
+  if (!isStorageEnabled()) return false
+  const k = toObjectKey(key)
+  if (!k) return false
+  if (!(await objectExists(k))) return false
+  const url = await getPresignedUrl(k)
+  if (!url) return false
+  res.redirect(statusCode, url)
+  return true
+}
+
 export async function getPresignedUrl(key, expiresIn = PRESIGN_DEFAULT_SEC) {
   const client = getClient()
   const k = toObjectKey(key)
