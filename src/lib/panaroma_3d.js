@@ -12,6 +12,8 @@ const FACE_MAP = {
   nz: ['back', 'nz'],
 }
 
+const PANORAMA_3D_DIR = 'panaroma_3d'
+
 const INDIA_BASE_LAT = 11.1271
 const INDIA_BASE_LNG = 78.6569
 
@@ -125,16 +127,36 @@ function resolvePanoramaStationGroups(entries) {
   return [{ entries }]
 }
 
+const CUBE_FACE_ORDER = ['px', 'nx', 'py', 'ny', 'pz', 'nz']
+
+function entryStem(entryName) {
+  return path.basename(String(entryName || '')).replace(/\.[^.]+$/i, '').toLowerCase()
+}
+
+function entryMatchesFace(entryName, keywords) {
+  const stem = entryStem(entryName)
+  return keywords.some((k) => {
+    const key = String(k).toLowerCase()
+    if (stem === key) return true
+    return new RegExp(`(^|[._\\-])${key}([._\\-]|$)`, 'i').test(stem)
+  })
+}
+
+function imageEntriesOnly(entries) {
+  return entries.filter((e) => /\.(jpe?g|png|webp)$/i.test(e.entryName))
+}
+
 function writePanoramaFromEntries(entries, savePath, baseUrl) {
   let results = {}
   let pType = 'sphere'
+  const used = new Set()
 
   for (const [faceKey, keywords] of Object.entries(FACE_MAP)) {
-    const match = entries.find((e) => {
-      const n = e.entryName.toLowerCase()
-      return keywords.some((k) => n.includes(k))
-    })
+    const match = entries.find(
+      (e) => !used.has(e.entryName) && entryMatchesFace(e.entryName, keywords)
+    )
     if (match) {
+      used.add(match.entryName)
       const ext = path.extname(match.entryName) || '.jpg'
       const targetName = `${faceKey}${ext}`
       fs.writeFileSync(path.join(savePath, targetName), match.getData())
@@ -142,12 +164,30 @@ function writePanoramaFromEntries(entries, savePath, baseUrl) {
     }
   }
 
-  if (Object.keys(results).length === 6) {
+  const remainingImages = imageEntriesOnly(entries).filter((e) => !used.has(e.entryName))
+  if (Object.keys(results).length < 6 && remainingImages.length > 0) {
+    const sorted = [...remainingImages].sort((a, b) =>
+      a.entryName.localeCompare(b.entryName, undefined, { numeric: true, sensitivity: 'base' })
+    )
+    for (const faceKey of CUBE_FACE_ORDER) {
+      if (results[faceKey]) continue
+      const next = sorted.shift()
+      if (!next) break
+      const ext = path.extname(next.entryName) || '.jpg'
+      const targetName = `${faceKey}${ext}`
+      fs.writeFileSync(path.join(savePath, targetName), next.getData())
+      results[faceKey] = `${baseUrl}/${targetName}`
+      used.add(next.entryName)
+    }
+  }
+
+  const faceCount = Object.keys(results).length
+  if (faceCount >= 4) {
     pType = 'cube'
     return { panorama_type: pType, images: results, markers: [] }
   }
 
-  const imgEntry = entries.find((e) => /\.(jpe?g|png|webp)$/i.test(e.entryName))
+  const imgEntry = imageEntriesOnly(entries).find((e) => !used.has(e.entryName)) || imageEntriesOnly(entries)[0]
   if (!imgEntry) {
     const err = new Error('ZIP has no recognizable panorama images')
     err.status = 400
@@ -161,17 +201,24 @@ function writePanoramaFromEntries(entries, savePath, baseUrl) {
   return { panorama_type: pType, images: results, markers: [] }
 }
 
-function bridgePanoramaRoot(uploadRoot, bridgeId) {
-  return path.join(uploadRoot, 'bridge_panoramas', String(bridgeId))
+/** All panorama assets live under upload/panaroma_3d/{stationId}/ */
+function stationDir(uploadRoot, stationId) {
+  return path.join(uploadRoot, PANORAMA_3D_DIR, String(stationId))
 }
 
 function bridgePanoramaIndexPath(uploadRoot, bridgeId) {
-  return path.join(bridgePanoramaRoot(uploadRoot, bridgeId), 'stations.json')
+  return path.join(uploadRoot, PANORAMA_3D_DIR, `stations.${String(bridgeId)}.json`)
 }
 
-function readBridgePanoramaIndex(uploadRoot, bridgeId) {
-  const indexPath = bridgePanoramaIndexPath(uploadRoot, bridgeId)
-  if (!fs.existsSync(indexPath)) return []
+function legacyBridgePanoramaRoot(uploadRoot, bridgeId) {
+  return path.join(uploadRoot, 'bridge_panoramas', String(bridgeId))
+}
+
+function legacyBridgePanoramaIndexPath(uploadRoot, bridgeId) {
+  return path.join(legacyBridgePanoramaRoot(uploadRoot, bridgeId), 'stations.json')
+}
+
+function parseIndexFile(indexPath) {
   try {
     const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8'))
     return Array.isArray(parsed?.stations) ? parsed.stations : Array.isArray(parsed) ? parsed : []
@@ -180,12 +227,94 @@ function readBridgePanoramaIndex(uploadRoot, bridgeId) {
   }
 }
 
+/** Rewrite old bridge_panoramas URLs to panaroma_3d (relative paths for Vite proxy). */
+export function normalizePanoramaMediaUrl(url, stationId) {
+  if (!url || typeof url !== 'string') return url
+  let s = url.trim()
+  if (!s) return s
+  s = s.replace(/\/upload\/bridge_panoramas\/[^/]+\/([^/]+)(\/[^?#]*)?/g, '/upload/panaroma_3d/$1$2')
+  try {
+    const parsed = new URL(s, 'http://local')
+    if (parsed.pathname.startsWith('/upload/bridge_panoramas/')) {
+      const parts = parsed.pathname.split('/').filter(Boolean)
+      const id = parts[2] || stationId
+      const file = parts[3] || ''
+      s = file ? `/upload/panaroma_3d/${id}/${file}` : `/upload/panaroma_3d/${id}`
+    } else if (parsed.pathname.startsWith('/upload/')) {
+      s = `${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+  } catch {
+    if (s.startsWith('upload/')) s = `/${s}`
+  }
+  return s
+}
+
+function normalizeStationRecord(station) {
+  if (!station) return station
+  const stationId = String(station.id || '').trim()
+  const images = station.images
+  let nextImages = images
+  if (images && typeof images === 'object') {
+    if (typeof images.url === 'string') {
+      nextImages = { ...images, url: normalizePanoramaMediaUrl(images.url, stationId) }
+    } else {
+      nextImages = {}
+      for (const [key, val] of Object.entries(images)) {
+        nextImages[key] = typeof val === 'string' ? normalizePanoramaMediaUrl(val, stationId) : val
+      }
+    }
+  }
+  return {
+    ...station,
+    images: nextImages,
+    previewUrl: normalizePanoramaMediaUrl(station.previewUrl, stationId),
+  }
+}
+
+function migrateLegacyStationFolder(uploadRoot, bridgeId, stationId) {
+  const target = stationDir(uploadRoot, stationId)
+  if (fs.existsSync(target)) return target
+  const legacy = path.join(legacyBridgePanoramaRoot(uploadRoot, bridgeId), stationId)
+  if (!fs.existsSync(legacy)) return target
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.renameSync(legacy, target)
+  return target
+}
+
+function migrateLegacyBridgeIndex(uploadRoot, bridgeId) {
+  const legacyPath = legacyBridgePanoramaIndexPath(uploadRoot, bridgeId)
+  if (!fs.existsSync(legacyPath)) return
+  const stations = parseIndexFile(legacyPath).map(normalizeStationRecord)
+  for (const station of stations) {
+    if (station?.id) migrateLegacyStationFolder(uploadRoot, bridgeId, String(station.id))
+  }
+  writeBridgePanoramaIndex(uploadRoot, bridgeId, stations)
+}
+
+function readBridgePanoramaIndex(uploadRoot, bridgeId) {
+  const id = String(bridgeId)
+  migrateLegacyBridgeIndex(uploadRoot, id)
+  const indexPath = bridgePanoramaIndexPath(uploadRoot, id)
+  if (!fs.existsSync(indexPath)) {
+    const legacyPath = legacyBridgePanoramaIndexPath(uploadRoot, id)
+    if (fs.existsSync(legacyPath)) {
+      migrateLegacyBridgeIndex(uploadRoot, id)
+    }
+  }
+  if (!fs.existsSync(indexPath)) return []
+  return parseIndexFile(indexPath).map(normalizeStationRecord)
+}
+
 function writeBridgePanoramaIndex(uploadRoot, bridgeId, stations) {
-  const root = bridgePanoramaRoot(uploadRoot, bridgeId)
-  fs.mkdirSync(root, { recursive: true })
+  const indexPath = bridgePanoramaIndexPath(uploadRoot, bridgeId)
+  fs.mkdirSync(path.dirname(indexPath), { recursive: true })
   fs.writeFileSync(
-    bridgePanoramaIndexPath(uploadRoot, bridgeId),
-    JSON.stringify({ stations, updatedAt: new Date().toISOString() }, null, 2)
+    indexPath,
+    JSON.stringify(
+      { stations: stations.map(normalizeStationRecord), updatedAt: new Date().toISOString() },
+      null,
+      2
+    )
   )
 }
 
@@ -201,24 +330,23 @@ function panoramaPreviewUrl(station) {
 
 function buildStationResponse(req, uploadRoot, entries, idx = 0, total = 1, options = {}) {
   const bridgeId = options?.bridgeId != null ? String(options.bridgeId).trim() : ''
+  const uploadedName = String(options?.uploadedName || '').trim()
   const stationId = randomUUID().replace(/-/g, '').slice(0, 8)
-  const savePath = bridgeId
-    ? path.join(bridgePanoramaRoot(uploadRoot, bridgeId), stationId)
-    : path.join(uploadRoot, 'panaroma_3d', stationId)
+  const savePath = stationDir(uploadRoot, stationId)
   fs.mkdirSync(savePath, { recursive: true })
-  const baseUrl = bridgeId
-    ? `${publicBaseUrl(req)}/upload/bridge_panoramas/${bridgeId}/${stationId}`
-    : `${publicBaseUrl(req)}/upload/panaroma_3d/${stationId}`
+  // Relative URL — works with Vite /upload proxy (port 5173 → 3001)
+  const baseUrl = `/upload/${PANORAMA_3D_DIR}/${stationId}`
   const payload = writePanoramaFromEntries(entries, savePath, baseUrl)
   const spread = total > 1
   const angle = total > 1 ? (idx / total) * Math.PI * 2 : 0
-  const radius = 0.012
+  const radius = total > 12 ? 0.028 : total > 6 ? 0.02 : 0.012
   const lat = spread ? INDIA_BASE_LAT + radius * Math.cos(angle) : INDIA_BASE_LAT + Math.random() * 0.05
   const lng = spread ? INDIA_BASE_LNG + radius * Math.sin(angle) : INDIA_BASE_LNG + Math.random() * 0.05
   return {
     id: stationId,
     bridgeId: bridgeId || undefined,
     ...payload,
+    uploadedName: uploadedName || undefined,
     lat,
     lng,
     previewUrl: panoramaPreviewUrl({ images: payload.images }),
@@ -231,7 +359,7 @@ function persistBridgePanoramaStations(uploadRoot, bridgeId, stations) {
   const existing = readBridgePanoramaIndex(uploadRoot, bridgeId)
   const byId = new Map(existing.map((s) => [String(s.id), s]))
   for (const station of stations) {
-    if (station?.id) byId.set(String(station.id), station)
+    if (station?.id) byId.set(String(station.id), normalizeStationRecord(station))
   }
   writeBridgePanoramaIndex(uploadRoot, bridgeId, Array.from(byId.values()))
 }
@@ -252,9 +380,13 @@ export function deleteBridgePanorama(uploadRoot, bridgeId, stationId) {
     err.status = 400
     throw err
   }
-  const stationDir = path.join(bridgePanoramaRoot(uploadRoot, bridgeId), id)
-  if (fs.existsSync(stationDir)) {
-    fs.rmSync(stationDir, { recursive: true, force: true })
+  const dir = stationDir(uploadRoot, id)
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+  const legacyDir = path.join(legacyBridgePanoramaRoot(uploadRoot, bridgeId), id)
+  if (fs.existsSync(legacyDir)) {
+    fs.rmSync(legacyDir, { recursive: true, force: true })
   }
   const next = readBridgePanoramaIndex(uploadRoot, bridgeId).filter((s) => String(s.id) !== id)
   writeBridgePanoramaIndex(uploadRoot, bridgeId, next)
@@ -277,11 +409,32 @@ export async function processPanoramaUpload(req, uploadRoot, options = {}) {
   const bridgeId = String(options?.bridgeId || req.body?.bridgeId || req.query?.bridgeId || '').trim()
   const uploadOpts = bridgeId ? { bridgeId } : {}
   const filename = String(file.originalname || 'upload').toLowerCase()
+  const originalName = String(file.originalname || 'upload')
 
   try {
     if (filename.endsWith('.zip')) {
       const zip = hasBuffer ? new AdmZip(file.buffer) : new AdmZip(file.path)
       const entries = zipEntriesWithoutNoise(zip)
+      const zipMeta = { ...uploadOpts, uploadedName: originalName }
+
+      // Bridge ZIP upload: one archive = one panorama station (cube or sphere), never split folders
+      if (bridgeId) {
+        const existing = readBridgePanoramaIndex(uploadRoot, bridgeId)
+        const sameZip = existing.filter(
+          (s) => String(s.uploadedName || '').toLowerCase() === originalName.toLowerCase()
+        )
+        for (const old of sameZip) {
+          const oldDir = stationDir(uploadRoot, old.id)
+          if (fs.existsSync(oldDir)) fs.rmSync(oldDir, { recursive: true, force: true })
+        }
+        const withoutDupZip = existing.filter(
+          (s) => String(s.uploadedName || '').toLowerCase() !== originalName.toLowerCase()
+        )
+        const station = buildStationResponse(req, uploadRoot, entries, 0, 1, zipMeta)
+        writeBridgePanoramaIndex(uploadRoot, bridgeId, [...withoutDupZip, station])
+        return station
+      }
+
       const groups = resolvePanoramaStationGroups(entries)
 
       if (groups.length > 1) {
@@ -329,7 +482,7 @@ export async function processPanoramaUpload(req, uploadRoot, options = {}) {
       ],
       0,
       1,
-      uploadOpts
+      { ...uploadOpts, uploadedName: originalName }
     )
     if (bridgeId) persistBridgePanoramaStations(uploadRoot, bridgeId, [station])
     return station

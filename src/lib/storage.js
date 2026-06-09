@@ -223,16 +223,14 @@ export async function mirrorPanoramaUploadResult(uploadRootDir, { bridgeId, payl
   for (const station of stations) {
     const stationId = String(station?.id || '').trim()
     if (!stationId) continue
-    const relDir = bridgeId
-      ? `upload/bridge_panoramas/${bridgeId}/${stationId}`
-      : `upload/panaroma_3d/${stationId}`
+    const relDir = `upload/panaroma_3d/${stationId}`
     const r = await mirrorUploadDirectory(relDir, uploadRootDir)
     ok += r.ok
     failed += r.failed
   }
 
   if (bridgeId) {
-    const idx = await mirrorUploadRelPath(`upload/bridge_panoramas/${bridgeId}/stations.json`, uploadRootDir)
+    const idx = await mirrorUploadRelPath(`upload/panaroma_3d/stations.${bridgeId}.json`, uploadRootDir)
     if (idx) ok += 1
     else failed += 1
   }
