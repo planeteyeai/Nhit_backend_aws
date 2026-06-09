@@ -99,7 +99,105 @@ function groupByImmediateChildFolder(entries) {
   return []
 }
 
+/** Multiple loose images at ZIP root (no folders) → one station per image. */
+function groupStandaloneRootImages(entries) {
+  const images = imageEntriesOnly(entries)
+  if (images.length < 2) return null
+  const hasSubfolder = images.some((e) => String(e.entryName || '').includes('/'))
+  if (hasSubfolder) return null
+  return images.map((img) => ({
+    entries: [img],
+    label: path.basename(String(img.entryName || ''), path.extname(img.entryName || '')),
+  }))
+}
+
+function planPositionForIndex(index, total) {
+  if (total <= 1) return { planX: 50, planY: 50 }
+  const startX = 8
+  const endX = 92
+  const y = 50
+  const t = index / (total - 1)
+  return { planX: startX + (endX - startX) * t, planY: y }
+}
+
+const DEFAULT_BRIDGE_BEARING_DEG = 55
+
+function sortPanoramaStations(stations) {
+  if (!Array.isArray(stations) || stations.length < 2) return stations || []
+  return [...stations].sort((a, b) => {
+    const ta = Date.parse(a?.uploadedAt || '') || 0
+    const tb = Date.parse(b?.uploadedAt || '') || 0
+    if (ta !== tb) return ta - tb
+    const na = String(a?.uploadedName || a?.displayName || a?.label || '')
+    const nb = String(b?.uploadedName || b?.displayName || b?.label || '')
+    const nameCmp = na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' })
+    if (nameCmp !== 0) return nameCmp
+    return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { numeric: true })
+  })
+}
+
+/** Spread stations along bridge axis (~35–80 m apart) for satellite map markers. */
+function linearSpreadCoords(index, total, baseLat = INDIA_BASE_LAT, baseLng = INDIA_BASE_LNG) {
+  if (total <= 1) {
+    return { lat: baseLat, lng: baseLng, latitude: baseLat, longitude: baseLng }
+  }
+  const stepMeters = Math.max(35, Math.min(80, 520 / total))
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos((baseLat * Math.PI) / 180)
+  const offset = index - (total - 1) / 2
+  const bearing = (DEFAULT_BRIDGE_BEARING_DEG * Math.PI) / 180
+  const distM = offset * stepMeters
+  const lat = baseLat + (distM * Math.cos(bearing)) / metersPerDegLat
+  const lng = baseLng + (distM * Math.sin(bearing)) / metersPerDegLng
+  return { lat, lng, latitude: lat, longitude: lng }
+}
+
+function stationDisplayLabel(idx, options = {}) {
+  const mpIndex = idx + 1
+  const uploadedName = String(options?.uploadedName || '').trim()
+  const folderLabel = String(options?.label || '').trim()
+  const zipBase = uploadedName ? path.basename(uploadedName, path.extname(uploadedName)) : ''
+  if (folderLabel && folderLabel !== zipBase) {
+    return `MP ${mpIndex} · ${folderLabel}`
+  }
+  if (/\.zip$/i.test(uploadedName)) {
+    return `MP ${mpIndex} · ${zipBase}`
+  }
+  if (uploadedName) {
+    return `MP ${mpIndex} · ${zipBase}`
+  }
+  return `MP ${mpIndex}`
+}
+
+function realignBridgeStationPositions(stations) {
+  const ordered = sortPanoramaStations(stations)
+  const total = ordered.length
+  return ordered.map((station, index) => {
+    const plan = planPositionForIndex(index, total)
+    const coords = linearSpreadCoords(index, total)
+    const geotagged = Boolean(station?.geotagged)
+    const label = stationDisplayLabel(index, {
+      uploadedName: station?.uploadedName,
+      label: station?.label,
+    })
+    return {
+      ...station,
+      displayName: label,
+      label,
+      planX: plan.planX,
+      planY: plan.planY,
+      lat: geotagged && station.lat != null ? station.lat : coords.lat,
+      lng: geotagged && station.lng != null ? station.lng : coords.lng,
+      latitude: geotagged && station.latitude != null ? station.latitude : coords.latitude,
+      longitude: geotagged && station.longitude != null ? station.longitude : coords.longitude,
+    }
+  })
+}
+
 function resolvePanoramaStationGroups(entries) {
+  const standalone = groupStandaloneRootImages(entries)
+  if (standalone?.length > 1) return standalone
+
   const nestedZipEntries = entries.filter((e) => /\.zip$/i.test(e.entryName))
   if (nestedZipEntries.length > 1) {
     return nestedZipEntries.map((entry) => ({ entries: zipEntriesWithoutNoise(new AdmZip(entry.getData())) }))
@@ -337,18 +435,22 @@ function buildStationResponse(req, uploadRoot, entries, idx = 0, total = 1, opti
   // Relative URL — works with Vite /upload proxy (port 5173 → 3001)
   const baseUrl = `/upload/${PANORAMA_3D_DIR}/${stationId}`
   const payload = writePanoramaFromEntries(entries, savePath, baseUrl)
-  const spread = total > 1
-  const angle = total > 1 ? (idx / total) * Math.PI * 2 : 0
-  const radius = total > 12 ? 0.028 : total > 6 ? 0.02 : 0.012
-  const lat = spread ? INDIA_BASE_LAT + radius * Math.cos(angle) : INDIA_BASE_LAT + Math.random() * 0.05
-  const lng = spread ? INDIA_BASE_LNG + radius * Math.sin(angle) : INDIA_BASE_LNG + Math.random() * 0.05
+  const plan = planPositionForIndex(idx, total)
+  const coords = linearSpreadCoords(idx, total)
+  const displayName = stationDisplayLabel(idx, options)
   return {
     id: stationId,
     bridgeId: bridgeId || undefined,
     ...payload,
     uploadedName: uploadedName || undefined,
-    lat,
-    lng,
+    displayName,
+    label: displayName,
+    planX: plan.planX,
+    planY: plan.planY,
+    lat: coords.lat,
+    lng: coords.lng,
+    latitude: coords.latitude,
+    longitude: coords.longitude,
     previewUrl: panoramaPreviewUrl({ images: payload.images }),
     uploadedAt: new Date().toISOString(),
   }
@@ -361,14 +463,13 @@ function persistBridgePanoramaStations(uploadRoot, bridgeId, stations) {
   for (const station of stations) {
     if (station?.id) byId.set(String(station.id), normalizeStationRecord(station))
   }
-  writeBridgePanoramaIndex(uploadRoot, bridgeId, Array.from(byId.values()))
+  writeBridgePanoramaIndex(uploadRoot, bridgeId, realignBridgeStationPositions(Array.from(byId.values())))
 }
 
 export function listBridgePanoramas(uploadRoot, bridgeId, req) {
   const stations = readBridgePanoramaIndex(uploadRoot, bridgeId)
-  return stations.map((station, index) => ({
+  return realignBridgeStationPositions(stations).map((station) => ({
     ...station,
-    displayName: station.displayName || station.label || `Panorama ${index + 1}`,
     previewUrl: station.previewUrl || panoramaPreviewUrl(station),
   }))
 }
@@ -388,7 +489,9 @@ export function deleteBridgePanorama(uploadRoot, bridgeId, stationId) {
   if (fs.existsSync(legacyDir)) {
     fs.rmSync(legacyDir, { recursive: true, force: true })
   }
-  const next = readBridgePanoramaIndex(uploadRoot, bridgeId).filter((s) => String(s.id) !== id)
+  const next = realignBridgeStationPositions(
+    readBridgePanoramaIndex(uploadRoot, bridgeId).filter((s) => String(s.id) !== id)
+  )
   writeBridgePanoramaIndex(uploadRoot, bridgeId, next)
   return { deleted: id, remaining: next.length }
 }
@@ -415,9 +518,12 @@ export async function processPanoramaUpload(req, uploadRoot, options = {}) {
     if (filename.endsWith('.zip')) {
       const zip = hasBuffer ? new AdmZip(file.buffer) : new AdmZip(file.path)
       const entries = zipEntriesWithoutNoise(zip)
-      const zipMeta = { ...uploadOpts, uploadedName: originalName }
+      const zipMeta = {
+        ...uploadOpts,
+        uploadedName: originalName,
+        label: path.basename(originalName, path.extname(originalName)),
+      }
 
-      // Bridge ZIP upload: one archive = one panorama station (cube or sphere), never split folders
       if (bridgeId) {
         const existing = readBridgePanoramaIndex(uploadRoot, bridgeId)
         const sameZip = existing.filter(
@@ -430,45 +536,41 @@ export async function processPanoramaUpload(req, uploadRoot, options = {}) {
         const withoutDupZip = existing.filter(
           (s) => String(s.uploadedName || '').toLowerCase() !== originalName.toLowerCase()
         )
-        const station = buildStationResponse(req, uploadRoot, entries, 0, 1, zipMeta)
-        writeBridgePanoramaIndex(uploadRoot, bridgeId, [...withoutDupZip, station])
-        return station
+
+        const idx = withoutDupZip.length
+        const total = idx + 1
+        const station = buildStationResponse(req, uploadRoot, entries, idx, total, zipMeta)
+        const aligned = realignBridgeStationPositions([...withoutDupZip, station])
+        writeBridgePanoramaIndex(uploadRoot, bridgeId, aligned)
+        const saved = aligned[aligned.length - 1]
+        return { ...saved, stations: [saved], stationCount: 1 }
       }
 
-      const groups = resolvePanoramaStationGroups(entries)
-
-      if (groups.length > 1) {
-        const stations = []
-        const failures = []
-        for (let idx = 0; idx < groups.length; idx += 1) {
-          try {
-            stations.push(
-              buildStationResponse(req, uploadRoot, groups[idx].entries, idx, groups.length, uploadOpts)
-            )
-          } catch (err) {
-            failures.push(`point ${idx + 1}: ${err.message || 'invalid'}`)
-          }
-        }
-        if (stations.length === 0) {
-          const err = new Error(
-            failures.length > 0
-              ? `No valid panoramas in ZIP (${failures.join('; ')})`
-              : 'ZIP has no valid panorama folders'
-          )
-          err.status = 400
-          throw err
-        }
-        if (bridgeId) persistBridgePanoramaStations(uploadRoot, bridgeId, stations)
-        return {
-          ...stations[stations.length - 1],
-          stations,
-          stationCount: stations.length,
-        }
-      }
-
-      const station = buildStationResponse(req, uploadRoot, groups[0]?.entries || entries, 0, 1, uploadOpts)
+      const station = buildStationResponse(req, uploadRoot, entries, 0, 1, zipMeta)
       if (bridgeId) persistBridgePanoramaStations(uploadRoot, bridgeId, [station])
-      return station
+      return { ...station, stations: [station], stationCount: 1 }
+    }
+
+    if (bridgeId) {
+      const existing = readBridgePanoramaIndex(uploadRoot, bridgeId)
+      const idx = existing.length
+      const total = idx + 1
+      const station = buildStationResponse(
+        req,
+        uploadRoot,
+        [
+          {
+            entryName: `sphere${path.extname(filename) || '.jpg'}`,
+            getData: () => (hasBuffer ? file.buffer : fs.readFileSync(file.path)),
+          },
+        ],
+        idx,
+        total,
+        { ...uploadOpts, uploadedName: originalName, label: path.basename(originalName, path.extname(originalName)) }
+      )
+      const aligned = realignBridgeStationPositions([...existing, station])
+      writeBridgePanoramaIndex(uploadRoot, bridgeId, aligned)
+      return aligned[aligned.length - 1]
     }
 
     const station = buildStationResponse(
@@ -482,9 +584,8 @@ export async function processPanoramaUpload(req, uploadRoot, options = {}) {
       ],
       0,
       1,
-      { ...uploadOpts, uploadedName: originalName }
+      { ...uploadOpts, uploadedName: originalName, label: path.basename(originalName, path.extname(originalName)) }
     )
-    if (bridgeId) persistBridgePanoramaStations(uploadRoot, bridgeId, [station])
     return station
   } finally {
     if (hasPath && fs.existsSync(file.path)) {

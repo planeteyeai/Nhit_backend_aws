@@ -18,6 +18,18 @@ import { RM_MEASUREMENT_MAP } from '../config/constants/measurementMap.js'
 import { BOQ_Items } from '../config/constants/boqItemsMeta.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload, listBridgePanoramas, deleteBridgePanorama } from '../lib/panaroma_3d.js'
+import {
+  addPanoramaMarkerImage,
+  attachMarkersToStations,
+  createPanoramaMarker,
+  deletePanoramaMarker,
+  deletePanoramaStationRecords,
+  ensurePanoramaMarkerTables,
+  panoramaMarkerImageRelPath,
+  syncPanoramaStations,
+  updatePanoramaMarker,
+  upsertPanoramaStation,
+} from '../lib/panoramaMarkersDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import {
   glbEnsureStatus,
@@ -214,6 +226,22 @@ const upload3d = multer({ storage: uploadStorage, limits: { fileSize: 150 * 1024
 const uploadPanoramaMem = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 200 * 1024 * 1024 },
+})
+const uploadPanoramaMarkerImage = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      const stationId = String(req.params.stationId || '').trim()
+      const markerId = String(req.params.markerId || '').trim()
+      const dir = path.join(uploadRoot, 'panaroma_3d', stationId, 'markers', markerId)
+      ensureDir(dir)
+      cb(null, dir)
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '') || '.jpg'
+      cb(null, `${Date.now()}-${Math.floor(Math.random() * 1e6)}${ext}`)
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
 })
 
 const BRIDGE_COLUMNS = new Set([
@@ -5297,8 +5325,11 @@ router.get('/bridges/:bridgeId/panoramas', optionalAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+    await ensurePanoramaMarkerTables(pool)
     const stations = listBridgePanoramas(uploadRoot, bridgeId, req)
-    res.json({ status: 'success', data: stations })
+    await syncPanoramaStations(pool, bridgeId, stations)
+    const data = await attachMarkersToStations(pool, bridgeId, stations)
+    res.json({ status: 'success', data })
   } catch (e) {
     console.error('bridge panoramas list error:', e)
     res.status(500).json({ message: e.message || 'Failed to list panoramas' })
@@ -5311,6 +5342,10 @@ router.post('/bridges/:bridgeId/panoramas/upload', optionalAuth, uploadPanoramaM
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
     const data = await processPanoramaUpload(req, uploadRoot, { bridgeId: String(bridgeId) })
     await mirrorPanoramaUploadResult(uploadRoot, { bridgeId: String(bridgeId), payload: data })
+    await ensurePanoramaMarkerTables(pool)
+    const uploadedStations =
+      Array.isArray(data?.stations) && data.stations.length > 0 ? data.stations : [data]
+    await syncPanoramaStations(pool, bridgeId, uploadedStations)
     res.json({ status: 'success', ...data })
   } catch (e) {
     console.error('bridge panorama upload error:', e)
@@ -5324,12 +5359,79 @@ router.delete('/bridges/:bridgeId/panoramas/:stationId', optionalAuth, async (re
     const stationId = String(req.params.stationId || '').trim()
     if (!bridgeId || !stationId) return res.status(400).json({ message: 'Invalid parameters' })
     const result = deleteBridgePanorama(uploadRoot, bridgeId, stationId)
+    await deletePanoramaStationRecords(pool, bridgeId, stationId)
     res.json({ status: 'success', ...result })
   } catch (e) {
     console.error('bridge panorama delete error:', e)
     res.status(e.status || 500).json({ message: e.message || 'Failed to delete panorama' })
   }
 })
+
+router.post('/bridges/:bridgeId/panoramas/:stationId/markers', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const stationId = String(req.params.stationId || '').trim()
+    if (!bridgeId || !stationId) return res.status(400).json({ message: 'Invalid parameters' })
+    await ensurePanoramaMarkerTables(pool)
+    await upsertPanoramaStation(pool, bridgeId, { id: stationId, bridgeId })
+    const marker = await createPanoramaMarker(pool, bridgeId, stationId, req.body || {}, resolveActorUserId(req))
+    res.status(201).json({ status: 'success', data: marker })
+  } catch (e) {
+    console.error('panorama marker create error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to create marker' })
+  }
+})
+
+router.put('/bridges/:bridgeId/panoramas/:stationId/markers/:markerId', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const stationId = String(req.params.stationId || '').trim()
+    const markerId = Number(req.params.markerId || 0)
+    if (!bridgeId || !stationId || !markerId) return res.status(400).json({ message: 'Invalid parameters' })
+    const marker = await updatePanoramaMarker(pool, bridgeId, stationId, markerId, req.body || {})
+    res.json({ status: 'success', data: marker })
+  } catch (e) {
+    console.error('panorama marker update error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to update marker' })
+  }
+})
+
+router.delete('/bridges/:bridgeId/panoramas/:stationId/markers/:markerId', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const stationId = String(req.params.stationId || '').trim()
+    const markerId = Number(req.params.markerId || 0)
+    if (!bridgeId || !stationId || !markerId) return res.status(400).json({ message: 'Invalid parameters' })
+    const result = await deletePanoramaMarker(pool, bridgeId, stationId, markerId)
+    res.json({ status: 'success', ...result })
+  } catch (e) {
+    console.error('panorama marker delete error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to delete marker' })
+  }
+})
+
+router.post(
+  '/bridges/:bridgeId/panoramas/:stationId/markers/:markerId/images',
+  optionalAuth,
+  uploadPanoramaMarkerImage.single('file'),
+  async (req, res) => {
+    try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      const stationId = String(req.params.stationId || '').trim()
+      const markerId = Number(req.params.markerId || 0)
+      if (!bridgeId || !stationId || !markerId || !req.file) {
+        return res.status(400).json({ message: 'Invalid parameters or missing file' })
+      }
+      const relPath = panoramaMarkerImageRelPath(stationId, markerId, req.file.filename)
+      await mirrorUploadRelPath(`upload/${relPath}`, uploadRoot)
+      const images = await addPanoramaMarkerImage(pool, markerId, relPath, req.file.originalname)
+      res.status(201).json({ status: 'success', data: { images, url: `/upload/${relPath}` } })
+    } catch (e) {
+      console.error('panorama marker image upload error:', e)
+      res.status(e.status || 500).json({ message: e.message || 'Failed to upload marker image' })
+    }
+  }
+)
 
 const INSPECTION_COMPONENTS = {
   general: { table: 'general', pk: 'general_id', flag: 'general' },
