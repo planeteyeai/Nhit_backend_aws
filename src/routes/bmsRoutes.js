@@ -6272,6 +6272,13 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
     res.status(500).json({ message: e.message })
   }
 })
+
+function bridgeImageBasename(name) {
+  const s = String(name || '').trim().replace(/\\/g, '/')
+  const parts = s.split('/').filter(Boolean)
+  return parts[parts.length - 1] || s
+}
+
 router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId)
@@ -6324,6 +6331,7 @@ router.post('/bridge/delete_image', optionalAuth, async (req, res) => {
     const bridgeId = Number(req.body?.bridge_id)
     const imageName = String(req.body?.image_name || '').trim()
     if (!bridgeId || !imageName) return res.status(400).json({ success: false, message: 'Invalid parameters' })
+    const targetBase = bridgeImageBasename(imageName)
     const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
     let list = []
     const raw = rows[0]?.bridge_images
@@ -6334,15 +6342,47 @@ router.post('/bridge/delete_image', optionalAuth, async (req, res) => {
         list = String(raw).split(',').map((x) => x.trim()).filter(Boolean)
       }
     }
-    const updated = list.filter((x) => x !== imageName)
+    const updated = list.filter((x) => bridgeImageBasename(x) !== targetBase)
     await pool.query('UPDATE bridge SET bridge_images = ?, updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?', [
       updated.join(','),
       req.user?.uid || 0,
       bridgeId,
     ])
-    const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), imageName)
+    const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), targetBase)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+router.post('/bridge/delete_images', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.body?.bridge_id)
+    const imageNames = Array.isArray(req.body?.image_names) ? req.body.image_names : []
+    const targets = [...new Set(imageNames.map((n) => bridgeImageBasename(n)).filter(Boolean))]
+    if (!bridgeId || !targets.length) return res.status(400).json({ success: false, message: 'Invalid parameters' })
+    const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
+    let list = []
+    const raw = rows[0]?.bridge_images
+    if (raw) {
+      try {
+        list = Array.isArray(raw) ? raw : JSON.parse(raw)
+      } catch {
+        list = String(raw).split(',').map((x) => x.trim()).filter(Boolean)
+      }
+    }
+    const targetSet = new Set(targets)
+    const updated = list.filter((x) => !targetSet.has(bridgeImageBasename(x)))
+    await pool.query('UPDATE bridge SET bridge_images = ?, updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?', [
+      updated.join(','),
+      req.user?.uid || 0,
+      bridgeId,
+    ])
+    for (const baseName of targets) {
+      const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), baseName)
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    }
+    res.json({ success: true, deleted: targets.length })
   } catch (e) {
     res.status(500).json({ success: false, message: e.message })
   }
