@@ -5003,6 +5003,50 @@ function normalizeModel3dFileName(name) {
   return s
 }
 
+function extractModel3dChainageKey(text) {
+  const m = String(text || '').match(/(\d+)\s*\+\s*(\d+)/)
+  if (!m) return null
+  return `${Number(m[1])}+${Number(m[2])}`
+}
+
+function chainageSortModelNames(a, b) {
+  const parse = (name) => {
+    const key = extractModel3dChainageKey(name)
+    if (!key) return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, name.toLowerCase()]
+    const [km, m] = key.split('+').map(Number)
+    return [km, m, name.toLowerCase()]
+  }
+  const [ak, am, an] = parse(a)
+  const [bk, bm, bn] = parse(b)
+  if (ak !== bk) return ak - bk
+  if (am !== bm) return am - bm
+  return an.localeCompare(bn)
+}
+
+function resolveModel3dDiskName(fileName) {
+  const fullPath = resolveModel3dPath(fileName)
+  if (fullPath && fs.existsSync(fullPath)) return path.basename(fullPath)
+  return normalizeModel3dFileName(fileName)
+}
+
+function setModel3dResponseHeaders(req, res, filePath) {
+  res.setHeader('Content-Type', 'model/gltf-binary')
+  res.setHeader('Accept-Ranges', 'bytes')
+  try {
+    const stat = fs.statSync(filePath)
+    const etag = `"glb-${stat.size}-${Math.floor(stat.mtimeMs)}"`
+    res.setHeader('ETag', etag)
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end()
+      return true
+    }
+  } catch {
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
+  }
+  return false
+}
+
 function listModel3dFileNames() {
   const fromJson = new Set()
   const jsonPath = path.join(model3dRoot, 'models.json')
@@ -5023,12 +5067,13 @@ function listModel3dFileNames() {
     fromDisk = fs
       .readdirSync(model3dRoot, { withFileTypes: true })
       .filter((d) => d.isFile() && /\.glb(\.glb)?$/i.test(d.name))
-      .map((d) => normalizeModel3dFileName(d.name))
+      .map((d) => d.name)
   } catch {
     fromDisk = []
   }
 
-  return [...new Set([...fromJson, ...fromDisk])]
+  const merged = [...new Set([...fromDisk, ...fromJson])]
+  return merged.sort(chainageSortModelNames)
 }
 
 function resolveModel3dPath(fileName) {
@@ -5124,6 +5169,7 @@ router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
       const file = normalizeModel3dFileName(entry)
       if (!file) continue
       const fullPath = resolveModel3dPath(file)
+      const diskFile = resolveModel3dDiskName(file)
       const exists = fs.existsSync(fullPath)
       let sizeBytes = 0
       if (exists) {
@@ -5133,21 +5179,23 @@ router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
           sizeBytes = 0
         }
       }
-      const validLocal = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(file, sizeBytes)
-      const bucketKey = `upload/model_3d/${file}`
+      const validLocal = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(diskFile, sizeBytes)
+      const bucketKey = `upload/model_3d/${diskFile}`
       const inBucket = !validLocal && isStorageEnabled() && (await objectExists(bucketKey))
       const validGlb = validLocal || inBucket
+      const chainageKey = extractModel3dChainageKey(diskFile)
       all.push({
-        id: file,
-        name: file.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
-        file,
-        path: `/model-3d/file?name=${encodeURIComponent(file)}`,
+        id: diskFile,
+        name: diskFile.replace(/\.glb$/i, '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim(),
+        file: diskFile,
+        chainageKey,
+        path: `/model-3d/file?name=${encodeURIComponent(diskFile)}${sizeBytes ? `&v=${sizeBytes}` : ''}`,
         exists: exists || inBucket,
         sizeBytes,
         validGlb,
         bucketOnly: inBucket && !validLocal,
         sizeWarning:
-          exists && isValidGlbFile(fullPath) && !isPlausibleGlbSize(file, sizeBytes)
+          exists && isValidGlbFile(fullPath) && !isPlausibleGlbSize(diskFile, sizeBytes)
             ? 'File size looks wrong (corrupted copy). Re-download from Git LFS.'
             : undefined,
       })
@@ -5251,12 +5299,11 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
     if (!file) return res.status(400).json({ message: 'Missing ?name=' })
 
     const fullPath = resolveModel3dPath(file)
-    const bucketKey = `upload/model_3d/${file}`
+    const diskFile = resolveModel3dDiskName(file)
+    const bucketKey = `upload/model_3d/${diskFile}`
 
     if (fs.existsSync(fullPath) && isValidGlbFile(fullPath)) {
-      res.setHeader('Content-Type', 'model/gltf-binary')
-      res.setHeader('Accept-Ranges', 'bytes')
-      res.setHeader('Cache-Control', 'public, max-age=86400')
+      if (setModel3dResponseHeaders(req, res, fullPath)) return
       return res.sendFile(fullPath, { acceptRanges: true }, (err) => {
         if (err) next(err)
       })
@@ -5264,9 +5311,9 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
 
     if (await pipeBucketObjectToResponse(res, bucketKey)) return
 
-    if (!fs.existsSync(fullPath) && !loadManifestEntry(file)) {
+    if (!fs.existsSync(fullPath) && !loadManifestEntry(diskFile)) {
       return res.status(404).json({
-        message: `Model not found: ${file}. Place the .glb in upload/model_3d/ or the Railway bucket at ${bucketKey}.`,
+        message: `Model not found: ${diskFile}. Place the .glb in upload/model_3d/ or the Railway bucket at ${bucketKey}.`,
       })
     }
 
@@ -5278,7 +5325,7 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
           syncUrl: '/model-3d/sync',
         })
       }
-      const dl = await ensureSingleModelFile(file)
+      const dl = await ensureSingleModelFile(diskFile)
       if (!dl.ok || !isValidGlbFile(fullPath)) {
         return res.status(503).json({
           message: dl.error || 'Could not download GLB from GitHub LFS yet. Try /model-3d/sync and wait.',
@@ -5287,9 +5334,7 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
       }
     }
 
-    res.setHeader('Content-Type', 'model/gltf-binary')
-    res.setHeader('Accept-Ranges', 'bytes')
-    res.setHeader('Cache-Control', 'public, max-age=86400')
+    if (setModel3dResponseHeaders(req, res, fullPath)) return
     res.sendFile(fullPath, { acceptRanges: true }, (err) => {
       if (err) next(err)
     })

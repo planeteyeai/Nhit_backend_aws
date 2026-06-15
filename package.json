@@ -9,7 +9,8 @@
     "verify:glb": "node scripts/verify-glb-deploy.js",
     "test:bucket": "node scripts/test-bucket-connection.mjs",
     "verify:storage": "node scripts/verify-file-storage.mjs",
-    "audit:security": "node scripts/security-audit.mjs"
+    "audit:security": "node scripts/security-audit.mjs",
+    "sync:models": "node scripts/sync-model-catalog.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1063.0",
