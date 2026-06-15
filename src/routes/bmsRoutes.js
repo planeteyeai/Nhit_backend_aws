@@ -5283,7 +5283,7 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
     if (bucketKey && (await pipeBucketObjectToResponse(res, bucketKey))) return
 
     return res.status(404).json({
-      message: `Model not available: ${diskFile}. Add the model.`,
+      message: `Model not available: ${diskFile}. Add model.`,
     })
   } catch (e) {
     next(e)
