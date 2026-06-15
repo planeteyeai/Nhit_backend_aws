@@ -1,7 +1,6 @@
-# Railway — Nixpacks keeps .git during build so git lfs pull works (recommended).
-# Alternative: set builder = "DOCKERFILE" if you prefer Dockerfile + clone fallback.
+# Railway — Dockerfile runs git lfs pull so GLB binaries are baked into the image.
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
 
 [deploy]
 startCommand = "npm start"

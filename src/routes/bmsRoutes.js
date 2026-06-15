@@ -31,12 +31,12 @@ import {
   upsertPanoramaStation,
 } from '../lib/panoramaMarkersDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
+import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
-  glbEnsureStatus,
-  runEnsureGlbAssets,
-  countValidGlbs,
-  ensureSingleModelFile,
-} from '../lib/glbEnsure.js'
+  model3dExistsInBucket,
+  resolveModel3dBucketKey,
+  warmModel3dStorage,
+} from '../lib/model3dStorage.js'
 import {
   computeBridgeLifecycleStage,
   bridgeTrackingStatusHint,
@@ -5126,37 +5126,27 @@ function isPlausibleGlbSize(fileName, sizeBytes) {
   return sizeBytes >= expected * 0.4 && sizeBytes <= expected * 1.6
 }
 
-function startModel3dSync(res) {
-  const tokenSet = Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN)
-  if (!tokenSet) {
-    return res.status(400).json({
-      status: 'error',
-      message:
-        'Set GITHUB_TOKEN in Railway Variables (GitHub PAT with repo scope for planeteyeai/nhit-backend1), redeploy, then open this URL again.',
-      githubLfsRepo: process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1',
-      tokenSet: false,
-    })
-  }
-  if (glbEnsureStatus.running) {
+async function startModel3dSync(res) {
+  try {
+    const result = await warmModel3dStorage(model3dRoot)
+    const { valid, total } = countValidGlbs()
     return res.json({
-      status: 'running',
-      message: 'Download already in progress. Check /model-3d/status',
-      tokenSet: true,
-      sync: { ...glbEnsureStatus },
+      status: 'success',
+      message: 'Model library synced (disk → Railway bucket when configured).',
+      bucketEnabled: isStorageEnabled(),
+      validOnDisk: valid,
+      totalInCatalog: total,
+      ...result,
+      catalogUrl: '/model-3d/catalog',
+      statusUrl: '/model-3d/status',
     })
+  } catch (e) {
+    console.error('[model-3d/sync]', e.message)
+    return res.status(500).json({ status: 'error', message: e.message || 'Model sync failed' })
   }
-  runEnsureGlbAssets().catch((e) => console.error('[model-3d/sync]', e.message))
-  return res.json({
-    status: 'started',
-    message: 'GLB download started (~800 MB). Wait 10–20 min, then open /model-3d/catalog',
-    tokenSet: true,
-    githubLfsRepo: process.env.GITHUB_LFS_REPO || 'planeteyeai/nhit-backend1',
-    statusUrl: '/model-3d/status',
-    catalogUrl: '/model-3d/catalog',
-  })
 }
 
-/** Trigger GitHub LFS download (Railway). GET or POST if catalog is empty. */
+/** Sync model_3d GLBs to Railway bucket (GET or POST). */
 router.get('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 router.post('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 
@@ -5180,8 +5170,7 @@ router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
         }
       }
       const validLocal = exists && isValidGlbFile(fullPath) && isPlausibleGlbSize(diskFile, sizeBytes)
-      const bucketKey = `upload/model_3d/${diskFile}`
-      const inBucket = !validLocal && isStorageEnabled() && (await objectExists(bucketKey))
+      const inBucket = isStorageEnabled() && (await model3dExistsInBucket(diskFile))
       const validGlb = validLocal || inBucket
       const chainageKey = extractModel3dChainageKey(diskFile)
       all.push({
@@ -5204,27 +5193,14 @@ router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
     const models = all.filter((m) => m.validGlb)
     const skipped = all.length - models.length
 
-    if (
-      models.length === 0 &&
-      skipped > 0 &&
-      (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) &&
-      !glbEnsureStatus.running
-    ) {
-      runEnsureGlbAssets().catch((e) => console.error('[model-3d/catalog] sync', e.message))
-    }
-
     res.json({
       status: 'success',
       models,
       skipped,
-      sync: glbEnsureStatus,
+      bucketEnabled: isStorageEnabled(),
       deployHint:
         skipped > 0 && models.length === 0
-          ? glbEnsureStatus.running
-            ? `Downloading GLBs (${glbEnsureStatus.ready}/${glbEnsureStatus.total})… Wait 10–20 min, then refresh.`
-            : !process.env.GITHUB_TOKEN && !process.env.GH_TOKEN
-              ? 'Set GITHUB_TOKEN on Railway, redeploy, then open /model-3d/sync in the browser.'
-              : 'GLB not ready. Open https://nhit-backend.up.railway.app/model-3d/sync then wait 10–20 min and refresh catalog.'
+          ? 'GLB files not on disk or Railway bucket. Redeploy backend (git lfs pull in build) or POST /model-3d/sync.'
           : skipped > 0
             ? 'Some catalog entries are missing; only valid GLB files are listed.'
             : undefined,
@@ -5274,16 +5250,11 @@ router.get('/model-3d/status', optionalAuth, (_req, res) => {
       totalInCatalog: files.length,
       files,
       ok: validCount > 0,
-      githubTokenSet: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
-      sync: glbEnsureStatus,
+      bucketEnabled: isStorageEnabled(),
       counts,
       hint:
         validCount === 0
-          ? !process.env.GITHUB_TOKEN && !process.env.GH_TOKEN
-            ? 'Add GITHUB_TOKEN in Railway Variables (repo is private), redeploy, POST /model-3d/sync'
-            : glbEnsureStatus.running
-              ? `Downloading… ${glbEnsureStatus.ready}/${glbEnsureStatus.total} (${glbEnsureStatus.currentFile || ''})`
-              : 'POST /model-3d/sync to start download, wait 10–20 min'
+          ? 'No valid GLB on disk. Redeploy with Dockerfile (git lfs pull) or POST /model-3d/sync to upload to bucket.'
           : undefined,
     })
   } catch (e) {
@@ -5300,7 +5271,6 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
 
     const fullPath = resolveModel3dPath(file)
     const diskFile = resolveModel3dDiskName(file)
-    const bucketKey = `upload/model_3d/${diskFile}`
 
     if (fs.existsSync(fullPath) && isValidGlbFile(fullPath)) {
       if (setModel3dResponseHeaders(req, res, fullPath)) return
@@ -5309,34 +5279,11 @@ router.get('/model-3d/file', optionalAuth, async (req, res, next) => {
       })
     }
 
-    if (await pipeBucketObjectToResponse(res, bucketKey)) return
+    const bucketKey = await resolveModel3dBucketKey(diskFile)
+    if (bucketKey && (await pipeBucketObjectToResponse(res, bucketKey))) return
 
-    if (!fs.existsSync(fullPath) && !loadManifestEntry(diskFile)) {
-      return res.status(404).json({
-        message: `Model not found: ${diskFile}. Place the .glb in upload/model_3d/ or the Railway bucket at ${bucketKey}.`,
-      })
-    }
-
-    if (!isValidGlbFile(fullPath)) {
-      if (!process.env.GITHUB_TOKEN && !process.env.GH_TOKEN) {
-        return res.status(503).json({
-          message:
-            'GLB not on server. Set GITHUB_TOKEN on Railway (repo planeteyeai/nhit-backend1), redeploy, open /model-3d/sync',
-          syncUrl: '/model-3d/sync',
-        })
-      }
-      const dl = await ensureSingleModelFile(diskFile)
-      if (!dl.ok || !isValidGlbFile(fullPath)) {
-        return res.status(503).json({
-          message: dl.error || 'Could not download GLB from GitHub LFS yet. Try /model-3d/sync and wait.',
-          syncUrl: '/model-3d/sync',
-        })
-      }
-    }
-
-    if (setModel3dResponseHeaders(req, res, fullPath)) return
-    res.sendFile(fullPath, { acceptRanges: true }, (err) => {
-      if (err) next(err)
+    return res.status(404).json({
+      message: `Model not available: ${diskFile}. Add the model.`,
     })
   } catch (e) {
     next(e)

@@ -5,7 +5,7 @@ import fs from 'fs'
 import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { countValidGlbs, runEnsureGlbAssets } from './lib/glbEnsure.js'
+import { warmModel3dStorage } from './lib/model3dStorage.js'
 import { getPresignedUrl, isStorageEnabled, objectExists, storageStatus } from './lib/storage.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
@@ -208,31 +208,16 @@ app.use((err, _req, res, _next) => {
   res.status(status).json(body)
 })
 
-function startBackgroundGlbDownload() {
-  if (process.env.SKIP_GLB_ENSURE === '1') return
-
-  const { valid, total } = countValidGlbs()
-  if (valid >= total && total > 0) return
-
-  const tokenSet = Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN)
-  if (!isProduction() && !tokenSet) {
-    console.warn(
-      // '[server] 3D GLB files missing locally. Add GITHUB_TOKEN to nhit-backend/.env then run: npm run sync:glb'
-    )
-    return
-  }
-
-  console.log(
-    `[server] GLB sync starting (${valid}/${total} ready). Needs GITHUB_TOKEN if repo is private…`
-  )
-  runEnsureGlbAssets().catch((e) => console.error('[server] GLB sync error:', e.message))
+function startModel3dWarmup() {
+  const model3dRoot = path.join(uploadDir, 'model_3d')
+  warmModel3dStorage(model3dRoot).catch((e) => console.error('[server] model-3d warmup:', e.message))
 }
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`BMS backend listening on http://${HOST}:${PORT} (${isProduction() ? 'production' : 'development'})`)
   const st = storageStatus()
   console.log(`[storage] bucket ${st.enabled ? 'enabled' : 'disabled'}${st.bucket ? ` (${st.bucket})` : ''}`)
-  startBackgroundGlbDownload()
+  startModel3dWarmup()
 })
 
 server.on('error', (err) => {

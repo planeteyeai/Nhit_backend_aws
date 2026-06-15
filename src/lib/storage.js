@@ -11,6 +11,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
@@ -101,6 +102,39 @@ export async function objectExists(key) {
   } catch {
     return false
   }
+}
+
+export function getS3Client() {
+  return getClient()
+}
+
+export function getBucketName() {
+  return bucketName()
+}
+
+/** List object keys under a prefix (paginated). */
+export async function listBucketKeysUnderPrefix(prefix) {
+  const client = getClient()
+  const p = String(prefix || '').replace(/^\/+/, '')
+  if (!client || !p) return []
+
+  const keys = []
+  let continuationToken
+  do {
+    const out = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName(),
+        Prefix: p,
+        ContinuationToken: continuationToken,
+      })
+    )
+    for (const item of out.Contents || []) {
+      if (item.Key) keys.push(item.Key)
+    }
+    continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined
+  } while (continuationToken)
+
+  return keys
 }
 
 export async function uploadFromFile(localPath, key, contentType) {

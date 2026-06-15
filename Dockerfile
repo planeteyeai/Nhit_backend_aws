@@ -10,9 +10,8 @@ WORKDIR /app
 
 COPY . .
 
-ARG GIT_REPO_URL=https://github.com/planeteyeai/nhit-backend1.git
-ARG GIT_BRANCH=main
-ENV GIT_LFS_SKIP_SMUDGE=0
+RUN git lfs install \
+  && (git lfs pull --include="upload/model_3d/*.glb" 2>/dev/null || true)
 
 RUN npm ci --omit=dev
 
