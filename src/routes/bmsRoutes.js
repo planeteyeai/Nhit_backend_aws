@@ -19,6 +19,12 @@ import { BOQ_Items } from '../config/constants/boqItemsMeta.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload, listBridgePanoramas, deleteBridgePanorama } from '../lib/panaroma_3d.js'
 import {
+  listBridgePonoPhotos,
+  uploadBridgePonoPhoto,
+  deleteBridgePonoPhoto,
+  updateBridgePonoPhotoMarkers,
+} from '../lib/ponoPhotos.js'
+import {
   addPanoramaMarkerImage,
   attachMarkersToStations,
   createPanoramaMarker,
@@ -5356,6 +5362,58 @@ router.delete('/bridges/:bridgeId/panoramas/:stationId', optionalAuth, async (re
   } catch (e) {
     console.error('bridge panorama delete error:', e)
     res.status(e.status || 500).json({ message: e.message || 'Failed to delete panorama' })
+  }
+})
+
+/** Flat panophotos (fallback when no 360° panorama) — stored in upload/threed_panoramas/ */
+router.get('/bridges/:bridgeId/pono-photos', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+    const photos = listBridgePonoPhotos(uploadRoot, bridgeId)
+    res.json({ status: 'success', data: photos })
+  } catch (e) {
+    console.error('bridge panophotos list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list panophotos' })
+  }
+})
+
+router.post('/bridges/:bridgeId/pono-photos/upload', optionalAuth, uploadPanoramaMem.single('file'), async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
+    const photo = await uploadBridgePonoPhoto(req, uploadRoot, bridgeId)
+    res.json({ status: 'success', data: photo })
+  } catch (e) {
+    console.error('bridge panophoto upload error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'panophoto upload failed' })
+  }
+})
+
+router.delete('/bridges/:bridgeId/pono-photos/:photoId', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const photoId = String(req.params.photoId || '').trim()
+    if (!bridgeId || !photoId) return res.status(400).json({ message: 'Invalid parameters' })
+    const result = deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId)
+    res.json({ status: 'success', ...result })
+  } catch (e) {
+    console.error('bridge panophoto delete error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to delete panophoto' })
+  }
+})
+
+router.put('/bridges/:bridgeId/pono-photos/:photoId/markers', optionalAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const photoId = String(req.params.photoId || '').trim()
+    if (!bridgeId || !photoId) return res.status(400).json({ message: 'Invalid parameters' })
+    const markers = Array.isArray(req.body?.markers) ? req.body.markers : req.body
+    const photo = updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, markers)
+    res.json({ status: 'success', data: photo })
+  } catch (e) {
+    console.error('bridge panomarkers update error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to save panomarkers' })
   }
 })
 
