@@ -94,6 +94,9 @@ export const PAVEMENT_SURFACE = {
     'Minor Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture',
   MajorRigid:
     'Major Rigid Distress Observed: Crack Types/ Corner Breaks/ Punchout/ Popouts/ Roughness/ Disintegration/ Loss of Surface Texture',
+  'Steel Exposed': 'Steel Exposed',
+  Scaling: 'Scaling',
+  Spalling: 'Spalling',
 };
 
 export const SIDE_SLOPES = {
@@ -114,6 +117,8 @@ export const APPROACH_SLAB = {
   'Cracks observed': 'Cracks observed',
   'Movement observed': 'Movement observed',
   'Good in condition': 'Good in condition',
+  'Steel Exposed': 'Steel Exposed',
+  Scaling: 'Scaling',
 };
 
 export const SLIT_AND_DEBRIS = {
@@ -233,6 +238,8 @@ export const TYPE_A1 = {
   'Rectangular pier with Hammer Head': 'Rectangular pier with Hammer Head',
   'Rigid frame or portal pier': 'Rigid frame or portal pier',
   'Trestle Pier or Trestle Bent': 'Trestle Pier or Trestle Bent',
+  'RE Wall': 'RE Wall',
+  'Reinforced Concrete Counterfort Abutment': 'Reinforced Concrete Counterfort Abutment',
 };
 
 export const TYPE_A2 = { ...TYPE_A1 };
@@ -245,6 +252,7 @@ export const MATERIAL_A1 = {
   'Reinforced cement concrete': 'Reinforced cement concrete',
   Masonry: 'Masonry',
   Other: 'Other',
+  'Precast concrete panels': 'Precast concrete panels',
 };
 
 export const MATERIAL_A2 = { ...MATERIAL_A1 };

@@ -153,10 +153,10 @@ export const INSPECTION_DROPDOWNS = {
 
   // ── SUBSTRUCTURE ───────────────────────────────────────────────────────────
   substructure: {
-    type_a1: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent'),
-    type_a2: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent'),
-    material_a1: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other'),
-    material_a2: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other'),
+    type_a1: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent', 'RE Wall', 'Reinforced Concrete Counterfort Abutment'),
+    type_a2: s('NA', 'Solid masonry wall type', 'Solid RCC wall type', 'Circular pier with Hammer Head', 'Square pier with Hammer Head', 'Rectangular pier with Hammer Head', 'Rigid frame or portal pier', 'Trestle Pier or Trestle Bent', 'RE Wall', 'Reinforced Concrete Counterfort Abutment'),
+    material_a1: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other', 'Precast concrete panels'),
+    material_a2: s('NA', 'Brick Stone Masonry', 'CRS Stone Masonry', 'Stone Masonry', 'Reinforced cement concrete', 'Masonry', 'Other', 'Precast concrete panels'),
     condition_a1: s('NA', 'Abutment is in good condition', 'Abutment is not in good condition enter observed distress'),
     condition_a2: s('NA', 'Abutment is in good condition', 'Abutment is not in good condition enter observed distress'),
     efficiency_of_drainage_a1: s('NA', 'Weep holes functioning good and no evidence of moisture on abutment faces', 'Weep holes are not functioning good and there is an evidence of moisture on abutment faces is observed', 'weep holes functioning good and shows the evidence of moisture', 'Weep holes are not functioning good and there is no evidence of moisture on abutment faces is observed'),

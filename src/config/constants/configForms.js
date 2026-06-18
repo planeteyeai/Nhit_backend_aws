@@ -55,6 +55,9 @@ export const pavementSurfaceType = {
   Punchout: 'Punchout',
   Popouts: 'Popouts',
   'Loss of Surface Texture': 'Loss of Surface Texture',
+  'Steel Exposed': 'Steel Exposed',
+  Scaling: 'Scaling',
+  Spalling: 'Spalling',
 };
 
 export const approachSlabType = {
@@ -64,6 +67,8 @@ export const approachSlabType = {
   Movements: 'Movements',
   Spalling: 'Spalling',
   Rutting: 'Rutting',
+  'Steel Exposed': 'Steel Exposed',
+  Scaling: 'Scaling',
 };
 
 export const checkConditionOfSide = {
