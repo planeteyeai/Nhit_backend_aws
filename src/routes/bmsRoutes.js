@@ -36,6 +36,7 @@ import {
   updatePanoramaMarker,
   upsertPanoramaStation,
 } from '../lib/panoramaMarkersDb.js'
+import { ensureNonStructuralDistressTable } from '../lib/nonStructuralDistressDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
@@ -1853,6 +1854,7 @@ router.get('/inspections/:inspectionId', async (req, res) => {
 
 router.get('/inspection/distress/:inspectionId', async (req, res) => {
   try {
+    await ensureNonStructuralDistressTable(pool)
     const inspectionId = Number(req.params.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
     const tableType = String(req.query?.table_type || '').trim()
@@ -1922,6 +1924,7 @@ router.get('/inspection/cause_rating/:inspectionId', async (req, res) => {
 router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
   const conn = await pool.getConnection()
   try {
+    await ensureNonStructuralDistressTable(pool)
     const inspectionId = Number(req.body?.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
 
@@ -5793,6 +5796,26 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
           const bridgeRow = bridgeRows?.[0] || {}
           row.material_lhs = String(row.material_lhs || bridgeRow.material_lhs || '').trim()
           row.material_rhs = String(row.material_rhs || bridgeRow.material_rhs || '').trim()
+        }
+      }
+      if (key === 'protection_works' && row && typeof row === 'object') {
+        const [inspectionRows] = await pool.query(
+          `SELECT bridge_id FROM bridge_inspection WHERE bridge_inspection_id = ? LIMIT 1`,
+          [inspectionId]
+        )
+        const bridgeId = Number(inspectionRows?.[0]?.bridge_id || 0)
+        if (bridgeId) {
+          const [bridgeRows] = await pool.query(
+            `SELECT type, reserve_store_material
+             FROM protection_works_bridge
+             WHERE bridge_id = ?
+             ORDER BY protection_works_bridge_id DESC
+             LIMIT 1`,
+            [bridgeId]
+          )
+          const bridgeRow = bridgeRows?.[0] || {}
+          row.type = String(row.type || bridgeRow.type || '').trim()
+          row.reserve_store_material = String(row.reserve_store_material || bridgeRow.reserve_store_material || '').trim()
         }
       }
       return res.json(row)
