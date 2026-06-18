@@ -1431,9 +1431,9 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
       // Pending approval should include only submitted entries awaiting BMC action.
       where = `b.status = 'Completed' AND (b.bmc_status IS NULL OR TRIM(b.bmc_status) = '' OR b.bmc_status = 'No')`
     } else if (s === 'approved') {
-      where = `b.bmc_status = 'Approved'`
+      where = `LOWER(TRIM(b.bmc_status)) = 'approved'`
     } else if (s === 'rejected') {
-      where = `b.bmc_status = 'Rejected'`
+      where = `LOWER(TRIM(b.bmc_status)) = 'rejected'`
     }
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
@@ -1522,7 +1522,7 @@ async function inspectionList(req, res, mode) {
   }
 }
 
-// Scheduled inspection list comes from `schedule_inspecion` table (not `bridge_inspection`).
+// Scheduled inspection list — active rows from schedule_inspecion + schedule_adhoc_inspecion.
 router.get('/schedule-inspection-list', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
@@ -1547,19 +1547,55 @@ router.get('/schedule-inspection-list', async (req, res) => {
       params.push(`%${highwayNo}%`)
     }
 
+    const scheduledUnionSql = `
+      SELECT
+        si.si_id,
+        NULL AS adhoc_inspecion_id,
+        'regular' AS schedule_kind,
+        si.bridge_id,
+        si.pre_month,
+        si.post_month,
+        si.routine_inspecion_month,
+        si.routine_inspecion_frequency,
+        si.status,
+        si.updated_by,
+        si.updated_on,
+        NULL AS adhoc_inspecion_date,
+        NULL AS adhoc_comment
+      FROM schedule_inspecion si
+      INNER JOIN (
+        SELECT bridge_id, MAX(si_id) AS max_id
+        FROM schedule_inspecion
+        WHERE LOWER(TRIM(status)) = 'active'
+        GROUP BY bridge_id
+      ) lr ON lr.max_id = si.si_id
+      UNION ALL
+      SELECT
+        NULL AS si_id,
+        sa.adhoc_inspecion_id,
+        'adhoc' AS schedule_kind,
+        sa.bridge_id,
+        NULL AS pre_month,
+        NULL AS post_month,
+        NULL AS routine_inspecion_month,
+        NULL AS routine_inspecion_frequency,
+        sa.status,
+        sa.updated_by,
+        sa.updated_on,
+        sa.adhoc_inspecion_date,
+        sa.comment AS adhoc_comment
+      FROM schedule_adhoc_inspecion sa
+      INNER JOIN (
+        SELECT bridge_id, MAX(adhoc_inspecion_id) AS max_id
+        FROM schedule_adhoc_inspecion
+        WHERE LOWER(TRIM(status)) = 'active'
+        GROUP BY bridge_id
+      ) la ON la.max_id = sa.adhoc_inspecion_id`
+
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS c
-       FROM (
-         SELECT s1.*
-         FROM schedule_inspecion s1
-         INNER JOIN (
-           SELECT bridge_id, MAX(si_id) AS max_si_id
-           FROM schedule_inspecion
-           WHERE status = 'Active'
-           GROUP BY bridge_id
-         ) latest ON latest.max_si_id = s1.si_id
-       ) si
-       LEFT JOIN bridge b ON b.bridge_id = si.bridge_id
+       FROM (${scheduledUnionSql}) sched
+       LEFT JOIN bridge b ON b.bridge_id = sched.bridge_id
        WHERE ${where}`,
       params
     )
@@ -1567,15 +1603,19 @@ router.get('/schedule-inspection-list', async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT
-         si.si_id,
-         si.bridge_id,
-         si.pre_month,
-         si.post_month,
-         si.routine_inspecion_month,
-         si.routine_inspecion_frequency,
-         si.status,
-         si.updated_by,
-         si.updated_on,
+         sched.si_id,
+         sched.adhoc_inspecion_id,
+         sched.schedule_kind,
+         sched.bridge_id,
+         sched.pre_month,
+         sched.post_month,
+         sched.routine_inspecion_month,
+         sched.routine_inspecion_frequency,
+         sched.status,
+         sched.updated_by,
+         sched.updated_on,
+         sched.adhoc_inspecion_date,
+         sched.adhoc_comment,
          b.bridge_identity_no,
          b.chainage,
          b.popular_name_of_bridge,
@@ -1585,28 +1625,18 @@ router.get('/schedule-inspection-list', async (req, res) => {
          b.bridge_side,
          b.consultant_name,
          b.custodian
-       FROM (
-         SELECT s1.*
-         FROM schedule_inspecion s1
-         INNER JOIN (
-           SELECT bridge_id, MAX(si_id) AS max_si_id
-           FROM schedule_inspecion
-           WHERE status = 'Active'
-           GROUP BY bridge_id
-         ) latest ON latest.max_si_id = s1.si_id
-       ) si
-       LEFT JOIN bridge b ON b.bridge_id = si.bridge_id
+       FROM (${scheduledUnionSql}) sched
+       LEFT JOIN bridge b ON b.bridge_id = sched.bridge_id
        WHERE ${where}
-       ORDER BY si.updated_on DESC, si.si_id DESC
+       ORDER BY sched.updated_on DESC, COALESCE(sched.si_id, sched.adhoc_inspecion_id) DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     )
 
-    // Frontend expects reminder_date / inspection_type style fields.
     const data = rows.map((r) => ({
       ...r,
-      reminder_date: r.updated_on,
-      inspection_type: 'Scheduled',
+      reminder_date: r.adhoc_inspecion_date || r.updated_on,
+      inspection_type: r.schedule_kind === 'adhoc' ? 'Adhoc' : 'Scheduled',
     }))
 
     res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 })
@@ -4059,8 +4089,13 @@ router.get('/inspection/download_all_images', async (req, res) => {
 })
 
 router.get('/dashboard/scheduled_count', async (_req, res) => {
-  const [r] = await pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Pending'`)
-  res.json({ count: r[0].c })
+  const [r] = await pool.query(
+    `SELECT (
+       (SELECT COUNT(*) FROM schedule_inspecion WHERE LOWER(TRIM(status)) = 'active')
+       + (SELECT COUNT(*) FROM schedule_adhoc_inspecion WHERE LOWER(TRIM(status)) = 'active')
+     ) AS c`
+  )
+  res.json({ count: r[0]?.c || 0 })
 })
 router.get('/dashboard/ongoing_count', async (_req, res) => {
   const [r] = await pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Confirmed'`)
@@ -4113,7 +4148,12 @@ async function fetchDashboardCounts() {
     rejectedBridgeRows,
     totalBridgeRows,
   ] = await Promise.all([
-    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Pending'`),
+    pool.query(
+      `SELECT (
+         (SELECT COUNT(*) FROM schedule_inspecion WHERE LOWER(TRIM(status)) = 'active')
+         + (SELECT COUNT(*) FROM schedule_adhoc_inspecion WHERE LOWER(TRIM(status)) = 'active')
+       ) AS c`,
+    ),
     pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Confirmed'`),
     pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Approved'`),
     pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE bmc_inspection_status = 'Rejected'`),
@@ -6316,6 +6356,102 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
     )
 
     // Return the id so frontend can optionally view it immediately
+    res.status(201).json({ success: true, bridge_inspection_id: ins.insertId })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+// Start an inspection from an adhoc scheduled row.
+router.post('/schedule-adhoc-inspecion/:adhocId/start', requireAuth, async (req, res) => {
+  try {
+    const adhocId = Number(req.params.adhocId)
+    if (!adhocId) return res.status(400).json({ message: 'Invalid adhocId' })
+
+    const [schedRows] = await pool.query(
+      'SELECT * FROM schedule_adhoc_inspecion WHERE adhoc_inspecion_id = ? LIMIT 1',
+      [adhocId],
+    )
+    const sched = schedRows[0]
+    if (!sched) return res.status(404).json({ message: 'Adhoc schedule not found' })
+
+    const bridgeId = Number(sched.bridge_id)
+    const [bridgeRows] = await pool.query('SELECT * FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
+    const bridge = bridgeRows[0]
+    if (!bridge) return res.status(404).json({ message: 'Bridge not found for adhoc schedule' })
+
+    const [stateRows] = await pool.query('SELECT state_id FROM state WHERE state_code = ? OR state_id = ? LIMIT 1', [
+      bridge.state_id,
+      bridge.state_id,
+    ])
+    const stateId = Number(stateRows[0]?.state_id || 0)
+    const [zoneRows] = await pool.query('SELECT zone_id FROM zone WHERE zone_code = ? OR zone_id = ? LIMIT 1', [
+      bridge.zone,
+      bridge.zone,
+    ])
+    const zoneId = Number(zoneRows[0]?.zone_id || 0)
+
+    const [tplRows] = await pool.query('SELECT * FROM bridge_inspection LIMIT 1')
+    const tpl = tplRows[0] || {}
+    delete tpl.bridge_inspection_id
+
+    const payload = {
+      ...tpl,
+      bridge_id: bridgeId,
+      state_id: stateId || tpl.state_id || 0,
+      zone_id: zoneId || tpl.zone_id || 0,
+      design_discharge_in_cumecs:
+        bridge.design_discharge_in_cumecs != null
+          ? String(bridge.design_discharge_in_cumecs)
+          : tpl.design_discharge_in_cumecs || '',
+      bmc_inspection_status: 'No',
+      bmc_user: 0,
+      remark: sched.comment || '',
+      status: 'Confirmed',
+      created_by: req.user?.uid || 0,
+      updated_by: req.user?.uid || 0,
+      created_on: new Date(),
+      upadted_on: new Date(),
+    }
+
+    const [metaRows] = await pool.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge_inspection'`,
+    )
+    for (const c of metaRows) {
+      const key = c.COLUMN_NAME
+      if (key === 'bridge_inspection_id') continue
+      if (payload[key] !== undefined && payload[key] !== null) continue
+      const nullable = c.IS_NULLABLE === 'YES'
+      const hasDefault = c.COLUMN_DEFAULT !== null
+      if (!nullable && !hasDefault) {
+        if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+          const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+          const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+          payload[key] = first || 'No'
+        } else {
+          payload[key] = fallbackValueForDataType(c.DATA_TYPE)
+        }
+      }
+    }
+
+    const cols = Object.keys(payload).filter((k) => payload[k] !== undefined)
+    const vals = cols.map((k) => payload[k])
+    const qCols = cols.map((c) => `\`${c}\``)
+    const [ins] = await pool.query(
+      `INSERT INTO bridge_inspection (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      vals,
+    )
+
+    await pool.query(
+      `UPDATE schedule_adhoc_inspecion
+       SET status = 'InActive', updated_by = ?, updated_on = CURDATE()
+       WHERE adhoc_inspecion_id = ?`,
+      [req.user?.uid || 0, adhocId],
+    )
+
     res.status(201).json({ success: true, bridge_inspection_id: ins.insertId })
   } catch (e) {
     console.error(e)
