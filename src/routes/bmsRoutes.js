@@ -750,6 +750,7 @@ router.delete('/users/:userId', requireAuth, async (req, res) => {
 router.post('/users/:userId/signature', requireAuth, upload.single('sign'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No signature file uploaded' })
+    await mirrorUploadRelPath(`upload/sign/${req.file.filename}`, uploadRoot)
     await pool.query('UPDATE users SET sign = ? WHERE uid = ?', [req.file.filename, req.params.userId])
     res.json({ success: true, filename: req.file.filename })
   } catch (e) {
@@ -4865,14 +4866,39 @@ router.delete('/inspection/non_structural/:id', requireAuth, async (req, res) =>
   }
 })
 router.post('/inspection/non_structural/upload_images', optionalAuth, upload.array('images', 10), async (req, res) => {
-  const uploaded = req.files || []
-  const files = uploaded.map((f) => f.filename)
-  if (!files.length) return res.status(400).json({ status: 'error', message: 'No files selected' })
-  const subfolder = normalizeUploadSubfolder(req.query?.folder, 'non_structural_elements')
-  for (const f of uploaded) {
-    await mirrorUploadRelPath(`upload/${subfolder}/${f.filename}`, uploadRoot)
+  try {
+    const uploaded = req.files || []
+    const files = uploaded.map((f) => f.filename)
+    if (!files.length) return res.status(400).json({ status: 'error', message: 'No files selected' })
+    const subfolder = normalizeUploadSubfolder(req.query?.folder, 'non_structural_elements')
+    const relPaths = uploaded.map((f) => `upload/${subfolder}/${f.filename}`)
+    const mirror = await mirrorUploadRelPaths(relPaths, uploadRoot)
+    if (isStorageEnabled() && mirror.ok === 0 && relPaths.length > 0) {
+      console.error('[upload] S3 mirror failed for all files in', subfolder)
+      return res.status(503).json({
+        status: 'error',
+        success: false,
+        message:
+          'Image could not be saved to cloud storage. Verify AWS bucket credentials on the server, then try again.',
+        files,
+      })
+    }
+    if (isStorageEnabled() && mirror.failed > 0) {
+      console.warn('[upload] partial S3 mirror failure', subfolder, mirror)
+    }
+    res.json({
+      status: 'success',
+      success: true,
+      files,
+      message: 'Images uploaded successfully',
+      storage: isStorageEnabled()
+        ? { mirrored: mirror.ok, failed: mirror.failed }
+        : { mirrored: 0, localOnly: true },
+    })
+  } catch (e) {
+    console.error('upload_images error:', e)
+    res.status(500).json({ status: 'error', success: false, message: e.message || 'Upload failed' })
   }
-  res.json({ status: 'success', files, message: 'Images uploaded successfully' })
 })
 router.get('/inspection/3d-assets/:inspectionId', optionalAuth, async (req, res) => {
   try {
@@ -5438,7 +5464,7 @@ router.delete('/bridges/:bridgeId/pono-photos/:photoId', optionalAuth, async (re
     const bridgeId = Number(req.params.bridgeId || 0)
     const photoId = String(req.params.photoId || '').trim()
     if (!bridgeId || !photoId) return res.status(400).json({ message: 'Invalid parameters' })
-    const result = deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId)
+    const result = await deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId)
     res.json({ status: 'success', ...result })
   } catch (e) {
     console.error('bridge panophoto delete error:', e)
@@ -5452,7 +5478,7 @@ router.put('/bridges/:bridgeId/pono-photos/:photoId/markers', optionalAuth, asyn
     const photoId = String(req.params.photoId || '').trim()
     if (!bridgeId || !photoId) return res.status(400).json({ message: 'Invalid parameters' })
     const markers = Array.isArray(req.body?.markers) ? req.body.markers : req.body
-    const photo = updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, markers)
+    const photo = await updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, markers)
     res.json({ status: 'success', data: photo })
   } catch (e) {
     console.error('bridge panomarkers update error:', e)
@@ -6505,10 +6531,18 @@ router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async
     }
     const added = files.map((f) => f.filename)
     const merged = [...existing, ...added]
-    await mirrorUploadRelPaths(
+    const mirror = await mirrorUploadRelPaths(
       added.map((name) => `upload/bridge_images/${bridgeId}/${name}`),
       uploadRoot
     )
+    if (isStorageEnabled() && mirror.ok === 0 && added.length > 0) {
+      console.error('[upload] S3 mirror failed for bridge_images', bridgeId)
+      return res.status(503).json({
+        success: false,
+        message:
+          'Image could not be saved to cloud storage. Verify AWS bucket credentials on the server, then try again.',
+      })
+    }
     await pool.query('UPDATE bridge SET bridge_images = ?, updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?', [
       merged.join(','),
       req.user?.uid || 0,

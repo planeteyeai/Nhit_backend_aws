@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { mirrorUploadRelPaths } from './storage.js'
 
 /** Flat location photos (fallback when no 360° panorama). Stored under upload/threed_panoramas/ */
 export const PONO_PHOTOS_DIR = 'threed_panoramas'
@@ -31,6 +32,15 @@ function writeBridgePonoIndex(uploadRoot, bridgeId, photos) {
     bridgePonoIndexPath(uploadRoot, bridgeId),
     JSON.stringify({ photos, updatedAt: new Date().toISOString() }, null, 2)
   )
+}
+
+async function mirrorPonoBridgeFiles(uploadRoot, bridgeId, diskName = '') {
+  const bid = String(bridgeId || '').trim()
+  if (!bid) return { ok: 0, failed: 0 }
+  const base = `upload/${PONO_PHOTOS_DIR}/bridge_${bid}`
+  const paths = [`${base}/index.json`]
+  if (diskName) paths.unshift(`${base}/${diskName}`)
+  return mirrorUploadRelPaths(paths, uploadRoot)
 }
 
 function normalizePonoRecord(photo, bridgeId) {
@@ -121,10 +131,11 @@ export async function uploadBridgePonoPhoto(req, uploadRoot, bridgeId) {
   )
 
   writeBridgePonoIndex(uploadRoot, bid, [...existing, record])
+  await mirrorPonoBridgeFiles(uploadRoot, bid, diskName)
   return record
 }
 
-export function deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId) {
+export async function deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId) {
   const bid = String(bridgeId || '').trim()
   const id = String(photoId || '').trim()
   if (!bid || !id) {
@@ -150,10 +161,11 @@ export function deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId) {
 
   const next = existing.filter((p) => String(p.id) !== id)
   writeBridgePonoIndex(uploadRoot, bid, next)
+  await mirrorPonoBridgeFiles(uploadRoot, bid)
   return { deleted: id, remaining: next.length }
 }
 
-export function updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, markers) {
+export async function updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, markers) {
   const bid = String(bridgeId || '').trim()
   const id = String(photoId || '').trim()
   if (!bid || !id) {
@@ -177,5 +189,6 @@ export function updateBridgePonoPhotoMarkers(uploadRoot, bridgeId, photoId, mark
   const next = [...existing]
   next[idx] = updated
   writeBridgePonoIndex(uploadRoot, bid, next)
+  await mirrorPonoBridgeFiles(uploadRoot, bid)
   return normalizePonoRecord(updated, bid)
 }
