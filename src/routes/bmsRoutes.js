@@ -36,7 +36,7 @@ import {
   updatePanoramaMarker,
   upsertPanoramaStation,
 } from '../lib/panoramaMarkersDb.js'
-import { ensureNonStructuralDistressTable } from '../lib/nonStructuralDistressDb.js'
+import { ensureBridgeInspectionDistressColumns, ensureNonStructuralDistressTable } from '../lib/nonStructuralDistressDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
@@ -1856,6 +1856,7 @@ router.get('/inspections/:inspectionId', async (req, res) => {
 router.get('/inspection/distress/:inspectionId', async (req, res) => {
   try {
     await ensureNonStructuralDistressTable(pool)
+    await ensureBridgeInspectionDistressColumns(pool)
     const inspectionId = Number(req.params.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
     const tableType = String(req.query?.table_type || '').trim()
@@ -1926,6 +1927,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
   const conn = await pool.getConnection()
   try {
     await ensureNonStructuralDistressTable(pool)
+    await ensureBridgeInspectionDistressColumns(pool)
     const inspectionId = Number(req.body?.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
 

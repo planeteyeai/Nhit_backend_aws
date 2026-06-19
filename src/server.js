@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { warmModel3dStorage } from './lib/model3dStorage.js'
 import { getPresignedUrl, isStorageEnabled, objectExists, storageStatus } from './lib/storage.js'
 import { pool } from './config/db.js'
-import { ensureNonStructuralDistressTable } from './lib/nonStructuralDistressDb.js'
+import { ensureBridgeInspectionDistressColumns, ensureNonStructuralDistressTable } from './lib/nonStructuralDistressDb.js'
 import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { diagGuard } from './middleware/diagGuard.js'
@@ -221,6 +221,9 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[storage] bucket ${st.enabled ? 'enabled' : 'disabled'}${st.bucket ? ` (${st.bucket})` : ''}`)
   ensureNonStructuralDistressTable(pool).catch((e) =>
     console.error('[db] non_structural_distress ensure:', e.message)
+  )
+  ensureBridgeInspectionDistressColumns(pool).catch((e) =>
+    console.error('[db] bridge_inspection_distress columns ensure:', e.message)
   )
   startModel3dWarmup()
 })

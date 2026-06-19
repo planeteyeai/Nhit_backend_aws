@@ -42,5 +42,41 @@ export async function ensureNonStructuralDistressTable(pool) {
       INDEX idx_bridge_inspection_id (bridge_inspection_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
   `)
+  await ensureNonStructuralDistressColumns(pool)
   tablesReady = true
+}
+
+let nonStructuralDistressColumnsReady = false
+
+export async function ensureNonStructuralDistressColumns(pool) {
+  if (nonStructuralDistressColumnsReady) return
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'non_structural_distress'`
+  )
+  const colSet = new Set((cols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
+  if (!colSet.has('images')) {
+    await pool.query('ALTER TABLE non_structural_distress ADD COLUMN images TEXT NULL')
+  }
+  nonStructuralDistressColumnsReady = true
+}
+
+let bridgeDistressColumnsReady = false
+
+export async function ensureBridgeInspectionDistressColumns(pool) {
+  if (bridgeDistressColumnsReady) return
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge_inspection_distress'`
+  )
+  const colSet = new Set((cols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
+  if (!colSet.has('images')) {
+    await pool.query('ALTER TABLE bridge_inspection_distress ADD COLUMN images TEXT NULL')
+  }
+  if (!colSet.has('distress_nos')) {
+    await pool.query('ALTER TABLE bridge_inspection_distress ADD COLUMN distress_nos INT DEFAULT NULL')
+  }
+  bridgeDistressColumnsReady = true
 }
