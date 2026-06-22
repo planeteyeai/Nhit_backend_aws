@@ -178,7 +178,7 @@ export const INSPECTION_DROPDOWNS = {
     material_bearing: s('NA', 'No bearing is presented', 'Elastomeric', 'Polytetrafluoroet hylene', 'Steel'),
     material_pedestal: s('NA', 'No pedestal is presented', 'Reinforced cement concrete', 'Steel', 'Masonry'),
     general_condition_bearing: s('NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'),
-    general_condition_pedestal: s('NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt'),
+    general_condition_pedestal: s('NA', 'Rusting', 'Cleanliness', 'Seizing of plates silting', 'Accumulations of dirt', 'Pedestal Damage'),
     functioning_bearing: s('NA', 'No Bearing is Presented', 'Excessive movement', 'Tilting', 'Jumping off guides'),
     functioning_pedestal: s('NA', 'No pedestal is Presented', 'Excessive movement', 'Tilting', 'Jumping off guides'),
   },

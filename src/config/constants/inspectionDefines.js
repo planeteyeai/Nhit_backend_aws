@@ -376,7 +376,10 @@ export const GENERAL_CONDITION_BEARING = {
   'Accumulations of dirt': 'Accumulations of dirt',
 };
 
-export const GENERAL_CONDITION_PEDESTAL = { ...GENERAL_CONDITION_BEARING };
+export const GENERAL_CONDITION_PEDESTAL = {
+  ...GENERAL_CONDITION_BEARING,
+  'Pedestal Damage': 'Pedestal Damage',
+};
 
 export const FUNCTIONING_BEARING = {
   NA: 'NA',
