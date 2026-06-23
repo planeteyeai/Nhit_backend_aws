@@ -5597,14 +5597,36 @@ const SUBWAYS_REVERSE_FIELD_MAP = Object.fromEntries(
   Object.entries(SUBWAYS_FIELD_MAP).map(([k, v]) => [v, k])
 )
 
+const SUBSTRUCTURE_FIELD_MAP = {
+  substructure_span_name: 'substructure_name',
+}
+
+const SUBSTRUCTURE_REVERSE_FIELD_MAP = Object.fromEntries(
+  Object.entries(SUBSTRUCTURE_FIELD_MAP).map(([k, v]) => [v, k])
+)
+
+const COMPONENT_FIELD_MAPS = {
+  subways: SUBWAYS_FIELD_MAP,
+  substructure: SUBSTRUCTURE_FIELD_MAP,
+}
+
+const COMPONENT_REVERSE_FIELD_MAPS = {
+  subways: SUBWAYS_REVERSE_FIELD_MAP,
+  substructure: SUBSTRUCTURE_REVERSE_FIELD_MAP,
+}
+
 function toDbComponentPayload(componentKey, payload) {
-  if (componentKey !== 'subways' || !payload || typeof payload !== 'object') return payload
-  return Object.fromEntries(Object.entries(payload).map(([k, v]) => [SUBWAYS_FIELD_MAP[k] || k, v]))
+  if (!payload || typeof payload !== 'object') return payload
+  const map = COMPONENT_FIELD_MAPS[componentKey]
+  if (!map) return payload
+  return Object.fromEntries(Object.entries(payload).map(([k, v]) => [map[k] || k, v]))
 }
 
 function fromDbComponentPayload(componentKey, row) {
-  if (componentKey !== 'subways' || !row || typeof row !== 'object') return row
-  return Object.fromEntries(Object.entries(row).map(([k, v]) => [SUBWAYS_REVERSE_FIELD_MAP[k] || k, v]))
+  if (!row || typeof row !== 'object') return row
+  const map = COMPONENT_REVERSE_FIELD_MAPS[componentKey]
+  if (!map) return row
+  return Object.fromEntries(Object.entries(row).map(([k, v]) => [map[k] || k, v]))
 }
 
 async function resolveInspectionComponentPk(cfg, metaRows = null) {
