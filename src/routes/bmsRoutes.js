@@ -1101,7 +1101,7 @@ router.post('/bridges', optionalAuth, async (req, res) => {
     const normalized = {
       ...tpl,
       ...b,
-      bridge_images: tpl.bridge_images ?? '',
+      bridge_images: b.bridge_images ?? '',
       status: b.status || 'Pending',
       bmc_status: b.bmc_status || 'No',
       bmc_user: Number(tpl.bmc_user || req.user?.uid || 0),
@@ -6538,6 +6538,41 @@ function bridgeImageBasename(name) {
   return parts[parts.length - 1] || s
 }
 
+function parseBridgeImagesList(raw) {
+  if (!raw) return []
+  try {
+    const parsed = Array.isArray(raw) ? raw : JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return String(raw)
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+  }
+}
+
+async function bridgeImageFileExists(bridgeId, imageName) {
+  const base = bridgeImageBasename(imageName)
+  if (!base || base === '.gitkeep') return false
+  const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), base)
+  try {
+    const stat = fs.statSync(filePath)
+    if (stat.isFile() && stat.size > 0) return true
+  } catch {
+    /* try bucket */
+  }
+  if (!isStorageEnabled()) return false
+  return objectExists(`upload/bridge_images/${bridgeId}/${base}`)
+}
+
+async function filterExistingBridgeImages(bridgeId, list) {
+  const out = []
+  for (const item of list) {
+    if (await bridgeImageFileExists(bridgeId, item)) out.push(item)
+  }
+  return out
+}
+
 router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId)
@@ -6577,18 +6612,43 @@ router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async
     res.status(500).json({ message: e.message })
   }
 })
+router.get('/upload/bridge_images/:bridgeId/:filename', async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId)
+    const filename = bridgeImageBasename(req.params.filename)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0 || !filename) {
+      return res.status(400).json({ message: 'Invalid image path' })
+    }
+    const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), filename)
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath)
+    }
+    const s3Key = `upload/bridge_images/${bridgeId}/${filename}`
+    if (await redirectToBucketObject(res, s3Key)) return
+    if (await pipeBucketObjectToResponse(res, s3Key)) return
+    return res.status(404).json({ message: 'Image not found' })
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
+})
+
 router.get('/upload/bridge_images/:bridgeId', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [req.params.bridgeId])
-    const raw = rows[0]?.bridge_images
-    if (!raw) return res.json([])
-    let list = []
-    try {
-      list = Array.isArray(raw) ? raw : JSON.parse(raw)
-    } catch {
-      list = String(raw).split(',').map((x) => x.trim()).filter(Boolean)
+    const bridgeId = Number(req.params.bridgeId)
+    if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
+      return res.status(400).json({ message: 'Invalid bridgeId' })
     }
-    res.json(list)
+    const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
+    const list = parseBridgeImagesList(rows[0]?.bridge_images)
+    const existing = await filterExistingBridgeImages(bridgeId, list)
+    if (existing.length !== list.length) {
+      const cleaned = existing.map((item) => bridgeImageBasename(item)).filter(Boolean).join(',')
+      await pool.query(
+        'UPDATE bridge SET bridge_images = ?, updated_on = CURDATE() WHERE bridge_id = ?',
+        [cleaned, bridgeId]
+      )
+    }
+    res.json(existing)
   } catch (e) {
     res.status(500).json({ message: e.message })
   }
