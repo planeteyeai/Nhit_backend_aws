@@ -36,7 +36,11 @@ import {
   updatePanoramaMarker,
   upsertPanoramaStation,
 } from '../lib/panoramaMarkersDb.js'
-import { ensureBridgeInspectionDistressColumns, ensureNonStructuralDistressTable } from '../lib/nonStructuralDistressDb.js'
+import {
+  ensureBridgeInspectionDistressColumns,
+  ensureNonStructuralDistressTable,
+  ensureWearingCoatInspectionColumns,
+} from '../lib/nonStructuralDistressDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
@@ -107,7 +111,7 @@ function nonStructuralTableTypeMatches(value) {
     utilities: ['UTILITIES', 'Utilities'],
     'non-structural elements': ['NON-STRUCTURAL ELEMENTS'],
   }
-  return [...new Set([canonical, ...(legacyByKey[key] || [])])]
+  return [...new Set([canonical, key, ...(legacyByKey[key] || [])])]
 }
 
 function ensureDir(dir) {
@@ -1502,6 +1506,7 @@ async function inspectionList(req, res, mode) {
     const total = countRows[0].c
     const [rows] = await pool.query(
       `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.bridge_side, b.zone AS bridge_zone_text, b.project_name, b.highway_no, b.type_of_bridge,
+              b.direction_of_inventory_start, b.direction_of_inventory_end,
               COALESCE(s_i.state_name, s_b.state_name) AS state_name,
               COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name,
               irc.comment AS rejection_comment, irc.comment_on AS rejection_date
@@ -1976,9 +1981,15 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         return Math.floor(n)
       }
 
+      const distressRowHasMeasures = (row = {}) =>
+        [row?.distress_length, row?.distress_width, row?.distress_depth, row?.distress_nos, row?.distance_of_distress_x, row?.distance_of_distress_y].some(
+          (v) => v != null && String(v).trim() !== ''
+        )
+
       for (const row of rows) {
         const distressType = String(row?.distress_type || '').trim()
-        if (!distressType) continue
+        if (!distressType && !distressRowHasMeasures(row)) continue
+        const persistDistressType = distressType || 'Not specified'
 
         const id = Number(row?.id || 0)
         const distressImagesValue = Array.isArray(row?.images)
@@ -2000,7 +2011,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
               nonStructuralTableType,
               String(row?.element_type || row?.element || '').trim() || null,
               String(row?.element_description || '').trim() || null,
-              distressType,
+              persistDistressType,
               String(row?.field_type || '').trim() || null,
               String(row?.name_of_span || '').trim() || null,
               numeric(row?.distress_length),
@@ -2043,7 +2054,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
               nonStructuralTableType,
               String(row?.element_type || row?.element || '').trim() || null,
               String(row?.element_description || '').trim() || null,
-              distressType,
+              persistDistressType,
               String(row?.field_type || '').trim() || null,
               String(row?.name_of_span || '').trim() || null,
               numeric(row?.distress_length),
@@ -3744,6 +3755,7 @@ router.get('/inspection/expansion_distress/:inspectionId/:expansionPilersId', as
 // Wearing coat rows list for inspection
 router.get('/inspection/wearing_coat_rows/:inspectionId', async (req, res) => {
   try {
+    await ensureWearingCoatInspectionColumns(pool)
     const id = Number(req.params.inspectionId || 0)
     if (!id) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
     const rows = await trySelectFirstOk(pool, [
@@ -3758,6 +3770,7 @@ router.get('/inspection/wearing_coat_rows/:inspectionId', async (req, res) => {
 // Wearing coat upsert (create/update)
 router.post('/inspection/wearing_coat/upsert', optionalAuth, async (req, res) => {
   try {
+    await ensureWearingCoatInspectionColumns(pool)
     const inspectionId = Number(req.body?.inspectionId || req.body?.bridge_inspection_id || 0)
     const wearingCoatId = Number(req.body?.wearing_coat_id || 0)
     const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}

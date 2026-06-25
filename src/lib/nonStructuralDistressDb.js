@@ -80,3 +80,26 @@ export async function ensureBridgeInspectionDistressColumns(pool) {
   }
   bridgeDistressColumnsReady = true
 }
+
+let wearingCoatColumnsReady = false
+
+/** Wearing coat inspection row stores inline surface-condition distress measures. */
+export async function ensureWearingCoatInspectionColumns(pool) {
+  if (wearingCoatColumnsReady) return
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wearing_coat'`
+  )
+  const colSet = new Set((cols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
+  const addIfMissing = async (name, ddl) => {
+    if (colSet.has(name.toLowerCase())) return
+    await pool.query(`ALTER TABLE wearing_coat ADD COLUMN ${ddl}`)
+    colSet.add(name.toLowerCase())
+  }
+  await addIfMissing('surface_condition_distress_type', 'surface_condition_distress_type VARCHAR(256) NULL')
+  await addIfMissing('surface_condition_distress_nos', 'surface_condition_distress_nos VARCHAR(64) NULL')
+  await addIfMissing('distress_distance_x', 'distress_distance_x VARCHAR(64) NULL')
+  await addIfMissing('distress_distance_y', 'distress_distance_y VARCHAR(64) NULL')
+  wearingCoatColumnsReady = true
+}
