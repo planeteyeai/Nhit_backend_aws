@@ -41,6 +41,11 @@ import {
   ensureNonStructuralDistressTable,
   ensureWearingCoatInspectionColumns,
 } from '../lib/nonStructuralDistressDb.js'
+import {
+  fetchBridgeExpansionTemplates,
+  replaceExpansionJointBridgeItems,
+  ensureExpansionJointBridgeLinkColumn,
+} from '../lib/expansionJointDb.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
@@ -1099,49 +1104,102 @@ router.post('/bridge/span_arrangment/:bridgeId', optionalAuth, async (req, res) 
 router.post('/bridges', optionalAuth, async (req, res) => {
   try {
     const b = normalizeBridgePayload(req.body || {})
-    const [tplRows] = await pool.query('SELECT * FROM bridge ORDER BY bridge_id ASC LIMIT 1')
-    const tpl = tplRows[0] || {}
-    delete tpl.bridge_id
-    const normalized = {
-      ...tpl,
-      ...b,
-      bridge_images: b.bridge_images ?? '',
-      status: b.status || 'Pending',
-      bmc_status: b.bmc_status || 'No',
-      bmc_user: Number(tpl.bmc_user || req.user?.uid || 0),
-      is_inspecion_schedule: tpl.is_inspecion_schedule || 'No',
-      created_by: Number(req.user?.uid || tpl.created_by || 0),
-      updated_by: Number(req.user?.uid || tpl.updated_by || 0),
-      created_on: new Date(),
-      updated_on: new Date(),
-    }
     const [metaRows] = await pool.query(
-      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE
+      `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
        FROM information_schema.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge'`
     )
+
+    const normalized = {
+      ...b,
+      bridge_images: '',
+      status: b.status || 'Pending',
+      bmc_status: b.bmc_status || 'No',
+      bmc_user: Number(req.user?.uid || 0),
+      is_inspecion_schedule: 'No',
+      created_by: Number(req.user?.uid || 0),
+      updated_by: Number(req.user?.uid || 0),
+      created_on: new Date(),
+      updated_on: new Date(),
+      date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    }
+
     for (const c of metaRows) {
       const key = c.COLUMN_NAME
       if (key === 'bridge_id') continue
-      if (normalized[key] !== undefined && normalized[key] !== null) continue
+      const current = normalized[key]
+      if (current !== undefined && current !== null && current !== '') continue
+
       const nullable = c.IS_NULLABLE === 'YES'
       const hasDefault = c.COLUMN_DEFAULT !== null
-      if (!nullable && !hasDefault) {
+      if (nullable || hasDefault) continue
+
+      if (String(c.DATA_TYPE).toLowerCase() === 'enum') {
+        normalized[key] = ensureEnumValue(c, current, 'No')
+      } else {
         normalized[key] = fallbackValueForDataType(c.DATA_TYPE)
       }
     }
-    // Extra guards for strict legacy schema columns.
-    normalized.date = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    if (!normalized.direction_of_inventory_start) normalized.direction_of_inventory_start = ''
-    if (!normalized.direction_of_inventory_end) normalized.direction_of_inventory_end = ''
-    if (!normalized.latitude) normalized.latitude = ''
-    if (!normalized.longitude) normalized.longitude = ''
-    if (!normalized.consultant_name) normalized.consultant_name = ''
-    if (!normalized.popular_name_of_bridge) normalized.popular_name_of_bridge = ''
-    if (!normalized.custodian) normalized.custodian = ''
-    if (!normalized.engineer_designation) normalized.engineer_designation = ''
-    if (!normalized.contact_details) normalized.contact_details = ''
-    if (!normalized.email_id) normalized.email_id = ''
+
+    const emptyOnCreate = [
+      'direction_of_inventory_start',
+      'direction_of_inventory_end',
+      'latitude',
+      'longitude',
+      'consultant_name',
+      'popular_name_of_bridge',
+      'custodian',
+      'engineer_designation',
+      'contact_details',
+      'email_id',
+      'departmental_chainage',
+      'departmental_bridge_number',
+      'bridge_side',
+      'width_of_bridge',
+      'length_of_bridge',
+      'height_of_bridge',
+      'traffic_lane_on_bridge',
+      'type_of_bridge',
+      'age_of_bridge',
+      'structural_form',
+      'material_of_construction',
+      'loading_as_per_irc',
+      'hydraluic_tone_weightage',
+      'pay_load',
+      'bridge_crossing_feature',
+      'rating_of_deck_geometry',
+      'rating_for_vertical_clearance',
+      'rating_of_waterway_adequacy',
+      'rating_of_average_daily_traffic',
+      'rating_for_social_importance',
+      'rating_for_economic_growth_potential',
+      'rating_alternate_route',
+      'rating_environmental_impact',
+    ]
+    for (const key of emptyOnCreate) {
+      normalized[key] = ''
+    }
+    if (normalized.total_no_of_span == null || normalized.total_no_of_span === '') {
+      normalized.total_no_of_span = 0
+    }
+
+    const stepFlags = [
+      'structure_data_bridge',
+      'general_bridge',
+      'approaches_bridge',
+      'protection_works_bridge',
+      'foundation_bridge',
+      'substructure_bridge',
+      'bearing_and_pedistal_bridge',
+      'superstructure_bridge',
+      'expansion_joint_bridge',
+      'wearing_coat_bridge',
+      'handrails_parapets_crash_barriers_bridge',
+    ]
+    for (const key of stepFlags) {
+      if (normalized[key] == null || normalized[key] === '') normalized[key] = 'No'
+    }
+
     const use = Object.keys(normalized).filter((k) => normalized[k] !== undefined)
     const placeholders = use.map(() => '?').join(', ')
     const [r] = await pool.query(
@@ -3591,6 +3649,7 @@ router.get('/inspection/expansion_joints/:inspectionId', optionalAuth, async (re
   try {
     const id = Number(req.params.inspectionId || 0)
     if (!id) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
     const [rows] = await pool.query(
       `SELECT * FROM expansion_joint
        WHERE bridge_inspection_id = ?
@@ -3629,6 +3688,8 @@ router.post('/inspection/expansion_joint/upsert', optionalAuth, async (req, res)
     const expansionJointId = Number(req.body?.expansion_joint_id || 0)
     const dataObj = req.body?.data && typeof req.body.data === 'object' ? req.body.data : req.body || {}
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
+
+    await ensureExpansionJointBridgeLinkColumn(pool)
 
     const table = 'expansion_joint'
     const [metaRows] = await pool.query(
@@ -6757,17 +6818,25 @@ for (const step of [
 
   router.get(`/bridge/${step}/:bridgeId`, async (req, res) => {
     try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      if (!Number.isFinite(bridgeId) || bridgeId <= 0) {
+        return res.status(400).json({ success: false, message: 'Invalid bridge id' })
+      }
       const cfg = STEP_TABLE_MAP[step]
       if (step === 'expansion_joint') {
+        const templates = await fetchBridgeExpansionTemplates(pool, bridgeId)
+        if (templates.length) {
+          return res.json(templates)
+        }
         const [rows] = await pool.query(
           `SELECT * FROM ${cfg.table} WHERE bridge_id = ? ORDER BY ${cfg.pk} ASC`,
-          [req.params.bridgeId]
+          [bridgeId]
         )
         return res.json(rows)
       }
       const [rows] = await pool.query(
         `SELECT * FROM ${cfg.table} WHERE bridge_id = ? ORDER BY ${cfg.pk} DESC LIMIT 1`,
-        [req.params.bridgeId]
+        [bridgeId]
       )
       if (rows[0]) return res.json(rows[0])
       // On this schema, bridge step columns are enum Yes/No flags.
@@ -6779,6 +6848,11 @@ for (const step of [
   })
   router.post(`/bridge/${step}/:bridgeId`, optionalAuth, async (req, res) => {
     try {
+      const bridgeId = Number(req.params.bridgeId || 0)
+      if (!Number.isFinite(bridgeId) || bridgeId <= 0) {
+        return res.status(400).json({ success: false, message: 'Invalid bridge id' })
+      }
+
       const cfg = STEP_TABLE_MAP[step]
       const dataObj = normalizeStepBody(req.body || {})
       const [metaRows] = await pool.query(
@@ -6790,13 +6864,15 @@ for (const step of [
       const allowed = new Set(metaRows.map((x) => x.COLUMN_NAME))
       const statusMeta = metaRows.find((r) => r.COLUMN_NAME === 'status') || null
       const patch = Object.fromEntries(Object.entries(dataObj).filter(([k]) => allowed.has(k)))
+      // Always bind rows to the bridge id in the URL — never trust bridge_id from the body.
+      delete patch.bridge_id
       if (step === 'structure_data') coerceStructureDataBridgePatch(patch, allowed)
       if (allowed.has('updated_by')) patch.updated_by = req.user?.uid || 0
       if (allowed.has('updated_on')) patch.updated_on = new Date()
 
       const [existingByBridge] = await pool.query(
         `SELECT ${cfg.pk} AS step_id FROM ${cfg.table} WHERE bridge_id = ? ORDER BY ${cfg.pk} DESC LIMIT 1`,
-        [req.params.bridgeId]
+        [bridgeId]
       )
       const stepId = Number(existingByBridge[0]?.step_id || 0)
 
@@ -6811,9 +6887,12 @@ for (const step of [
             : [dataObj.type_a1 ? { type_a1: dataObj.type_a1 } : null, dataObj.type_a2 ? { type_a1: dataObj.type_a2 } : null]
         )
           .filter(Boolean)
-          .map((r) => ({
+          .map((r, index) => ({
             id: Number(r?.expansion_joint_bridge_id || r?.id || 0) || null,
-            type: String(r?.type_a1 || r?.type || '').trim(),
+            type: String(r?.type_a1 || r?.type || r?.expansion_type || '').trim(),
+            name:
+              String(r?.expansion_name || r?.name || '').trim() ||
+              `Type of expansion joint ${index + 1}`,
           }))
           .filter((r) => r.type)
 
@@ -6832,7 +6911,7 @@ for (const step of [
 
         const [existingRows] = await pool.query(
           `SELECT ${cfg.pk} AS row_id FROM ${cfg.table} WHERE bridge_id = ?`,
-          [req.params.bridgeId]
+          [bridgeId]
         )
         const existingIdSet = new Set(existingRows.map((r) => Number(r.row_id)).filter(Boolean))
         const keptIds = []
@@ -6858,7 +6937,7 @@ for (const step of [
               vals.push(new Date())
             }
             if (updates.length) {
-              vals.push(item.id, req.params.bridgeId)
+              vals.push(item.id, bridgeId)
               await pool.query(
                 `UPDATE ${cfg.table} SET ${updates.join(', ')} WHERE ${cfg.pk} = ? AND bridge_id = ?`,
                 vals
@@ -6869,7 +6948,7 @@ for (const step of [
           }
 
           const payload = {}
-          if (allowed.has('bridge_id')) payload.bridge_id = req.params.bridgeId
+          if (allowed.has('bridge_id')) payload.bridge_id = bridgeId
           if (allowed.has('type_a1')) payload.type_a1 = item.type
           if (allowed.has('type_a2')) payload.type_a2 = ''
           if (allowed.has('status')) payload.status = defaultStatus
@@ -6900,18 +6979,38 @@ for (const step of [
         if (toDelete.length) {
           await pool.query(
             `DELETE FROM ${cfg.table} WHERE bridge_id = ? AND ${cfg.pk} IN (${toDelete.map(() => '?').join(', ')})`,
-            [req.params.bridgeId, ...toDelete]
+            [bridgeId, ...toDelete]
+          )
+        }
+
+        // Ensure every saved row uses the same bridge_id (repair legacy bad rows).
+        if (keptIds.length) {
+          await pool.query(
+            `UPDATE ${cfg.table} SET bridge_id = ? WHERE ${cfg.pk} IN (${keptIds.map(() => '?').join(', ')})`,
+            [bridgeId, ...keptIds]
           )
         }
 
         try {
           await pool.query(
             `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-            [req.user?.uid || 0, req.params.bridgeId]
+            [req.user?.uid || 0, bridgeId]
           )
         } catch {}
 
-        return res.json({ success: true, ids: keptIds, created: true, count: keptIds.length })
+        await replaceExpansionJointBridgeItems(
+          pool,
+          bridgeId,
+          incomingRows.map((item, index) => ({
+            expansion_name: item.name || `Type of expansion joint ${index + 1}`,
+            expansion_type: item.type,
+            default_condition: 'Good',
+            display_order: index + 1,
+          })),
+          req.user?.uid || 0
+        )
+
+        return res.json({ success: true, ids: keptIds, created: true, count: keptIds.length, bridge_id: bridgeId })
       }
 
       if (stepId > 0) {
@@ -6927,7 +7026,7 @@ for (const step of [
         try {
           await pool.query(
             `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-            [req.user?.uid || 0, req.params.bridgeId]
+            [req.user?.uid || 0, bridgeId]
           )
         } catch {
           // ignore if column differs in some deployments
@@ -6939,6 +7038,7 @@ for (const step of [
       const [tplRows] = await pool.query(`SELECT * FROM ${cfg.table} LIMIT 1`)
       const tpl = tplRows[0] || {}
       delete tpl[cfg.pk]
+      delete tpl.bridge_id
       // Default status must match each table's enum.
       // Many *_bridge tables in dump use enum('Active','In-Active') while others use enum('Pending','Completed').
       let defaultStatus = 'Pending'
@@ -6956,7 +7056,7 @@ for (const step of [
         }
       }
 
-      const payload = { ...tpl, ...patch, bridge_id: req.params.bridgeId }
+      const payload = { ...tpl, ...patch, bridge_id: bridgeId }
       if (allowed.has('status') && (payload.status == null || payload.status === '')) payload.status = defaultStatus
       if (allowed.has('updated_by')) payload.updated_by = req.user?.uid || 0
       if (allowed.has('updated_on')) payload.updated_on = new Date()
@@ -6983,7 +7083,7 @@ for (const step of [
       try {
         await pool.query(
           `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-          [req.user?.uid || 0, req.params.bridgeId]
+          [req.user?.uid || 0, bridgeId]
         )
       } catch {
         // ignore if column differs in some deployments
