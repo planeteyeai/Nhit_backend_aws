@@ -163,6 +163,7 @@ export const INSPECTION_DROPDOWNS = {
     material_rhs: opts(C.FOOTPATH_MATERIAL_RHS),
     conditions_lhs: opts(C.FOOTPATH_CONDITION_LHS),
     conditions_rhs: opts(C.FOOTPATH_CONDITION_RHS),
+    footpaths_distress_type: opts({ '': 'Select Distress', ...utilitiesDamageType }),
   },
 
   utilities: {
