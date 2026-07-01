@@ -90,8 +90,8 @@ export async function fetchBridgeExpansionTemplates(pool, bridgeId) {
     return itemRows
       .map((item, idx) => {
         const bridgeRow = bridgeRows[idx] || {}
-        const type = String(item.expansion_type || bridgeRow.type_a1 || '').trim()
-        if (!type) return null
+        const type = String(item.expansion_type || item?.type || bridgeRow.type_a1 || '').trim()
+        if (!type || type.toUpperCase() === 'NA') return null
         return {
           expansion_joint_bridge_id: Number(bridgeRow.expansion_joint_bridge_id || 0) || null,
           bridge_id: id,
@@ -108,7 +108,7 @@ export async function fetchBridgeExpansionTemplates(pool, bridgeId) {
   return bridgeRows
     .map((row, idx) => {
       const type = String(row.type_a1 || '').trim()
-      if (!type) return null
+      if (!type || type.toUpperCase() === 'NA') return null
       return {
         expansion_joint_bridge_id: Number(row.expansion_joint_bridge_id || 0) || null,
         bridge_id: id,

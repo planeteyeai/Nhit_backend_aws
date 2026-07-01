@@ -6894,10 +6894,40 @@ for (const step of [
               String(r?.expansion_name || r?.name || '').trim() ||
               `Type of expansion joint ${index + 1}`,
           }))
-          .filter((r) => r.type)
+          .filter((r) => r.type && String(r.type).trim().toUpperCase() !== 'NA')
+
+        const [existingRows] = await pool.query(
+          `SELECT ${cfg.pk} AS row_id FROM ${cfg.table} WHERE bridge_id = ?`,
+          [bridgeId]
+        )
+        const existingIdSet = new Set(existingRows.map((r) => Number(r.row_id)).filter(Boolean))
 
         if (!incomingRows.length) {
-          return res.status(400).json({ success: false, message: 'No expansion joint values provided' })
+          const toDelete = [...existingIdSet]
+          if (toDelete.length) {
+            await pool.query(
+              `DELETE FROM ${cfg.table} WHERE bridge_id = ? AND ${cfg.pk} IN (${toDelete.map(() => '?').join(', ')})`,
+              [bridgeId, ...toDelete]
+            )
+          }
+
+          try {
+            await pool.query(
+              `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
+              [req.user?.uid || 0, bridgeId]
+            )
+          } catch {}
+
+          await replaceExpansionJointBridgeItems(pool, bridgeId, [], req.user?.uid || 0)
+
+          return res.json({
+            success: true,
+            ids: [],
+            created: false,
+            count: 0,
+            bridge_id: bridgeId,
+            no_expansion_joints: true,
+          })
         }
 
         // Default status value based on enum definition in target table.
@@ -6909,11 +6939,6 @@ for (const step of [
           else if (ct.includes("'Pending'")) defaultStatus = 'Pending'
         }
 
-        const [existingRows] = await pool.query(
-          `SELECT ${cfg.pk} AS row_id FROM ${cfg.table} WHERE bridge_id = ?`,
-          [bridgeId]
-        )
-        const existingIdSet = new Set(existingRows.map((r) => Number(r.row_id)).filter(Boolean))
         const keptIds = []
 
         for (const item of incomingRows) {
