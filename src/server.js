@@ -137,9 +137,8 @@ app.use(
 app.options('*', cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
-/** Block direct static access to signatures and PDFs without login (production). */
+/** Block direct static access to signatures and PDFs without login. */
 function uploadSensitiveGuard(req, res, next) {
-  if (!isProduction()) return next()
   if (req.method !== 'GET' && req.method !== 'HEAD') return next()
   const rel = String(req.path || '').replace(/^\/+/, '')
   if (!rel.startsWith('download/')) return next()

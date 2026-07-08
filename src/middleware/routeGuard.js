@@ -1,5 +1,4 @@
 import { requireAuth } from './auth.js'
-import { isProduction } from '../lib/envValidate.js'
 
 /** Site photo reads — img tags cannot send Authorization headers. */
 function isPublicBridgeImageRead(req) {
@@ -8,7 +7,7 @@ function isPublicBridgeImageRead(req) {
   return /^\/upload\/bridge_images\/\d+(?:\/[^/]+)?$/.test(path)
 }
 
-/** Routes that stay public in production (login only). */
+/** Routes that stay public (login / logout / CORS preflight / public image reads). */
 function isPublicRoute(req) {
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
   const method = req.method
@@ -24,9 +23,11 @@ function isPublicRoute(req) {
   return false
 }
 
-/** Require JWT for all BMS API routes in production except login/logout. */
+/**
+ * Require JWT for all BMS API routes except explicitly public login/logout paths.
+ * Applies in every environment so local/dev cannot expose bridge / user data anonymously.
+ */
 export function productionRouteGuard(req, res, next) {
-  if (!isProduction()) return next()
   if (isPublicRoute(req)) return next()
   return requireAuth(req, res, next)
 }

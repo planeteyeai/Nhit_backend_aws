@@ -10,6 +10,12 @@ import { normalizeAppRole } from '../lib/roles.js'
 import { verifyPassword, md5Hex } from '../lib/password.js'
 import { signToken, requireAuth, optionalAuth } from '../middleware/auth.js'
 import { productionRouteGuard } from '../middleware/routeGuard.js'
+import {
+  getLoginLockStatus,
+  recordLoginFailure,
+  clearLoginFailures,
+  loginLockMessage,
+} from '../lib/loginRateLimit.js'
 import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
@@ -547,6 +553,17 @@ async function handleLogin(req, res) {
   if (!username || !password) {
     return res.status(400).json({ message: 'Username and password are required' })
   }
+
+  const lock = getLoginLockStatus(req, username)
+  if (lock.locked) {
+    res.setHeader('Retry-After', String(lock.retryAfterSec))
+    return res.status(429).json({
+      message: loginLockMessage(lock.retryAfterSec),
+      retry_after_seconds: lock.retryAfterSec,
+      locked: true,
+    })
+  }
+
   const [rows] = await pool.query(
     `SELECT uid, username, pass, first_name, last_name, user_role, user_status FROM users
      WHERE LOWER(TRIM(username)) = LOWER(?) AND user_status = 'Active' LIMIT 1`,
@@ -554,8 +571,22 @@ async function handleLogin(req, res) {
   )
   const user = rows[0]
   if (!user || !verifyPassword(user.pass, password)) {
-    return res.status(401).json({ message: 'Username or Password is incorrect!' })
+    const afterFail = recordLoginFailure(req, username)
+    if (afterFail.locked) {
+      res.setHeader('Retry-After', String(afterFail.retryAfterSec))
+      return res.status(429).json({
+        message: loginLockMessage(afterFail.retryAfterSec),
+        retry_after_seconds: afterFail.retryAfterSec,
+        locked: true,
+      })
+    }
+    return res.status(401).json({
+      message: 'Username or Password is incorrect!',
+      attempts_remaining: afterFail.remaining,
+    })
   }
+
+  clearLoginFailures(req, username)
   const role = normalizeAppRole(user.user_role)
   const token = signToken({ uid: user.uid, username: user.username, role })
   return res.json({

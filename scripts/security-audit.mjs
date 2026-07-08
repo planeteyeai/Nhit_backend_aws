@@ -8,11 +8,18 @@ const base = (process.argv[2] || 'http://localhost:3001').replace(/\/$/, '')
 const checks = [
   { name: 'Users list (must be 401)', path: '/users', expect: 401 },
   { name: 'Bridge list (must be 401)', path: '/bridge-list', expect: 401 },
-  { name: 'Storage status (must be 401)', path: '/api/storage/status', expect: 401 },
-  { name: 'Presign (must be 401)', path: '/api/files/presign?key=upload/test', expect: 401 },
-  { name: 'Diag DB (must be 404)', path: '/api/diag/db', expect: 404 },
+  { name: 'Storage status blocked without auth', path: '/api/storage/status', expect: [401, 403, 404] },
+  { name: 'Presign blocked without auth', path: '/api/files/presign?key=upload/test', expect: [401, 403, 404] },
+  { name: 'Diag DB blocked without auth', path: '/api/diag/db', expect: [401, 403, 404] },
   { name: 'Health (public 200)', path: '/health', expect: 200 },
   { name: 'Login route exists', path: '/login', method: 'POST', body: {}, expect: [400, 401, 422] },
+  {
+    name: 'Login rate-limit path responds',
+    path: '/login',
+    method: 'POST',
+    body: { username: 'security_audit_probe', password: 'wrong' },
+    expect: [401, 429],
+  },
 ]
 
 let failed = 0
