@@ -3,7 +3,7 @@
  * Usage: node scripts/security-audit.mjs [baseUrl]
  * Example: node scripts/security-audit.mjs https://nhit-backend.up.railway.app
  */
-const base = (process.argv[2] || 'http://localhost:3001').replace(/\/$/, '')
+const base = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '')
 
 const checks = [
   { name: 'Users list (must be 401)', path: '/users', expect: 401 },

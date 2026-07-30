@@ -16,6 +16,6 @@ RUN git lfs install \
 RUN npm ci --omit=dev
 
 ENV NODE_ENV=production
-EXPOSE 3001
+EXPOSE 8080
 
 CMD ["npm", "start"]

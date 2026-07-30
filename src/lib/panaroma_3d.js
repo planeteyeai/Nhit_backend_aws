@@ -432,7 +432,7 @@ function buildStationResponse(req, uploadRoot, entries, idx = 0, total = 1, opti
   const stationId = randomUUID().replace(/-/g, '').slice(0, 8)
   const savePath = stationDir(uploadRoot, stationId)
   fs.mkdirSync(savePath, { recursive: true })
-  // Relative URL — works with Vite /upload proxy (port 5173 → 3001)
+  // Relative URL — works with Vite /upload proxy (port 5173 → 8080)
   const baseUrl = `/upload/${PANORAMA_3D_DIR}/${stationId}`
   const payload = writePanoramaFromEntries(entries, savePath, baseUrl)
   const plan = planPositionForIndex(idx, total)

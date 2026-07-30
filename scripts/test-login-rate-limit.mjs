@@ -4,9 +4,9 @@
  * Usage:
  *   node scripts/test-login-rate-limit.mjs [baseUrl]
  * Example:
- *   node scripts/test-login-rate-limit.mjs http://localhost:3001
+ *   node scripts/test-login-rate-limit.mjs http://localhost:8080
  */
-const base = (process.argv[2] || 'http://localhost:3001').replace(/\/$/, '')
+const base = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '')
 const TEST_USER = `rate_limit_probe_${Date.now()}`
 const BAD_PASSWORD = 'definitely-wrong-password'
 
