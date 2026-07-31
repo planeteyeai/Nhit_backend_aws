@@ -930,9 +930,12 @@ router.get('/bridge-list', async (req, res) => {
       where += ' AND b.project_name = ?'
       params.push(req.query.project_name)
     }
-    if (req.query.structure_type) {
+    const structureType = String(
+      req.query.structure_type || req.query.type_of_structure || req.query.type_of_bridge || '',
+    ).trim()
+    if (structureType) {
       where += ' AND b.type_of_bridge = ?'
-      params.push(req.query.structure_type)
+      params.push(structureType)
     }
     if (req.query.highway_no) {
       where += ' AND b.highway_no = ?'
