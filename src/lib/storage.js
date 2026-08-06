@@ -1,8 +1,9 @@
 /**
- * Railway Bucket (S3-compatible) storage.
- * Env vars from Railway "Connect Service to Bucket" → AWS SDK (Generic):
- *   AWS_ENDPOINT_URL, AWS_S3_BUCKET_NAME, AWS_DEFAULT_REGION,
- *   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+ * S3-compatible storage (Railway Bucket or native AWS S3).
+ * Env vars (AWS SDK style):
+ *   AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+ *   AWS_DEFAULT_REGION (required for native AWS, e.g. ap-south-1)
+ *   AWS_ENDPOINT_URL (optional — set for Railway/MinIO; omit for Amazon S3)
  */
 import fs from 'fs'
 import path from 'path'
@@ -18,7 +19,12 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 const PRESIGN_DEFAULT_SEC = Number(process.env.PRESIGNED_URL_EXPIRY_SEC || 3600)
 
 function bucketName() {
-  return String(process.env.AWS_S3_BUCKET_NAME || process.env.S3_BUCKET || '').trim()
+  return String(
+    process.env.AWS_S3_BUCKET_NAME ||
+      process.env.AWS_STORAGE_BUCKET_NAME ||
+      process.env.S3_BUCKET ||
+      ''
+  ).trim()
 }
 
 function endpoint() {
@@ -26,7 +32,15 @@ function endpoint() {
 }
 
 function region() {
-  return String(process.env.AWS_DEFAULT_REGION || process.env.S3_REGION || 'auto').trim()
+  const configured = String(
+    process.env.AWS_DEFAULT_REGION ||
+      process.env.AWS_S3_REGION_NAME ||
+      process.env.S3_REGION ||
+      ''
+  ).trim()
+  if (configured) return configured
+  // Native AWS needs a real region; Railway/custom endpoints often use "auto".
+  return endpoint() ? 'auto' : 'us-east-1'
 }
 
 function accessKeyId() {
@@ -37,14 +51,12 @@ function secretAccessKey() {
   return String(process.env.AWS_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY || '').trim()
 }
 
-/** True when Railway bucket credentials are configured. */
+/** True when S3/Railway bucket credentials are configured. */
 export function isStorageEnabled() {
   const backend = String(process.env.STORAGE_BACKEND || 'auto').trim().toLowerCase()
   if (backend === 'local' || backend === 'disk') return false
-  if (backend === 's3') {
-    return Boolean(bucketName() && endpoint() && accessKeyId() && secretAccessKey())
-  }
-  return Boolean(bucketName() && endpoint() && accessKeyId() && secretAccessKey())
+  // Endpoint is optional: native Amazon S3 uses the regional AWS endpoint automatically.
+  return Boolean(bucketName() && accessKeyId() && secretAccessKey())
 }
 
 let _client = null
@@ -52,15 +64,17 @@ let _client = null
 function getClient() {
   if (!isStorageEnabled()) return null
   if (!_client) {
-    _client = new S3Client({
+    const cfg = {
       region: region(),
-      endpoint: endpoint(),
       credentials: {
         accessKeyId: accessKeyId(),
         secretAccessKey: secretAccessKey(),
       },
       forcePathStyle: false,
-    })
+    }
+    const ep = endpoint()
+    if (ep) cfg.endpoint = ep
+    _client = new S3Client(cfg)
   }
   return _client
 }
