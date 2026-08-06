@@ -1,5 +1,6 @@
 {
   "models": [
+    "PUP 17+520.glb",
     "Slab culvert 33+165 glb.glb",
     "Box culvert 34+860 GLB.glb",
     "PUP 40+160 glb.glb",
@@ -7,9 +8,15 @@
     "Box culvert 52+780 GLB.glb",
     "Box culvert 53+065 GLB.glb",
     "Box culvert 54+020 GLB.glb",
+    "ROB 58+099.glb",
     "Box culvert 60+470 GLB.glb",
     "MNB 60+610 GLB.glb",
     "Box culvert 61+820 glb.glb",
-    "Box Culvert 64+670 glb.glb"
+    "Box Culvert 64+670 glb.glb",
+    "Box culvert 79+840 glb.glb",
+    "MNB 631+692.glb",
+    "BXC 639+205  .glb",
+    "Box culvert 985+625 glb.glb",
+    "PUP 992+228 glb.glb"
   ]
 }

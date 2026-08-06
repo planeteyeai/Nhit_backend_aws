@@ -55,6 +55,7 @@ import {
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
+  listModel3dBucketFileNames,
   model3dExistsInBucket,
   resolveModel3dBucketKey,
   warmModel3dStorage,
@@ -5338,7 +5339,10 @@ router.post('/model-3d/sync', optionalAuth, (req, res) => startModel3dSync(res))
 /** GLB library catalog from upload/model_3d/models.json (disk and/or Railway bucket). */
 router.get('/model-3d/catalog', optionalAuth, async (_req, res) => {
   try {
-    const entries = listModel3dFileNames()
+    const bucketNames = await listModel3dBucketFileNames()
+    const entries = [...new Set([...listModel3dFileNames(), ...bucketNames])].sort(
+      chainageSortModelNames
+    )
     const all = []
     for (const entry of entries) {
       const file = normalizeModel3dFileName(entry)

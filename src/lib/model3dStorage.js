@@ -43,6 +43,18 @@ export async function model3dExistsInBucket(diskFile) {
   return Boolean(await resolveModel3dBucketKey(diskFile))
 }
 
+/** Basename list of .glb objects under upload/model_3d/ in the Railway bucket. */
+export async function listModel3dBucketFileNames() {
+  if (!isStorageEnabled()) return []
+  if (!bucketIndex) await refreshModel3dBucketIndex()
+  const names = []
+  for (const key of bucketIndex.values()) {
+    const base = path.basename(key)
+    if (/\.glb$/i.test(base) && !/\.glb\.glb$/i.test(base)) names.push(base)
+  }
+  return names
+}
+
 /** Upload valid local GLB binaries to Railway bucket (skips LFS pointers). */
 export async function mirrorModel3dGlbsToBucket(model3dRoot) {
   if (!isStorageEnabled() || !model3dRoot || !fs.existsSync(model3dRoot)) {
