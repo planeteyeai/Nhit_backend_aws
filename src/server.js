@@ -6,7 +6,7 @@ import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { warmModel3dStorage } from './lib/model3dStorage.js'
-import { getPresignedUrl, isStorageEnabled, objectExists, storageStatus } from './lib/storage.js'
+import { getPresignedUrl, isStorageEnabled, objectExists, pipeBucketObjectToResponse, storageStatus } from './lib/storage.js'
 import { pool } from './config/db.js'
 import { ensureBridgeInspectionDistressColumns, ensureNonStructuralDistressTable } from './lib/nonStructuralDistressDb.js'
 import diagnosticsRoutes from './routes/index.js'
@@ -37,7 +37,11 @@ function resolveUploadFile(urlPath) {
  * express.static + Range on 0-byte files (e.g. .gitkeep) throws RangeNotSatisfiableError.
  * GLB loaders also probe with Range — skip empty placeholder files before send().
  */
-/** If file is not on local disk, redirect to Railway bucket presigned URL. */
+/**
+ * If file is not on local disk, serve it from Amazon S3 through this API.
+ * Pipe (do not redirect): Three.js TextureLoader needs same-origin + CORS headers;
+ * S3 redirects often fail WebGL texture loads without bucket CORS.
+ */
 async function uploadS3Fallback(req, res, next) {
   if (!isStorageEnabled() || (req.method !== 'GET' && req.method !== 'HEAD')) return next()
   const target = resolveUploadFile(req.path)
@@ -51,14 +55,20 @@ async function uploadS3Fallback(req, res, next) {
       /* try bucket */
     }
   }
-  const rel = String(req.path || '').replace(/^\/+/, '')
+  const rel = decodeURIComponent(String(req.path || '').replace(/^\/+/, ''))
   if (!rel) return next()
   const key = `upload/${rel}`
   try {
-    if (await objectExists(key)) {
-      const url = await getPresignedUrl(key)
-      if (url) return res.redirect(302, url)
+    if (!(await objectExists(key))) return next()
+
+    // Prefer proxying bytes so browser/WebGL gets API CORS (nhitbms.com → railway).
+    if (req.method === 'GET' && (await pipeBucketObjectToResponse(res, key))) {
+      return
     }
+
+    // HEAD or pipe failure: fall back to presigned redirect (fine for <img> downloads).
+    const url = await getPresignedUrl(key)
+    if (url) return res.redirect(302, url)
   } catch (e) {
     console.error('[upload] bucket fallback:', e.message)
   }
