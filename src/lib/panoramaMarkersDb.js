@@ -117,6 +117,16 @@ export async function upsertPanoramaStation(pool, bridgeId, station) {
   )
 }
 
+export async function listPanoramaStationsForBridge(pool, bridgeId) {
+  await ensurePanoramaMarkerTables(pool)
+  const [rows] = await pool.query(
+    `SELECT id, bridge_id, uploaded_name, display_name, panorama_type, lat, lng, plan_x, plan_y, uploaded_at
+     FROM bridge_panorama_stations WHERE bridge_id = ? ORDER BY uploaded_at ASC, id ASC`,
+    [Number(bridgeId)]
+  )
+  return rows
+}
+
 export async function syncPanoramaStations(pool, bridgeId, stations) {
   if (!pool || !bridgeId || !Array.isArray(stations)) return
   for (const station of stations) {

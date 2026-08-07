@@ -350,6 +350,30 @@ export async function getObjectStream(key) {
   return out.Body || null
 }
 
+/** Read full object body as Buffer (for JSON indexes / small files). */
+export async function readObjectBuffer(key) {
+  const body = await getObjectStream(key)
+  if (!body) return null
+  if (Buffer.isBuffer(body)) return body
+  const chunks = []
+  for await (const chunk of body) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
+
+export async function readObjectText(key, encoding = 'utf8') {
+  const buf = await readObjectBuffer(key)
+  return buf ? buf.toString(encoding) : null
+}
+
+/** Download bucket object onto local disk (creates parent dirs). */
+export async function downloadObjectToFile(key, localPath) {
+  const buf = await readObjectBuffer(key)
+  if (!buf) return false
+  fs.mkdirSync(path.dirname(localPath), { recursive: true })
+  fs.writeFileSync(localPath, buf)
+  return true
+}
+
 export function guessContentType(key) {
   const ext = path.extname(String(key || '')).toLowerCase()
   const map = {

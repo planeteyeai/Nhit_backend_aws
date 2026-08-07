@@ -2,6 +2,12 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import AdmZip from 'adm-zip'
+import {
+  isStorageEnabled,
+  mirrorUploadRelPath,
+  objectExists,
+  readObjectText,
+} from './storage.js'
 
 const FACE_MAP = {
   px: ['right', 'px'],
@@ -403,6 +409,170 @@ function readBridgePanoramaIndex(uploadRoot, bridgeId) {
   return parseIndexFile(indexPath).map(normalizeStationRecord)
 }
 
+/** Pull stations.{bridgeId}.json from S3 when local disk is empty (Railway redeploy). */
+async function hydrateBridgePanoramaIndexFromBucket(uploadRoot, bridgeId) {
+  if (!isStorageEnabled()) return false
+  const id = String(bridgeId || '').trim()
+  if (!id) return false
+  const indexPath = bridgePanoramaIndexPath(uploadRoot, id)
+  if (fs.existsSync(indexPath) && parseIndexFile(indexPath).length > 0) return false
+
+  const key = `upload/${PANORAMA_3D_DIR}/stations.${id}.json`
+  try {
+    const text = await readObjectText(key)
+    if (!text) return false
+    const parsed = JSON.parse(text)
+    const stations = Array.isArray(parsed?.stations)
+      ? parsed.stations
+      : Array.isArray(parsed)
+        ? parsed
+        : []
+    if (!stations.length) return false
+    writeBridgePanoramaIndex(uploadRoot, id, stations.map(normalizeStationRecord))
+    if (isStorageEnabled()) {
+      await mirrorUploadRelPath(`upload/${PANORAMA_3D_DIR}/stations.${id}.json`, uploadRoot).catch(() => false)
+    }
+    return true
+  } catch (e) {
+    console.warn('[panorama] hydrate index from bucket failed:', id, e.message)
+    return false
+  }
+}
+
+async function stationImagesFromBucketOrDisk(uploadRoot, stationId, panoramaType = 'sphere') {
+  const id = String(stationId || '').trim()
+  if (!id) return null
+  const baseUrl = `/upload/${PANORAMA_3D_DIR}/${id}`
+  const localDir = stationDir(uploadRoot, id)
+
+  const localSphere = ['sphere.jpg', 'sphere.jpeg', 'sphere.png', 'sphere.webp']
+    .map((name) => path.join(localDir, name))
+    .find((p) => fs.existsSync(p))
+  if (localSphere) {
+    return {
+      panorama_type: 'sphere',
+      images: { url: `${baseUrl}/${path.basename(localSphere)}` },
+      previewUrl: `${baseUrl}/${path.basename(localSphere)}`,
+    }
+  }
+
+  const faceNames = ['px', 'nx', 'py', 'ny', 'pz', 'nz']
+  const localFaces = {}
+  for (const face of faceNames) {
+    const hit = ['.jpg', '.jpeg', '.png', '.webp']
+      .map((ext) => path.join(localDir, `${face}${ext}`))
+      .find((p) => fs.existsSync(p))
+    if (hit) localFaces[face] = `${baseUrl}/${path.basename(hit)}`
+  }
+  if (Object.keys(localFaces).length >= 4) {
+    return {
+      panorama_type: 'cube',
+      images: localFaces,
+      previewUrl: localFaces.px || localFaces.pz || Object.values(localFaces)[0],
+    }
+  }
+
+  if (!isStorageEnabled()) return null
+
+  const sphereCandidates = ['sphere.jpg', 'sphere.jpeg', 'sphere.png', 'sphere.webp']
+  const sphereHits = await Promise.all(
+    sphereCandidates.map(async (name) => ({
+      name,
+      ok: await objectExists(`upload/${PANORAMA_3D_DIR}/${id}/${name}`),
+    }))
+  )
+  const sphereHit = sphereHits.find((h) => h.ok)
+  if (sphereHit) {
+    return {
+      panorama_type: 'sphere',
+      images: { url: `${baseUrl}/${sphereHit.name}` },
+      previewUrl: `${baseUrl}/${sphereHit.name}`,
+    }
+  }
+
+  const faceChecks = await Promise.all(
+    faceNames.flatMap((face) =>
+      ['.jpg', '.jpeg', '.png', '.webp'].map(async (ext) => {
+        const name = `${face}${ext}`
+        const ok = await objectExists(`upload/${PANORAMA_3D_DIR}/${id}/${name}`)
+        return ok ? { face, name } : null
+      })
+    )
+  )
+  const faces = {}
+  for (const hit of faceChecks) {
+    if (!hit || faces[hit.face]) continue
+    faces[hit.face] = `${baseUrl}/${hit.name}`
+  }
+  if (Object.keys(faces).length >= 4 || (panoramaType === 'cube' && Object.keys(faces).length > 0)) {
+    return {
+      panorama_type: 'cube',
+      images: faces,
+      previewUrl: faces.px || faces.pz || Object.values(faces)[0],
+    }
+  }
+  return null
+}
+
+/** Rebuild index from DB station rows + S3/disk media when JSON index is missing. */
+export async function rebuildBridgePanoramaIndexFromDb(uploadRoot, bridgeId, dbStations = []) {
+  const id = String(bridgeId || '').trim()
+  if (!id || !Array.isArray(dbStations) || dbStations.length === 0) return []
+
+  const rebuilt = []
+  for (const row of dbStations) {
+    const stationId = String(row.id || row.station_id || '').trim()
+    if (!stationId) continue
+    const media = await stationImagesFromBucketOrDisk(
+      uploadRoot,
+      stationId,
+      row.panorama_type || row.panoramaType || 'sphere'
+    )
+    if (!media) continue
+    rebuilt.push(
+      normalizeStationRecord({
+        id: stationId,
+        bridgeId: id,
+        panorama_type: media.panorama_type,
+        images: media.images,
+        previewUrl: media.previewUrl,
+        uploadedName: row.uploaded_name || row.uploadedName || undefined,
+        displayName: row.display_name || row.displayName || row.label || `Panorama ${stationId}`,
+        label: row.display_name || row.displayName || row.label || `Panorama ${stationId}`,
+        lat: row.lat != null ? Number(row.lat) : undefined,
+        lng: row.lng != null ? Number(row.lng) : undefined,
+        latitude: row.lat != null ? Number(row.lat) : undefined,
+        longitude: row.lng != null ? Number(row.lng) : undefined,
+        planX: row.plan_x != null ? Number(row.plan_x) : undefined,
+        planY: row.plan_y != null ? Number(row.plan_y) : undefined,
+        uploadedAt: row.uploaded_at || row.uploadedAt || undefined,
+      })
+    )
+  }
+
+  if (rebuilt.length) {
+    writeBridgePanoramaIndex(uploadRoot, id, realignBridgeStationPositions(rebuilt))
+    if (isStorageEnabled()) {
+      await mirrorUploadRelPath(`upload/${PANORAMA_3D_DIR}/stations.${id}.json`, uploadRoot).catch(() => false)
+    }
+  }
+  return rebuilt
+}
+
+export async function ensureBridgePanoramaIndex(uploadRoot, bridgeId, dbStations = []) {
+  const id = String(bridgeId || '').trim()
+  if (!id) return []
+
+  let stations = readBridgePanoramaIndex(uploadRoot, id)
+  if (stations.length > 0) return stations
+
+  await hydrateBridgePanoramaIndexFromBucket(uploadRoot, id)
+  stations = readBridgePanoramaIndex(uploadRoot, id)
+  if (stations.length > 0) return stations
+
+  return rebuildBridgePanoramaIndexFromDb(uploadRoot, id, dbStations)
+}
+
 function writeBridgePanoramaIndex(uploadRoot, bridgeId, stations) {
   const indexPath = bridgePanoramaIndexPath(uploadRoot, bridgeId)
   fs.mkdirSync(path.dirname(indexPath), { recursive: true })
@@ -466,8 +636,8 @@ function persistBridgePanoramaStations(uploadRoot, bridgeId, stations) {
   writeBridgePanoramaIndex(uploadRoot, bridgeId, realignBridgeStationPositions(Array.from(byId.values())))
 }
 
-export function listBridgePanoramas(uploadRoot, bridgeId, req) {
-  const stations = readBridgePanoramaIndex(uploadRoot, bridgeId)
+export async function listBridgePanoramas(uploadRoot, bridgeId, _req, dbStations = []) {
+  const stations = await ensureBridgePanoramaIndex(uploadRoot, bridgeId, dbStations)
   return realignBridgeStationPositions(stations).map((station) => ({
     ...station,
     previewUrl: station.previewUrl || panoramaPreviewUrl(station),

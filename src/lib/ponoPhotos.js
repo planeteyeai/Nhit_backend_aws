@@ -1,7 +1,12 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import { mirrorUploadRelPaths } from './storage.js'
+import {
+  isStorageEnabled,
+  listBucketKeysUnderPrefix,
+  mirrorUploadRelPaths,
+  readObjectText,
+} from './storage.js'
 
 /** Flat location photos (fallback when no 360° panorama). Stored under upload/threed_panoramas/ */
 export const PONO_PHOTOS_DIR = 'threed_panoramas'
@@ -23,6 +28,101 @@ function readBridgePonoIndex(uploadRoot, bridgeId) {
   } catch {
     return []
   }
+}
+
+async function hydrateBridgePonoIndexFromBucket(uploadRoot, bridgeId) {
+  if (!isStorageEnabled()) return false
+  const bid = String(bridgeId || '').trim()
+  if (!bid) return false
+  const indexPath = bridgePonoIndexPath(uploadRoot, bid)
+  if (fs.existsSync(indexPath) && readBridgePonoIndex(uploadRoot, bid).length > 0) return false
+
+  const key = `upload/${PONO_PHOTOS_DIR}/bridge_${bid}/index.json`
+  try {
+    const text = await readObjectText(key)
+    if (!text) return false
+    const parsed = JSON.parse(text)
+    const photos = Array.isArray(parsed?.photos) ? parsed.photos : Array.isArray(parsed) ? parsed : []
+    if (!photos.length) return false
+    writeBridgePonoIndex(uploadRoot, bid, photos)
+    return true
+  } catch (e) {
+    console.warn('[pono] hydrate index from bucket failed:', bid, e.message)
+    return false
+  }
+}
+
+/** If index JSON is missing, rebuild from image files present in the bridge folder (disk or S3). */
+async function rebuildBridgePonoIndexFromMedia(uploadRoot, bridgeId) {
+  const bid = String(bridgeId || '').trim()
+  if (!bid) return []
+
+  const folder = bridgePonoFolder(uploadRoot, bid)
+  const photos = []
+
+  if (fs.existsSync(folder)) {
+    for (const name of fs.readdirSync(folder)) {
+      if (!/\.(jpe?g|png|webp)$/i.test(name)) continue
+      const id = path.basename(name, path.extname(name))
+      photos.push(
+        normalizePonoRecord(
+          {
+            id,
+            url: `/upload/${PONO_PHOTOS_DIR}/bridge_${bid}/${name}`,
+            fileName: name,
+            displayName: id,
+            label: id,
+            uploadedAt: null,
+          },
+          bid
+        )
+      )
+    }
+  }
+
+  if (!photos.length && isStorageEnabled()) {
+    const prefix = `upload/${PONO_PHOTOS_DIR}/bridge_${bid}/`
+    try {
+      const keys = await listBucketKeysUnderPrefix(prefix)
+      for (const key of keys) {
+        const name = path.basename(key)
+        if (!/\.(jpe?g|png|webp)$/i.test(name) || name === 'index.json') continue
+        const id = path.basename(name, path.extname(name))
+        photos.push(
+          normalizePonoRecord(
+            {
+              id,
+              url: `/upload/${PONO_PHOTOS_DIR}/bridge_${bid}/${name}`,
+              fileName: name,
+              displayName: id,
+              label: id,
+              uploadedAt: null,
+            },
+            bid
+          )
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (photos.length) {
+    writeBridgePonoIndex(uploadRoot, bid, photos)
+    await mirrorPonoBridgeFiles(uploadRoot, bid)
+  }
+  return photos
+}
+
+export async function ensureBridgePonoIndex(uploadRoot, bridgeId) {
+  const bid = String(bridgeId || '').trim()
+  if (!bid) return []
+  let photos = readBridgePonoIndex(uploadRoot, bid)
+  if (photos.length) return photos
+  await hydrateBridgePonoIndexFromBucket(uploadRoot, bid)
+  photos = readBridgePonoIndex(uploadRoot, bid)
+  if (photos.length) return photos
+  return rebuildBridgePonoIndexFromMedia(uploadRoot, bid)
 }
 
 function writeBridgePonoIndex(uploadRoot, bridgeId, photos) {
@@ -63,10 +163,11 @@ function normalizePonoRecord(photo, bridgeId) {
 }
 
 /** List panophotos for a bridge (relative /upload URLs). */
-export function listBridgePonoPhotos(uploadRoot, bridgeId) {
+export async function listBridgePonoPhotos(uploadRoot, bridgeId) {
   const bid = String(bridgeId || '').trim()
   if (!bid) return []
-  return readBridgePonoIndex(uploadRoot, bid)
+  const photos = await ensureBridgePonoIndex(uploadRoot, bid)
+  return photos
     .map((p) => normalizePonoRecord(p, bid))
     .sort((a, b) => {
       const ta = Date.parse(a.uploadedAt || '') || 0

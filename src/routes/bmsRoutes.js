@@ -37,6 +37,7 @@ import {
   deletePanoramaMarker,
   deletePanoramaStationRecords,
   ensurePanoramaMarkerTables,
+  listPanoramaStationsForBridge,
   panoramaMarkerImageRelPath,
   syncPanoramaStations,
   updatePanoramaMarker,
@@ -5507,9 +5508,11 @@ router.get('/bridges/:bridgeId/panoramas', optionalAuth, async (req, res) => {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
     await ensurePanoramaMarkerTables(pool)
-    const stations = listBridgePanoramas(uploadRoot, bridgeId, req)
+    const dbStations = await listPanoramaStationsForBridge(pool, bridgeId)
+    const stations = await listBridgePanoramas(uploadRoot, bridgeId, req, dbStations)
     await syncPanoramaStations(pool, bridgeId, stations)
     const data = await attachMarkersToStations(pool, bridgeId, stations)
+    res.setHeader('Cache-Control', 'no-store')
     res.json({ status: 'success', data })
   } catch (e) {
     console.error('bridge panoramas list error:', e)
@@ -5553,7 +5556,8 @@ router.get('/bridges/:bridgeId/pono-photos', optionalAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
-    const photos = listBridgePonoPhotos(uploadRoot, bridgeId)
+    const photos = await listBridgePonoPhotos(uploadRoot, bridgeId)
+    res.setHeader('Cache-Control', 'no-store')
     res.json({ status: 'success', data: photos })
   } catch (e) {
     console.error('bridge panophotos list error:', e)
