@@ -7341,6 +7341,7 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       Settlement: 'STL',
       'Hollow Section': 'HS',
       'Vegetation Growth': 'VEG',
+      'Vegetation growth': 'VEG',
       'Pedestal Damage': 'PD',
       'Hollow Pocket': 'HP',
     }
