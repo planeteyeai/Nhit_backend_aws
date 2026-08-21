@@ -17,13 +17,35 @@ const BUCKET_PREFIX = 'upload/model_3d/'
 
 let bucketIndex = null
 
+/** Collapse "glb .glb" / extra spaces so catalog names match bucket objects. */
+export function normalizeGlbLookupKey(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\.glb$/i, '.glb')
+}
+
+function extractChainageLookupKey(name) {
+  const m = String(name || '').match(/(\d+)\s*\+\s*(\d+)/)
+  return m ? `${Number(m[1])}+${Number(m[2])}` : ''
+}
+
+function indexBucketKey(map, key) {
+  const base = path.basename(key)
+  if (!/\.glb$/i.test(base)) return
+  map.set(base.toLowerCase(), key)
+  map.set(normalizeGlbLookupKey(base), key)
+  const chainage = extractChainageLookupKey(base)
+  if (chainage) map.set(`chainage:${chainage}`, key)
+}
+
 export async function refreshModel3dBucketIndex() {
   bucketIndex = new Map()
   if (!isStorageEnabled()) return bucketIndex
   const keys = await listBucketKeysUnderPrefix(BUCKET_PREFIX)
   for (const key of keys) {
-    if (!/\.glb$/i.test(key)) continue
-    bucketIndex.set(path.basename(key).toLowerCase(), key)
+    indexBucketKey(bucketIndex, key)
   }
   return bucketIndex
 }
@@ -35,8 +57,26 @@ export async function resolveModel3dBucketKey(diskFile) {
   const exact = `${BUCKET_PREFIX}${name}`
   if (await objectExists(exact)) return exact
 
+  const spaced = name.replace(/(\S)\.glb$/i, '$1 .glb')
+  if (spaced !== name) {
+    const spacedKey = `${BUCKET_PREFIX}${spaced}`
+    if (await objectExists(spacedKey)) return spacedKey
+  }
+
   if (!bucketIndex) await refreshModel3dBucketIndex()
-  return bucketIndex.get(name.toLowerCase()) || null
+  const hit =
+    bucketIndex.get(name.toLowerCase()) ||
+    bucketIndex.get(normalizeGlbLookupKey(name)) ||
+    bucketIndex.get(`chainage:${extractChainageLookupKey(name)}`)
+  if (hit) return hit
+
+  await refreshModel3dBucketIndex()
+  return (
+    bucketIndex.get(name.toLowerCase()) ||
+    bucketIndex.get(normalizeGlbLookupKey(name)) ||
+    bucketIndex.get(`chainage:${extractChainageLookupKey(name)}`) ||
+    null
+  )
 }
 
 export async function model3dExistsInBucket(diskFile) {
@@ -47,12 +87,12 @@ export async function model3dExistsInBucket(diskFile) {
 export async function listModel3dBucketFileNames() {
   if (!isStorageEnabled()) return []
   if (!bucketIndex) await refreshModel3dBucketIndex()
-  const names = []
+  const names = new Set()
   for (const key of bucketIndex.values()) {
     const base = path.basename(key)
-    if (/\.glb$/i.test(base) && !/\.glb\.glb$/i.test(base)) names.push(base)
+    if (/\.glb$/i.test(base)) names.add(base)
   }
-  return names
+  return [...names]
 }
 
 /** Upload valid local GLB binaries to Railway bucket (skips LFS pointers). */
@@ -84,7 +124,7 @@ export async function mirrorModel3dGlbsToBucket(model3dRoot) {
       }
       await uploadFromFile(fullPath, key, guessContentType(key))
       ok += 1
-      if (bucketIndex) bucketIndex.set(name.toLowerCase(), key)
+      if (bucketIndex) indexBucketKey(bucketIndex, key)
     } catch (e) {
       failed += 1
       console.error('[model-3d] bucket upload failed:', name, e.message)
