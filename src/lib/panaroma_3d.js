@@ -3,6 +3,7 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import AdmZip from 'adm-zip'
 import {
+  deleteBucketPrefix,
   isStorageEnabled,
   mirrorUploadRelPath,
   objectExists,
@@ -564,7 +565,9 @@ export async function ensureBridgePanoramaIndex(uploadRoot, bridgeId, dbStations
   if (!id) return []
 
   let stations = readBridgePanoramaIndex(uploadRoot, id)
-  if (stations.length > 0) return stations
+  const indexPath = bridgePanoramaIndexPath(uploadRoot, id)
+  // Local index file is source of truth, including empty (user removed every station).
+  if (fs.existsSync(indexPath)) return stations
 
   await hydrateBridgePanoramaIndexFromBucket(uploadRoot, id)
   stations = readBridgePanoramaIndex(uploadRoot, id)
@@ -644,8 +647,9 @@ export async function listBridgePanoramas(uploadRoot, bridgeId, _req, dbStations
   }))
 }
 
-export function deleteBridgePanorama(uploadRoot, bridgeId, stationId) {
+export async function deleteBridgePanorama(uploadRoot, bridgeId, stationId) {
   const id = String(stationId || '').trim()
+  const bid = String(bridgeId || '').trim()
   if (!id) {
     const err = new Error('Invalid station id')
     err.status = 400
@@ -655,14 +659,23 @@ export function deleteBridgePanorama(uploadRoot, bridgeId, stationId) {
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true })
   }
-  const legacyDir = path.join(legacyBridgePanoramaRoot(uploadRoot, bridgeId), id)
+  const legacyDir = path.join(legacyBridgePanoramaRoot(uploadRoot, bid), id)
   if (fs.existsSync(legacyDir)) {
     fs.rmSync(legacyDir, { recursive: true, force: true })
   }
   const next = realignBridgeStationPositions(
-    readBridgePanoramaIndex(uploadRoot, bridgeId).filter((s) => String(s.id) !== id)
+    readBridgePanoramaIndex(uploadRoot, bid).filter((s) => String(s.id) !== id)
   )
-  writeBridgePanoramaIndex(uploadRoot, bridgeId, next)
+  writeBridgePanoramaIndex(uploadRoot, bid, next)
+
+  if (isStorageEnabled()) {
+    await deleteBucketPrefix(`upload/${PANORAMA_3D_DIR}/${id}/`)
+    if (bid) {
+      await deleteBucketPrefix(`upload/bridge_panoramas/${bid}/${id}/`)
+      await mirrorUploadRelPath(`upload/${PANORAMA_3D_DIR}/stations.${bid}.json`, uploadRoot)
+    }
+  }
+
   return { deleted: id, remaining: next.length }
 }
 

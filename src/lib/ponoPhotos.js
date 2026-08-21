@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import {
+  deleteBucketObject,
   isStorageEnabled,
   listBucketKeysUnderPrefix,
   mirrorUploadRelPaths,
@@ -35,7 +36,7 @@ async function hydrateBridgePonoIndexFromBucket(uploadRoot, bridgeId) {
   const bid = String(bridgeId || '').trim()
   if (!bid) return false
   const indexPath = bridgePonoIndexPath(uploadRoot, bid)
-  if (fs.existsSync(indexPath) && readBridgePonoIndex(uploadRoot, bid).length > 0) return false
+  if (fs.existsSync(indexPath)) return false
 
   const key = `upload/${PONO_PHOTOS_DIR}/bridge_${bid}/index.json`
   try {
@@ -117,8 +118,9 @@ async function rebuildBridgePonoIndexFromMedia(uploadRoot, bridgeId) {
 export async function ensureBridgePonoIndex(uploadRoot, bridgeId) {
   const bid = String(bridgeId || '').trim()
   if (!bid) return []
+  const indexPath = bridgePonoIndexPath(uploadRoot, bid)
   let photos = readBridgePonoIndex(uploadRoot, bid)
-  if (photos.length) return photos
+  if (fs.existsSync(indexPath)) return photos
   await hydrateBridgePonoIndexFromBucket(uploadRoot, bid)
   photos = readBridgePonoIndex(uploadRoot, bid)
   if (photos.length) return photos
@@ -251,11 +253,19 @@ export async function deleteBridgePonoPhoto(uploadRoot, bridgeId, photoId) {
     const rel = String(target.url).replace(/^\/upload\//, '')
     const diskPath = path.join(uploadRoot, rel)
     if (fs.existsSync(diskPath)) fs.unlinkSync(diskPath)
+    if (isStorageEnabled() && rel) {
+      await deleteBucketObject(`upload/${rel}`)
+    }
   } else {
     const folder = bridgePonoFolder(uploadRoot, bid)
-    for (const name of fs.readdirSync(folder)) {
-      if (name.startsWith(id)) {
-        fs.unlinkSync(path.join(folder, name))
+    if (fs.existsSync(folder)) {
+      for (const name of fs.readdirSync(folder)) {
+        if (name.startsWith(id)) {
+          fs.unlinkSync(path.join(folder, name))
+          if (isStorageEnabled()) {
+            await deleteBucketObject(`upload/${PONO_PHOTOS_DIR}/bridge_${bid}/${name}`)
+          }
+        }
       }
     }
   }

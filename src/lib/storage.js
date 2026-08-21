@@ -13,6 +13,8 @@ import {
   HeadObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
@@ -149,6 +151,61 @@ export async function listBucketKeysUnderPrefix(prefix) {
   } while (continuationToken)
 
   return keys
+}
+
+/** Delete one object from the bucket. */
+export async function deleteBucketObject(key) {
+  if (!isStorageEnabled()) return false
+  const client = getClient()
+  const k = toObjectKey(key)
+  if (!client || !k) return false
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: bucketName(), Key: k }))
+    return true
+  } catch (e) {
+    console.error('[storage] delete object failed:', k, e.message)
+    return false
+  }
+}
+
+/** Delete every object under a prefix (station folder, panophoto, markers). */
+export async function deleteBucketPrefix(prefix) {
+  if (!isStorageEnabled()) return { ok: 0, failed: 0 }
+  const p = String(prefix || '').replace(/^\/+/, '').replace(/\/?$/, '/')
+  if (!p || p === 'upload/') return { ok: 0, failed: 0 }
+
+  const keys = await listBucketKeysUnderPrefix(p)
+  if (!keys.length) return { ok: 0, failed: 0 }
+
+  const client = getClient()
+  if (!client) return { ok: 0, failed: keys.length }
+
+  let ok = 0
+  let failed = 0
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000)
+    try {
+      const out = await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucketName(),
+          Delete: {
+            Objects: chunk.map((Key) => ({ Key })),
+            Quiet: true,
+          },
+        }),
+      )
+      const errCount = Array.isArray(out.Errors) ? out.Errors.length : 0
+      ok += chunk.length - errCount
+      failed += errCount
+      if (errCount) {
+        console.error('[storage] delete prefix partial fail:', p, out.Errors)
+      }
+    } catch (e) {
+      failed += chunk.length
+      console.error('[storage] delete prefix failed:', p, e.message)
+    }
+  }
+  return { ok, failed }
 }
 
 export async function uploadFromFile(localPath, key, contentType) {

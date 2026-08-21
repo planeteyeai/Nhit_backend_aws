@@ -953,7 +953,7 @@ router.get('/bridge-list', async (req, res) => {
       `SELECT COUNT(*) AS c FROM bridge b WHERE ${where}`,
       params
     )
-    const total = countRows[0].c
+    const total = Number(countRows[0]?.c || 0)
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
               brc.comment AS rejection_comment, brc.comment_on AS rejection_date,
@@ -964,8 +964,8 @@ router.get('/bridge-list', async (req, res) => {
        ${bridgeTrackingJoinsSql(inspectionIdCol)}
        WHERE ${where}
        ORDER BY b.bridge_id DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+       LIMIT ${limit} OFFSET ${offset}`,
+      params
     )
     res.json({
       data: enrichBridgeTrackingRows(rows),
@@ -5542,7 +5542,7 @@ router.delete('/bridges/:bridgeId/panoramas/:stationId', optionalAuth, async (re
     const bridgeId = Number(req.params.bridgeId || 0)
     const stationId = String(req.params.stationId || '').trim()
     if (!bridgeId || !stationId) return res.status(400).json({ message: 'Invalid parameters' })
-    const result = deleteBridgePanorama(uploadRoot, bridgeId, stationId)
+    const result = await deleteBridgePanorama(uploadRoot, bridgeId, stationId)
     await deletePanoramaStationRecords(pool, bridgeId, stationId)
     res.json({ status: 'success', ...result })
   } catch (e) {
