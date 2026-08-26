@@ -66,6 +66,13 @@ import {
   bridgeTrackingStatusHint,
 } from '../lib/bridgeLifecycle.js'
 import {
+  extractSarReportByChainage,
+  findSarReportByChainage,
+  listSarReportFiles,
+  streamSarPdf,
+} from '../lib/sarReports.js'
+import { thermalGenerateHandler } from '../lib/thermalGemini.js'
+import {
   enrichRowsWithUrls,
   getPresignedUrl,
   isStorageEnabled,
@@ -532,21 +539,234 @@ function normalizeBridgePayload(body = {}) {
   return out
 }
 
-function inspectionWhereClause(mode) {
+function inspectionWhereClause(mode, scope = 'bmc') {
+  // PHP Inspection_model::InspectionLists (BMC) vs getAllInspectionsList (site).
+  const notClosed = `LOWER(TRIM(i.status)) <> 'closed'`
+  const isSite = String(scope || '').toLowerCase() === 'site'
   switch (mode) {
     case 'scheduled':
-      return `i.status = 'Pending'`
+      return `${notClosed} AND LOWER(TRIM(i.status)) = 'pending'`
     case 'ongoing':
-      return `i.status = 'Confirmed'`
+      if (isSite) {
+        return `${notClosed} AND LOWER(TRIM(i.status)) IN ('pending', 'confirmed')`
+      }
+      return `${notClosed}
+        AND LOWER(TRIM(i.status)) = 'confirmed'
+        AND LOWER(TRIM(COALESCE(i.bmc_inspection_status, 'no'))) = 'no'`
     case 'approved':
-      return `i.status = 'Approved' AND i.bmc_inspection_status = 'Approved'`
+      if (isSite) {
+        return `${notClosed} AND LOWER(TRIM(i.status)) = 'approved'`
+      }
+      return `${notClosed}
+        AND LOWER(TRIM(i.status)) = 'approved'
+        AND LOWER(TRIM(i.bmc_inspection_status)) = 'approved'`
     case 'rejected':
-      return `i.bmc_inspection_status = 'Rejected'`
+      return `${notClosed}
+        AND LOWER(TRIM(i.status)) = 'pending'
+        AND LOWER(TRIM(i.bmc_inspection_status)) = 'rejected'`
     case 'pending_approval':
-      return `(i.status IN ('Pending','Confirmed')) AND (i.bmc_inspection_status IS NULL OR TRIM(i.bmc_inspection_status) = '' OR i.bmc_inspection_status = 'No')`
+      return `${notClosed}
+        AND LOWER(TRIM(i.status)) = 'confirmed'
+        AND LOWER(TRIM(COALESCE(i.bmc_inspection_status, 'no'))) IN ('no', 'rejected')`
     default:
-      return '1=1'
+      return notClosed
   }
+}
+
+/** PHP Inspection_model::getAllScheduleInspections date window (today .. today+15). */
+function scheduleNotificationDateRange() {
+  const today = new Date()
+  const future = new Date(today)
+  future.setDate(future.getDate() + 15)
+  const toYmd = (d) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  return { today: toYmd(today), future: toYmd(future) }
+}
+
+function formatReminderDate(value) {
+  if (value == null || value === '') return ''
+  if (value instanceof Date) {
+    const y = value.getFullYear()
+    const m = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  const s = String(value)
+  return s.length >= 10 ? s.slice(0, 10) : s
+}
+
+/** PHP apply_bridge_project_scope — site engineers see only their assigned project. */
+async function resolveSiteEngineerProjectName(req) {
+  const role = String(req.user?.role || req.user?.userrole || '').toLowerCase()
+  if (!role.includes('site')) return ''
+  const uid = Number(req.user?.uid || 0)
+  if (!uid) return ''
+  try {
+    const [cols] = await pool.query(`SHOW COLUMNS FROM users LIKE 'project_name'`)
+    if (!cols.length) return ''
+    const [rows] = await pool.query('SELECT project_name FROM users WHERE uid = ? LIMIT 1', [uid])
+    return String(rows[0]?.project_name || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function scheduleNotificationListSelectSql() {
+  return `
+    SELECT
+      sin.notification_id,
+      sin.bridge_id,
+      sin.si_id,
+      sin.inspecion_type,
+      sin.reminder_date,
+      sin.status AS notification_status,
+      b.bridge_identity_no,
+      b.chainage,
+      b.popular_name_of_bridge,
+      b.project_name,
+      b.highway_no,
+      b.bridge_no,
+      b.bridge_side,
+      b.consultant_name,
+      b.custodian,
+      b.type_of_bridge`
+}
+
+async function buildScheduleNotificationFilters(req) {
+  const params = []
+  let where = `LOWER(TRIM(sin.status)) = 'pending'`
+
+  const scopedProject = await resolveSiteEngineerProjectName(req)
+  if (scopedProject) {
+    where += ' AND b.project_name = ?'
+    params.push(scopedProject)
+  } else {
+    const projectName = String(req.query?.projectName || req.query?.project_name || '').trim()
+    if (projectName) {
+      where += ' AND b.project_name LIKE ?'
+      params.push(`%${projectName}%`)
+    }
+  }
+
+  const structureType = String(req.query?.structureType || req.query?.structure_type || req.query?.type_of_bridge || '').trim()
+  if (structureType) {
+    where += ' AND b.type_of_bridge = ?'
+    params.push(structureType)
+  }
+
+  const highwayNo = String(req.query?.highwayNo || req.query?.highway_no || '').trim()
+  if (highwayNo) {
+    where += ' AND b.highway_no LIKE ?'
+    params.push(`%${highwayNo}%`)
+  }
+
+  const search = String(req.query?.search || '').trim()
+  if (search) {
+    where += ` AND (b.bridge_identity_no LIKE ? OR b.project_name LIKE ? OR b.highway_no LIKE ? OR b.chainage LIKE ? OR b.popular_name_of_bridge LIKE ? OR b.bridge_no LIKE ?)`
+    const q = `%${search}%`
+    params.push(q, q, q, q, q, q)
+  }
+
+  return { where, params }
+}
+
+/** PHP Index_con + Inspection::index — pending notifications (upcoming then overdue). */
+async function countScheduleNotificationList(req) {
+  const { today, future } = scheduleNotificationDateRange()
+  const { where, params } = await buildScheduleNotificationFilters(req)
+  const fromSql = `
+    FROM schedule_inspecion_notification sin
+    INNER JOIN bridge b ON b.bridge_id = sin.bridge_id
+    WHERE ${where}`
+  const [[upcomingRows], [overdueRows]] = await Promise.all([
+    pool.query(`SELECT COUNT(*) AS c ${fromSql} AND sin.reminder_date BETWEEN ? AND ?`, [
+      ...params,
+      today,
+      future,
+    ]),
+    pool.query(`SELECT COUNT(*) AS c ${fromSql} AND sin.reminder_date < ?`, [...params, today]),
+  ])
+  return Number(upcomingRows[0]?.c || 0) + Number(overdueRows[0]?.c || 0)
+}
+
+/** PHP bmc/Bridge.php — reminder on 15th of month before selected schedule month. */
+function reminderDateFromScheduleMonth(monthStr) {
+  const month = String(monthStr || '').trim()
+  if (!month) return null
+  const mm = Number(month)
+  if (!Number.isFinite(mm) || mm < 1 || mm > 12) return null
+  const currentYear = new Date().getFullYear()
+  const d = new Date(currentYear, mm - 1, 1)
+  d.setMonth(d.getMonth() - 1)
+  d.setDate(15)
+  return formatReminderDate(d)
+}
+
+/** PHP adhoc schedule — reminder 15 days before adhoc inspection date. */
+function reminderDateFromAdhocDate(adhocDate) {
+  const raw = String(adhocDate || '').trim()
+  if (!raw) return null
+  const d = new Date(raw.length <= 10 ? `${raw}T12:00:00` : raw)
+  if (Number.isNaN(d.getTime())) return null
+  d.setDate(d.getDate() - 15)
+  return formatReminderDate(d)
+}
+
+async function insertScheduleNotification({
+  bridgeId,
+  siId = 0,
+  adhocInspecionId = 0,
+  inspecionType,
+  reminderDate,
+}) {
+  if (!bridgeId || !inspecionType || !reminderDate) return null
+  const [ins] = await pool.query(
+    `INSERT INTO schedule_inspecion_notification
+     (bridge_id, si_id, adhoc_inspecion_id, inspecion_type, reminder_date, status)
+     VALUES (?, ?, ?, ?, ?, 'Pending')`,
+    [bridgeId, Number(siId) || 0, Number(adhocInspecionId) || 0, inspecionType, reminderDate],
+  )
+  return ins.insertId
+}
+
+/** PHP bmc/Bridge.php schedule_inspecion — create pending site notifications. */
+async function syncRegularScheduleNotifications(bridgeId, siId, { preMonth, postMonth, routineMonth }) {
+  const created = []
+  if (String(preMonth || '').trim()) {
+    await pool.query(`UPDATE schedule_inspecion_notification SET status = 'Read' WHERE bridge_id = ?`, [
+      bridgeId,
+    ])
+    const id = await insertScheduleNotification({
+      bridgeId,
+      siId,
+      inspecionType: 'Pre Monsoon',
+      reminderDate: reminderDateFromScheduleMonth(preMonth),
+    })
+    if (id) created.push(id)
+  }
+  if (String(postMonth || '').trim()) {
+    const id = await insertScheduleNotification({
+      bridgeId,
+      siId,
+      inspecionType: 'Post Monsoon',
+      reminderDate: reminderDateFromScheduleMonth(postMonth),
+    })
+    if (id) created.push(id)
+  }
+  if (String(routineMonth || '').trim()) {
+    const id = await insertScheduleNotification({
+      bridgeId,
+      siId,
+      inspecionType: 'Routine Inspecion',
+      reminderDate: reminderDateFromScheduleMonth(routineMonth),
+    })
+    if (id) created.push(id)
+  }
+  return created
 }
 
 async function handleLogin(req, res) {
@@ -915,11 +1135,10 @@ function enrichBridgeTrackingRows(rows) {
 router.get('/bridge-list', async (req, res) => {
   try {
     const inspectionIdCol = await getInspectionIdColumn()
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
-    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 10))
-    const offset = (page - 1) * limit
+    let page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit, 10) || 10))
     const params = []
-    let where = '1=1'
+    let where = `LOWER(TRIM(IFNULL(b.status, ''))) <> 'closed'`
     if (req.query.status) {
       where += ' AND b.status = ?'
       params.push(req.query.status)
@@ -954,6 +1173,9 @@ router.get('/bridge-list', async (req, res) => {
       params
     )
     const total = Number(countRows[0]?.c || 0)
+    const totalPages = Math.ceil(total / limit) || 1
+    if (total > 0 && page > totalPages) page = totalPages
+    const offset = (page - 1) * limit
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
               brc.comment AS rejection_comment, brc.comment_on AS rejection_date,
@@ -972,7 +1194,7 @@ router.get('/bridge-list', async (req, res) => {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit) || 1,
+      totalPages,
     })
   } catch (e) {
     console.error(e)
@@ -1528,12 +1750,12 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
     const s = (req.params.status || '').toLowerCase()
     let where = '1=1'
     if (s === 'pending') {
-      // Pending approval should include only submitted entries awaiting BMC action.
-      where = `b.status = 'Completed' AND (b.bmc_status IS NULL OR TRIM(b.bmc_status) = '' OR b.bmc_status = 'No')`
+      // PHP getBMCBridge('pending'): completed inventory not yet BMC-approved.
+      where = `b.status = 'Completed' AND LOWER(TRIM(COALESCE(b.bmc_status, ''))) <> 'approved'`
     } else if (s === 'approved') {
       where = `LOWER(TRIM(b.bmc_status)) = 'approved'`
     } else if (s === 'rejected') {
-      where = `LOWER(TRIM(b.bmc_status)) = 'rejected'`
+      where = `LOWER(TRIM(b.bmc_status)) = 'rejected' AND LOWER(TRIM(b.status)) = 'pending'`
     }
     const [rows] = await pool.query(
       `SELECT b.*, s.state_name, s.state_code,
@@ -1576,10 +1798,16 @@ router.get('/bmc/bridge/index/:status', async (req, res) => {
 
 async function inspectionList(req, res, mode) {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    let page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10))
-    const offset = (page - 1) * limit
-    const w = inspectionWhereClause(mode)
+    const scope = (() => {
+      const q = String(req.query.scope || '').toLowerCase()
+      if (q === 'site' || q === 'bmc') return q
+      const role = String(req.user?.role || req.user?.userrole || '').toLowerCase()
+      if (role.includes('bmc')) return 'bmc'
+      return 'site'
+    })()
+    const w = inspectionWhereClause(mode, scope)
     const params = []
     let where = w
     // Live DBs differ: some use bridge_inspection_id, older ones use inspection_id.
@@ -1589,158 +1817,129 @@ async function inspectionList(req, res, mode) {
     const [ircFkRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection_rejection_comment LIKE 'bridge_inspection_id'`)
     const rejectionCommentFkCol = ircFkRows.length ? 'bridge_inspection_id' : 'inspection_id'
 
-    if (req.query.search) {
-      where += ' AND CAST(i.bridge_id AS CHAR) LIKE ?'
-      params.push(`%${req.query.search.trim()}%`)
+    if (req.query.project_name) {
+      where += ' AND b.project_name = ?'
+      params.push(String(req.query.project_name).trim())
     }
+    const structureType = String(req.query.structure_type || req.query.type_of_bridge || '').trim()
+    if (structureType) {
+      where += ' AND b.type_of_bridge = ?'
+      params.push(structureType)
+    }
+    if (req.query.highway_no) {
+      where += ' AND b.highway_no = ?'
+      params.push(String(req.query.highway_no).trim())
+    }
+    if (req.query.search) {
+      const q = `%${req.query.search.trim()}%`
+      where += ` AND (
+        CAST(i.bridge_id AS CHAR) LIKE ?
+        OR CAST(i.\`${inspectionIdCol}\` AS CHAR) LIKE ?
+        OR b.bridge_identity_no LIKE ?
+        OR b.chainage LIKE ?
+        OR b.popular_name_of_bridge LIKE ?
+        OR b.highway_no LIKE ?
+      )`
+      params.push(q, q, q, q, q, q)
+    }
+    const fromSql = `
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id`
     const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS c FROM bridge_inspection i WHERE ${where}`,
+      `SELECT COUNT(*) AS c ${fromSql} WHERE ${where}`,
       params
     )
-    const total = countRows[0].c
+    const total = Number(countRows[0].c || 0)
+    const totalPages = Math.ceil(total / limit) || 1
+    if (total > 0 && page > totalPages) page = totalPages
+    const offset = (page - 1) * limit
     const [rows] = await pool.query(
       `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id, b.bridge_identity_no, b.chainage, b.popular_name_of_bridge, b.bridge_side, b.zone AS bridge_zone_text, b.project_name, b.highway_no, b.type_of_bridge,
               b.direction_of_inventory_start, b.direction_of_inventory_end,
               COALESCE(s_i.state_name, s_b.state_name) AS state_name,
               COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name,
               irc.comment AS rejection_comment, irc.comment_on AS rejection_date
-       FROM bridge_inspection i
-       LEFT JOIN bridge b ON b.bridge_id = i.bridge_id
+       ${fromSql}
        LEFT JOIN state s_i ON s_i.state_id = i.state_id
        LEFT JOIN state s_b ON s_b.state_code = TRIM(CAST(b.state_id AS CHAR)) AND TRIM(CAST(b.state_id AS CHAR)) <> ''
        LEFT JOIN zone z_i ON z_i.zone_id = i.zone_id
        LEFT JOIN zone z_b ON z_b.zone_code = TRIM(b.zone) AND TRIM(b.zone) <> ''
-       LEFT JOIN bridge_inspection_rejection_comment irc ON irc.\`${rejectionCommentFkCol}\` = i.\`${inspectionIdCol}\`
+       LEFT JOIN (
+         SELECT rc1.*
+         FROM bridge_inspection_rejection_comment rc1
+         INNER JOIN (
+           SELECT \`${rejectionCommentFkCol}\` AS inspection_fk, MAX(rejection_id) AS mx_rejection_id
+           FROM bridge_inspection_rejection_comment
+           GROUP BY \`${rejectionCommentFkCol}\`
+         ) rmx ON rmx.inspection_fk = rc1.\`${rejectionCommentFkCol}\` AND rmx.mx_rejection_id = rc1.rejection_id
+       ) irc ON irc.\`${rejectionCommentFkCol}\` = i.\`${inspectionIdCol}\`
        WHERE ${where}
-       ORDER BY i.created_on DESC
+       ORDER BY i.created_on DESC, i.\`${inspectionIdCol}\` DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     )
-    res.json({ data: rows, total, page, limit, totalPages: Math.ceil(total / limit) || 1 })
+    res.json({ data: rows, total, page, limit, totalPages })
   } catch (e) {
     console.error(e)
     res.status(500).json({ message: e.message })
   }
 }
 
-// Scheduled inspection list — active rows from schedule_inspecion + schedule_adhoc_inspecion.
-router.get('/schedule-inspection-list', async (req, res) => {
+// Site Schedule Inspection List — PHP Inspection::index (pending schedule_inspecion_notification rows).
+router.get('/schedule-inspection-list', optionalAuth, async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    let page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10))
+    const { today, future } = scheduleNotificationDateRange()
+    const { where, params } = await buildScheduleNotificationFilters(req)
+    const fromSql = `
+      FROM schedule_inspecion_notification sin
+      INNER JOIN bridge b ON b.bridge_id = sin.bridge_id
+      WHERE ${where}`
+
+    const [[upcomingCountRows], [overdueCountRows]] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS c ${fromSql} AND sin.reminder_date BETWEEN ? AND ?`, [
+        ...params,
+        today,
+        future,
+      ]),
+      pool.query(`SELECT COUNT(*) AS c ${fromSql} AND sin.reminder_date < ?`, [...params, today]),
+    ])
+    const total =
+      Number(upcomingCountRows[0]?.c || 0) + Number(overdueCountRows[0]?.c || 0)
+    const totalPages = Math.ceil(total / limit) || 1
+    if (total > 0 && page > totalPages) page = totalPages
     const offset = (page - 1) * limit
-    const params = []
-    let where = `1=1`
 
-    const search = String(req.query.search || '').trim()
-    if (search) {
-      where += ` AND (b.bridge_identity_no LIKE ? OR b.project_name LIKE ? OR b.highway_no LIKE ? OR b.chainage LIKE ?)`
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`)
-    }
-    const projectName = String(req.query.projectName || req.query.project_name || '').trim()
-    if (projectName) {
-      where += ` AND b.project_name LIKE ?`
-      params.push(`%${projectName}%`)
-    }
-    const highwayNo = String(req.query.highwayNo || req.query.highway_no || '').trim()
-    if (highwayNo) {
-      where += ` AND b.highway_no LIKE ?`
-      params.push(`%${highwayNo}%`)
-    }
+    const listSql = `
+      SELECT * FROM (
+        ${scheduleNotificationListSelectSql()}, 0 AS is_overdue
+        ${fromSql} AND sin.reminder_date BETWEEN ? AND ?
+        UNION ALL
+        ${scheduleNotificationListSelectSql()}, 1 AS is_overdue
+        ${fromSql} AND sin.reminder_date < ?
+      ) schedule_rows
+      ORDER BY is_overdue ASC, reminder_date ASC
+      LIMIT ? OFFSET ?`
 
-    const scheduledUnionSql = `
-      SELECT
-        si.si_id,
-        NULL AS adhoc_inspecion_id,
-        'regular' AS schedule_kind,
-        si.bridge_id,
-        si.pre_month,
-        si.post_month,
-        si.routine_inspecion_month,
-        si.routine_inspecion_frequency,
-        si.status,
-        si.updated_by,
-        si.updated_on,
-        NULL AS adhoc_inspecion_date,
-        NULL AS adhoc_comment
-      FROM schedule_inspecion si
-      INNER JOIN (
-        SELECT bridge_id, MAX(si_id) AS max_id
-        FROM schedule_inspecion
-        WHERE LOWER(TRIM(status)) = 'active'
-        GROUP BY bridge_id
-      ) lr ON lr.max_id = si.si_id
-      UNION ALL
-      SELECT
-        NULL AS si_id,
-        sa.adhoc_inspecion_id,
-        'adhoc' AS schedule_kind,
-        sa.bridge_id,
-        NULL AS pre_month,
-        NULL AS post_month,
-        NULL AS routine_inspecion_month,
-        NULL AS routine_inspecion_frequency,
-        sa.status,
-        sa.updated_by,
-        sa.updated_on,
-        sa.adhoc_inspecion_date,
-        sa.comment AS adhoc_comment
-      FROM schedule_adhoc_inspecion sa
-      INNER JOIN (
-        SELECT bridge_id, MAX(adhoc_inspecion_id) AS max_id
-        FROM schedule_adhoc_inspecion
-        WHERE LOWER(TRIM(status)) = 'active'
-        GROUP BY bridge_id
-      ) la ON la.max_id = sa.adhoc_inspecion_id`
-
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS c
-       FROM (${scheduledUnionSql}) sched
-       LEFT JOIN bridge b ON b.bridge_id = sched.bridge_id
-       WHERE ${where}`,
-      params
-    )
-    const total = countRows[0]?.c || 0
-
-    const [rows] = await pool.query(
-      `SELECT
-         sched.si_id,
-         sched.adhoc_inspecion_id,
-         sched.schedule_kind,
-         sched.bridge_id,
-         sched.pre_month,
-         sched.post_month,
-         sched.routine_inspecion_month,
-         sched.routine_inspecion_frequency,
-         sched.status,
-         sched.updated_by,
-         sched.updated_on,
-         sched.adhoc_inspecion_date,
-         sched.adhoc_comment,
-         b.bridge_identity_no,
-         b.chainage,
-         b.popular_name_of_bridge,
-         b.project_name,
-         b.highway_no,
-         b.bridge_no,
-         b.bridge_side,
-         b.consultant_name,
-         b.custodian
-       FROM (${scheduledUnionSql}) sched
-       LEFT JOIN bridge b ON b.bridge_id = sched.bridge_id
-       WHERE ${where}
-       ORDER BY sched.updated_on DESC, COALESCE(sched.si_id, sched.adhoc_inspecion_id) DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    )
+    const [rows] = await pool.query(listSql, [
+      ...params,
+      today,
+      future,
+      ...params,
+      today,
+      limit,
+      offset,
+    ])
 
     const data = rows.map((r) => ({
       ...r,
-      reminder_date: r.adhoc_inspecion_date || r.updated_on,
-      inspection_type: r.schedule_kind === 'adhoc' ? 'Adhoc' : 'Scheduled',
+      reminder_date: formatReminderDate(r.reminder_date),
+      inspection_type: r.inspecion_type || r.inspection_type || '',
+      is_overdue: Boolean(Number(r.is_overdue)),
     }))
 
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 })
+    res.json({ data, total, page, limit, totalPages })
   } catch (e) {
     console.error(e)
     res.status(500).json({ message: e.message })
@@ -4204,17 +4403,21 @@ router.get('/inspection/download_all_images', async (req, res) => {
   }
 })
 
-router.get('/dashboard/scheduled_count', async (_req, res) => {
-  const [r] = await pool.query(
-    `SELECT (
-       (SELECT COUNT(*) FROM schedule_inspecion WHERE LOWER(TRIM(status)) = 'active')
-       + (SELECT COUNT(*) FROM schedule_adhoc_inspecion WHERE LOWER(TRIM(status)) = 'active')
-     ) AS c`
-  )
-  res.json({ count: r[0]?.c || 0 })
+router.get('/dashboard/scheduled_count', optionalAuth, async (req, res) => {
+  try {
+    const count = await countScheduleNotificationList(req)
+    res.json({ count })
+  } catch (e) {
+    res.status(500).json({ message: e.message })
+  }
 })
 router.get('/dashboard/ongoing_count', async (_req, res) => {
-  const [r] = await pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Confirmed'`)
+  const [r] = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM bridge_inspection
+     WHERE LOWER(TRIM(status)) IN ('pending', 'confirmed')
+       AND LOWER(TRIM(COALESCE(bmc_inspection_status, 'no'))) NOT IN ('approved')`,
+  )
   res.json({ count: r[0].c })
 })
 router.get('/dashboard/approved_count', async (_req, res) => {
@@ -4246,14 +4449,22 @@ let dashboardCountsCache = {
   data: null,
 }
 
-async function fetchDashboardCounts() {
+function clearDashboardCountsCache() {
+  dashboardCountsCache = { ts: 0, data: null }
+}
+
+async function fetchDashboardCounts(req = {}) {
   const now = Date.now()
-  if (dashboardCountsCache.data && now - dashboardCountsCache.ts < DASHBOARD_COUNTS_TTL_MS) {
+  const scopedProject = await resolveSiteEngineerProjectName(req)
+  const useCache = !scopedProject
+  if (useCache && dashboardCountsCache.data && now - dashboardCountsCache.ts < DASHBOARD_COUNTS_TTL_MS) {
     return dashboardCountsCache.data
   }
 
+  const scheduledCountPromise = countScheduleNotificationList(req)
+
   const [
-    scheduledRows,
+    scheduledCount,
     ongoingRows,
     approvedRows,
     rejectedRows,
@@ -4264,28 +4475,46 @@ async function fetchDashboardCounts() {
     rejectedBridgeRows,
     totalBridgeRows,
   ] = await Promise.all([
-    pool.query(
-      `SELECT (
-         (SELECT COUNT(*) FROM schedule_inspecion WHERE LOWER(TRIM(status)) = 'active')
-         + (SELECT COUNT(*) FROM schedule_adhoc_inspecion WHERE LOWER(TRIM(status)) = 'active')
-       ) AS c`,
-    ),
-    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Confirmed'`),
-    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE status = 'Approved'`),
-    pool.query(`SELECT COUNT(*) AS c FROM bridge_inspection WHERE bmc_inspection_status = 'Rejected'`),
+    scheduledCountPromise,
     pool.query(
       `SELECT COUNT(*) AS c
-       FROM bridge_inspection
-       WHERE status IN ('Pending', 'Confirmed')
-         AND (bmc_inspection_status IS NULL OR TRIM(bmc_inspection_status) = '' OR bmc_inspection_status = 'No')`,
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id
+       WHERE LOWER(TRIM(i.status)) IN ('pending', 'confirmed')
+         AND LOWER(TRIM(i.status)) <> 'closed'`,
     ),
     pool.query(
       `SELECT COUNT(*) AS c
-       FROM bridge_inspection
-       WHERE status = 'Approved' AND bmc_inspection_status = 'Approved'`,
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id
+       WHERE LOWER(TRIM(i.status)) = 'approved'
+         AND LOWER(TRIM(i.bmc_inspection_status)) = 'approved'`,
     ),
     pool.query(
-      `SELECT COUNT(*) AS c FROM bridge b WHERE (b.bmc_status IS NULL OR b.bmc_status NOT IN ('Approved','Rejected')) AND b.status IN ('Completed','Pending')`,
+      `SELECT COUNT(*) AS c
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id
+       WHERE LOWER(TRIM(i.status)) = 'pending'
+         AND LOWER(TRIM(i.bmc_inspection_status)) = 'rejected'`,
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS c
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id
+       WHERE LOWER(TRIM(i.status)) = 'confirmed'
+         AND LOWER(TRIM(COALESCE(i.bmc_inspection_status, 'no'))) IN ('no', 'rejected')`,
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS c
+       FROM bridge_inspection i
+       INNER JOIN bridge b ON b.bridge_id = i.bridge_id
+       WHERE LOWER(TRIM(i.status)) = 'approved'
+         AND LOWER(TRIM(i.bmc_inspection_status)) = 'approved'`,
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS c FROM bridge b
+       WHERE b.status = 'Completed'
+         AND LOWER(TRIM(COALESCE(b.bmc_status, ''))) <> 'approved'`,
     ),
     pool.query(`SELECT COUNT(*) AS c FROM bridge WHERE bmc_status = 'Approved'`),
     pool.query(`SELECT COUNT(*) AS c FROM bridge WHERE bmc_status = 'Rejected'`),
@@ -4293,7 +4522,7 @@ async function fetchDashboardCounts() {
   ])
 
   const data = {
-    scheduled: Number(scheduledRows?.[0]?.[0]?.c || 0),
+    scheduled: Number(scheduledCount || 0),
     ongoing: Number(ongoingRows?.[0]?.[0]?.c || 0),
     approved: Number(approvedRows?.[0]?.[0]?.c || 0),
     rejected: Number(rejectedRows?.[0]?.[0]?.c || 0),
@@ -4306,13 +4535,13 @@ async function fetchDashboardCounts() {
     totalBridges: Number(totalBridgeRows?.[0]?.[0]?.c || 0),
   }
 
-  dashboardCountsCache = { ts: now, data }
+  dashboardCountsCache = useCache ? { ts: now, data } : dashboardCountsCache
   return data
 }
 
-router.get('/dashboard/counts', async (_req, res) => {
+router.get('/dashboard/counts', optionalAuth, async (req, res) => {
   try {
-    const data = await fetchDashboardCounts()
+    const data = await fetchDashboardCounts(req)
     res.json(data)
   } catch (e) {
     res.status(500).json({ message: e.message })
@@ -5491,6 +5720,38 @@ function loadManifestEntry(fileName) {
   }
 }
 
+/** InSAR / SHM SAR PDFs from s3://nhitbucket/upload/download/SAR/ */
+router.get('/sar-reports', optionalAuth, async (req, res) => {
+  try {
+    const chainage = String(req.query.chainage || '').trim()
+    if (chainage) {
+      const report = await extractSarReportByChainage(chainage)
+      if (!report) {
+        const file = await findSarReportByChainage(chainage)
+        return res.json({ status: 'success', data: file ? { ...file, points: [] } : null })
+      }
+      return res.json({ status: 'success', data: report })
+    }
+    const files = await listSarReportFiles()
+    res.json({ status: 'success', data: files })
+  } catch (e) {
+    console.error('sar-reports list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list SAR reports' })
+  }
+})
+
+router.get('/sar-reports/file', optionalAuth, async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim()
+    if (!name) return res.status(400).json({ message: 'Missing name' })
+    const ok = await streamSarPdf(res, name)
+    if (!ok) return res.status(404).json({ message: 'SAR PDF not found' })
+  } catch (e) {
+    console.error('sar-reports file error:', e)
+    if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to serve SAR PDF' })
+  }
+})
+
 /** 360 panorama upload (ported from Backend/threed/main.py) */
 router.post('/upload-panorama', optionalAuth, uploadPanoramaMem.single('file'), async (req, res) => {
   try {
@@ -6409,49 +6670,217 @@ router.get('/bridge/schedule_adhoc_inspecion/:bridgeId', requireAuth, async (req
 router.post('/bridge/schedule_inspecion/:bridgeId', requireAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
     const b = req.body || {}
-    await pool.query(
-      `INSERT INTO schedule_inspecion
-       (bridge_id, pre_month, post_month, routine_inspecion_month, routine_inspecion_frequency, status, updated_by, updated_on)
-       VALUES (?,?,?,?,?,?,?,CURDATE())`,
-      [
-        bridgeId,
-        b.pre_month || b.preMonth || '',
-        b.post_month || b.postMonth || '',
-        b.routine_inspecion_month || b.routineInspectionMonth || '',
-        b.routine_inspecion_frequency || b.routineInspectionFrequency || '',
-        'Active',
-        req.user?.uid || 0,
-      ]
+    const preMonth = b.pre_month || b.preMonth || ''
+    const postMonth = b.post_month || b.postMonth || ''
+    const routineMonth = b.routine_inspecion_month || b.routineInspectionMonth || ''
+    const routineFreq = b.routine_inspecion_frequency || b.routineInspectionFrequency || ''
+    const uid = req.user?.uid || 0
+
+    const [existing] = await pool.query(
+      'SELECT si_id FROM schedule_inspecion WHERE bridge_id = ? ORDER BY si_id DESC LIMIT 1',
+      [bridgeId],
     )
+
+    let siId
+    if (existing.length) {
+      siId = Number(existing[0].si_id)
+      await pool.query(
+        `UPDATE schedule_inspecion
+         SET pre_month = ?, post_month = ?, routine_inspecion_month = ?, routine_inspecion_frequency = ?,
+             status = 'Active', updated_by = ?, updated_on = CURDATE()
+         WHERE si_id = ?`,
+        [preMonth, postMonth, routineMonth, routineFreq, uid, siId],
+      )
+    } else {
+      const [ins] = await pool.query(
+        `INSERT INTO schedule_inspecion
+         (bridge_id, pre_month, post_month, routine_inspecion_month, routine_inspecion_frequency, status, updated_by, updated_on)
+         VALUES (?,?,?,?,?,?,?,CURDATE())`,
+        [bridgeId, preMonth, postMonth, routineMonth, routineFreq, 'Active', uid],
+      )
+      siId = Number(ins.insertId)
+    }
+
     await pool.query(
       `UPDATE bridge SET is_inspecion_schedule = 'Yes', updated_by = ?, updated_on = NOW() WHERE bridge_id = ?`,
-      [req.user?.uid || 0, bridgeId]
+      [uid, bridgeId],
     )
-    res.json({ success: true })
+
+    const notificationIds = await syncRegularScheduleNotifications(bridgeId, siId, {
+      preMonth,
+      postMonth,
+      routineMonth,
+    })
+    clearDashboardCountsCache()
+
+    res.json({ success: true, si_id: siId, notification_ids: notificationIds })
   } catch (e) {
+    console.error(e)
     res.status(500).json({ message: e.message })
   }
 })
 router.post('/bridge/schedule_adhoc_inspecion/:bridgeId', requireAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
     const b = req.body || {}
-    await pool.query(
+    const adhocDateRaw =
+      b.adhoc_inspecion_date || b.adhocInspectionDate || b.start_date || b.startDate || ''
+    const adhocDate = String(adhocDateRaw || '').trim()
+    const comment = b.comment || b.remarks || ''
+    const uid = req.user?.uid || 0
+
+    const [ins] = await pool.query(
       `INSERT INTO schedule_adhoc_inspecion
        (bridge_id, adhoc_inspecion_date, comment, status, updated_by, updated_on)
        VALUES (?,?,?,?,?,NOW())`,
-      [
-        bridgeId,
-        b.adhoc_inspecion_date || b.adhocInspectionDate || b.start_date || b.startDate || new Date(),
-        b.comment || b.remarks || '',
-        'Active',
-        req.user?.uid || null,
-      ]
+      [bridgeId, adhocDate || new Date(), comment, 'Active', uid || null],
     )
-    res.json({ success: true })
+    const adhocId = Number(ins.insertId)
+
+    await pool.query(
+      `UPDATE bridge SET is_inspecion_schedule = 'Yes', updated_by = ?, updated_on = NOW() WHERE bridge_id = ?`,
+      [uid, bridgeId],
+    )
+
+    let notificationId = null
+    if (adhocDate) {
+      const reminderDate = reminderDateFromAdhocDate(adhocDate)
+      if (reminderDate) {
+        notificationId = await insertScheduleNotification({
+          bridgeId,
+          adhocInspecionId: adhocId,
+          inspecionType: 'Adhoc Inspecion Date',
+          reminderDate,
+        })
+      }
+    }
+    clearDashboardCountsCache()
+
+    res.json({
+      success: true,
+      adhoc_inspecion_id: adhocId,
+      notification_id: notificationId,
+    })
   } catch (e) {
-    // legacy schema can differ; return controlled error
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+async function insertBridgeInspectionFromBridge(req, bridge, extraFields = {}) {
+  const bridgeId = Number(bridge.bridge_id)
+  const [stateRows] = await pool.query('SELECT state_id FROM state WHERE state_code = ? OR state_id = ? LIMIT 1', [
+    bridge.state_id,
+    bridge.state_id,
+  ])
+  const stateId = Number(stateRows[0]?.state_id || 0)
+  const [zoneRows] = await pool.query('SELECT zone_id FROM zone WHERE zone_code = ? OR zone_id = ? LIMIT 1', [
+    bridge.zone,
+    bridge.zone,
+  ])
+  const zoneId = Number(zoneRows[0]?.zone_id || 0)
+
+  const [tplRows] = await pool.query('SELECT * FROM bridge_inspection LIMIT 1')
+  const tpl = tplRows[0] || {}
+  delete tpl.bridge_inspection_id
+
+  const payload = {
+    ...tpl,
+    bridge_id: bridgeId,
+    state_id: stateId || tpl.state_id || 0,
+    zone_id: zoneId || tpl.zone_id || 0,
+    design_discharge_in_cumecs:
+      bridge.design_discharge_in_cumecs != null
+        ? String(bridge.design_discharge_in_cumecs)
+        : tpl.design_discharge_in_cumecs || '',
+    bmc_inspection_status: 'No',
+    bmc_user: 0,
+    remark: '',
+    status: 'Confirmed',
+    created_by: req.user?.uid || 0,
+    updated_by: req.user?.uid || 0,
+    created_on: new Date(),
+    upadted_on: new Date(),
+    ...extraFields,
+  }
+
+  const [metaRows] = await pool.query(
+    `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge_inspection'`,
+  )
+  for (const c of metaRows) {
+    const key = c.COLUMN_NAME
+    if (key === 'bridge_inspection_id') continue
+    if (payload[key] !== undefined && payload[key] !== null) continue
+    const nullable = c.IS_NULLABLE === 'YES'
+    const hasDefault = c.COLUMN_DEFAULT !== null
+    if (!nullable && !hasDefault) {
+      if (String(c.DATA_TYPE).toLowerCase() === 'enum' && typeof c.COLUMN_TYPE === 'string') {
+        const m = c.COLUMN_TYPE.match(/enum\((.*)\)/i)
+        const first = m?.[1]?.split(',')?.[0]?.trim()?.replace(/^'+|'+$/g, '')
+        payload[key] = first || 'No'
+      } else {
+        payload[key] = fallbackValueForDataType(c.DATA_TYPE)
+      }
+    }
+  }
+
+  const cols = Object.keys(payload).filter((k) => payload[k] !== undefined)
+  const vals = cols.map((k) => payload[k])
+  const qCols = cols.map((c) => `\`${c}\``)
+  const [ins] = await pool.query(
+    `INSERT INTO bridge_inspection (${qCols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+    vals,
+  )
+  return ins.insertId
+}
+
+// PHP inspection/add/{bridge_id}/{notification_id} — start from schedule notification.
+router.post('/schedule-inspecion-notification/:notificationId/start', requireAuth, async (req, res) => {
+  try {
+    const notificationId = Number(req.params.notificationId)
+    if (!notificationId) return res.status(400).json({ message: 'Invalid notificationId' })
+
+    const [notifRows] = await pool.query(
+      'SELECT * FROM schedule_inspecion_notification WHERE notification_id = ? LIMIT 1',
+      [notificationId],
+    )
+    const notification = notifRows[0]
+    if (!notification) return res.status(404).json({ message: 'Schedule notification not found' })
+    if (String(notification.status || '').trim().toLowerCase() !== 'pending') {
+      return res.status(409).json({ message: 'This schedule notification is no longer pending' })
+    }
+
+    const bridgeId = Number(notification.bridge_id)
+    const [bridgeRows] = await pool.query('SELECT * FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
+    const bridge = bridgeRows[0]
+    if (!bridge) return res.status(404).json({ message: 'Bridge not found for notification' })
+
+    const scopedProject = await resolveSiteEngineerProjectName(req)
+    if (scopedProject && String(bridge.project_name || '').trim() !== scopedProject) {
+      return res.status(403).json({ message: 'You do not have access to this bridge (another project).' })
+    }
+
+    const [notifCols] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'schedule_notification_id'`)
+    const extraFields = {}
+    if (notifCols.length) {
+      extraFields.schedule_notification_id = notificationId
+    }
+
+    const inspectionId = await insertBridgeInspectionFromBridge(req, bridge, extraFields)
+
+    await pool.query(
+      `UPDATE schedule_inspecion_notification SET status = 'Read' WHERE notification_id = ?`,
+      [notificationId],
+    )
+
+    res.status(201).json({ success: true, bridge_inspection_id: inspectionId })
+  } catch (e) {
+    console.error(e)
     res.status(500).json({ message: e.message })
   }
 })
@@ -7945,5 +8374,7 @@ router.get('/index.php/bmc/inspection/download_sar_pdf/:inspectionId', async (re
   if (await redirectToBucketObject(res, s3Key)) return
   sendPlaceholderPdf(res, `sar-${req.params.inspectionId}.pdf`)
 })
+
+router.post('/thermal/generate', requireAuth, thermalGenerateHandler)
 
 export default router

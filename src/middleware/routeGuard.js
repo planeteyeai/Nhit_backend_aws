@@ -7,6 +7,13 @@ function isPublicBridgeImageRead(req) {
   return /^\/upload\/bridge_images\/\d+(?:\/[^/]+)?$/.test(path)
 }
 
+/** SAR PDF stream — opened in a new tab without Authorization headers. */
+function isPublicSarPdfRead(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false
+  const path = String(req.path || '').replace(/\/+$/, '') || '/'
+  return path === '/sar-reports/file'
+}
+
 /** Routes that stay public (login / logout / CORS preflight / public image reads). */
 function isPublicRoute(req) {
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
@@ -19,6 +26,7 @@ function isPublicRoute(req) {
   }
 
   if (isPublicBridgeImageRead(req)) return true
+  if (isPublicSarPdfRead(req)) return true
 
   return false
 }
