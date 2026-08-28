@@ -130,11 +130,17 @@ export function getBucketName() {
 
 /** List object keys under a prefix (paginated). */
 export async function listBucketKeysUnderPrefix(prefix) {
+  const objects = await listBucketObjectsUnderPrefix(prefix)
+  return objects.map((o) => o.key)
+}
+
+/** List objects under a prefix with size metadata (paginated). */
+export async function listBucketObjectsUnderPrefix(prefix) {
   const client = getClient()
   const p = String(prefix || '').replace(/^\/+/, '')
   if (!client || !p) return []
 
-  const keys = []
+  const objects = []
   let continuationToken
   do {
     const out = await client.send(
@@ -145,12 +151,17 @@ export async function listBucketKeysUnderPrefix(prefix) {
       })
     )
     for (const item of out.Contents || []) {
-      if (item.Key) keys.push(item.Key)
+      if (item.Key && !item.Key.endsWith('/')) {
+        objects.push({
+          key: item.Key,
+          sizeBytes: Number(item.Size || 0),
+        })
+      }
     }
     continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined
   } while (continuationToken)
 
-  return keys
+  return objects
 }
 
 /** Delete one object from the bucket. */

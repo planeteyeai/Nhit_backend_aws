@@ -5,7 +5,7 @@ import path from 'path'
 import { PDFParse } from 'pdf-parse'
 import {
   isStorageEnabled,
-  listBucketKeysUnderPrefix,
+  listBucketObjectsUnderPrefix,
   objectExists,
   pipeBucketObjectToResponse,
   readObjectBuffer,
@@ -32,7 +32,15 @@ function parseFileName(fileName) {
     key: `${SAR_BUCKET_PREFIX}${name}`,
     chainageKey,
     structureType: typeMatch ? typeMatch[1].toUpperCase() : '',
+    sizeBytes: 0,
   }
+}
+
+function parseObjectEntry(objectEntry) {
+  const name = path.basename(String(objectEntry?.key || ''))
+  const parsed = parseFileName(name)
+  if (!parsed.chainageKey) return null
+  return { ...parsed, sizeBytes: Number(objectEntry?.sizeBytes || 0) }
 }
 
 export async function listSarReportFiles() {
@@ -40,12 +48,10 @@ export async function listSarReportFiles() {
   if (catalogCache.files.length && Date.now() - catalogCache.at < CATALOG_TTL_MS) {
     return catalogCache.files
   }
-  const keys = await listBucketKeysUnderPrefix(SAR_BUCKET_PREFIX)
-  const files = keys
-    .map((k) => path.basename(k))
-    .filter((n) => /\.pdf$/i.test(n))
-    .map(parseFileName)
-    .filter((f) => f.chainageKey)
+  const objects = await listBucketObjectsUnderPrefix(SAR_BUCKET_PREFIX)
+  const files = objects
+    .map(parseObjectEntry)
+    .filter(Boolean)
   catalogCache = { at: Date.now(), files }
   return files
 }

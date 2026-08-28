@@ -71,6 +71,12 @@ import {
   listSarReportFiles,
   streamSarPdf,
 } from '../lib/sarReports.js'
+import {
+  findLidarReportByChainage,
+  listLidarReportFiles,
+  streamLidarPdf,
+} from '../lib/lidarReports.js'
+import { listUnmatchedShmReports } from '../lib/shmUnmatchedReports.js'
 import { thermalGenerateHandler } from '../lib/thermalGemini.js'
 import {
   enrichRowsWithUrls,
@@ -5733,7 +5739,7 @@ router.get('/sar-reports', optionalAuth, async (req, res) => {
       return res.json({ status: 'success', data: report })
     }
     const files = await listSarReportFiles()
-    res.json({ status: 'success', data: files })
+    res.json({ status: 'success', data: files, count: files.length })
   } catch (e) {
     console.error('sar-reports list error:', e)
     res.status(500).json({ message: e.message || 'Failed to list SAR reports' })
@@ -5749,6 +5755,48 @@ router.get('/sar-reports/file', optionalAuth, async (req, res) => {
   } catch (e) {
     console.error('sar-reports file error:', e)
     if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to serve SAR PDF' })
+  }
+})
+
+/** LIDAR PDFs from s3://nhitbucket/upload/download/LIDAR/ */
+router.get('/lidar-reports', optionalAuth, async (req, res) => {
+  try {
+    const chainage = String(req.query.chainage || '').trim()
+    if (chainage) {
+      const file = await findLidarReportByChainage(chainage)
+      return res.json({ status: 'success', data: file, count: file ? 1 : 0 })
+    }
+    const files = await listLidarReportFiles()
+    res.json({ status: 'success', data: files, count: files.length })
+  } catch (e) {
+    console.error('lidar-reports list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list LIDAR reports' })
+  }
+})
+
+router.get('/lidar-reports/file', optionalAuth, async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim()
+    if (!name) return res.status(400).json({ message: 'Missing name' })
+    const ok = await streamLidarPdf(res, name)
+    if (!ok) return res.status(404).json({ message: 'LIDAR PDF not found' })
+  } catch (e) {
+    console.error('lidar-reports file error:', e)
+    if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to serve LIDAR PDF' })
+  }
+})
+
+/** Unmatched SAR/LIDAR PDFs (S3 files with no approved inspection at that chainage). */
+router.get('/shm-reports/unmatched', optionalAuth, async (req, res) => {
+  try {
+    const scope = String(req.query.scope || 'bmc').toLowerCase()
+    const projectName = String(req.query.project_name || req.query.projectName || '').trim()
+    const structureType = String(req.query.structure_type || req.query.structureType || '').trim()
+    const data = await listUnmatchedShmReports({ scope, projectName, structureType })
+    res.json({ status: 'success', ...data })
+  } catch (e) {
+    console.error('shm-reports unmatched error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list unmatched SHM reports' })
   }
 })
 
