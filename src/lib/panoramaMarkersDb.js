@@ -4,7 +4,8 @@ let tablesReady = false
 
 export async function ensurePanoramaMarkerTables(pool) {
   if (tablesReady) return
-  await pool.query(`
+  try {
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS bridge_panorama_stations (
       id VARCHAR(32) NOT NULL PRIMARY KEY,
       bridge_id INT NOT NULL,
@@ -21,7 +22,7 @@ export async function ensurePanoramaMarkerTables(pool) {
       INDEX idx_bridge_panorama_stations_bridge (bridge_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS bridge_panorama_markers (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       station_id VARCHAR(32) NOT NULL,
@@ -44,7 +45,7 @@ export async function ensurePanoramaMarkerTables(pool) {
       INDEX idx_panorama_markers_bridge (bridge_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS bridge_panorama_marker_images (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       marker_id BIGINT UNSIGNED NOT NULL,
@@ -54,7 +55,14 @@ export async function ensurePanoramaMarkerTables(pool) {
       INDEX idx_panorama_marker_images_marker (marker_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
-  tablesReady = true
+    tablesReady = true
+  } catch (err) {
+    if (/ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT/i.test(String(err?.code || err?.message || ''))) {
+      console.warn('[panorama] ensure tables skipped (DB transient):', err.code || err.message)
+      return
+    }
+    throw err
+  }
 }
 
 function markerImageUrl(filePath) {
@@ -119,12 +127,21 @@ export async function upsertPanoramaStation(pool, bridgeId, station) {
 
 export async function listPanoramaStationsForBridge(pool, bridgeId) {
   await ensurePanoramaMarkerTables(pool)
-  const [rows] = await pool.query(
-    `SELECT id, bridge_id, uploaded_name, display_name, panorama_type, lat, lng, plan_x, plan_y, uploaded_at
-     FROM bridge_panorama_stations WHERE bridge_id = ? ORDER BY uploaded_at ASC, id ASC`,
-    [Number(bridgeId)]
-  )
-  return rows
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, bridge_id, uploaded_name, display_name, panorama_type, lat, lng, plan_x, plan_y, uploaded_at
+       FROM bridge_panorama_stations WHERE bridge_id = ? ORDER BY uploaded_at ASC, id ASC`,
+      [Number(bridgeId)]
+    )
+    return rows
+  } catch (err) {
+    // Railway proxy often resets idle MySQL sockets — allow FS/S3 panorama fallback.
+    if (/ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT/i.test(String(err?.code || err?.message || ''))) {
+      console.warn('[panorama] DB list failed (transient), returning empty stations:', err.code || err.message)
+      return []
+    }
+    throw err
+  }
 }
 
 export async function syncPanoramaStations(pool, bridgeId, stations) {

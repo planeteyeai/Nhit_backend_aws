@@ -10,7 +10,9 @@
     "test:bucket": "node scripts/test-bucket-connection.mjs",
     "verify:storage": "node scripts/verify-file-storage.mjs",
     "audit:security": "node scripts/security-audit.mjs",
-    "sync:models": "node scripts/sync-model-catalog.mjs"
+    "sync:models": "node scripts/sync-model-catalog.mjs",
+    "potree:convert": "node scripts/las-to-potree-worker.mjs",
+    "potree:pending": "node scripts/las-to-potree-worker.mjs --list"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1063.0",

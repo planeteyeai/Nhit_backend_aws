@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import PDFDocument from 'pdfkit'
@@ -77,6 +78,22 @@ import {
   streamLidarPdf,
 } from '../lib/lidarReports.js'
 import { listUnmatchedShmReports } from '../lib/shmUnmatchedReports.js'
+import {
+  findPotreeModelByChainage,
+  invalidatePotreeCatalogCache,
+  listPotreeModels,
+  sanitizePotreeFile,
+  streamPotreeFile,
+} from '../lib/potreeModels.js'
+import {
+  getBulkConvertStatus,
+  getLocalConvertJobStatus,
+  getPointcloudViewerHealth,
+  listLasSources,
+  startLasConversion,
+  startLasConversionForChainage,
+  uploadLasToPointcloudViewer,
+} from '../lib/potreeConvertBridge.js'
 import { thermalGenerateHandler } from '../lib/thermalGemini.js'
 import {
   enrichRowsWithUrls,
@@ -279,6 +296,17 @@ const uploadPanoramaMarkerImage = multer({
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
+})
+
+const uploadLasTemp = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: 50 * 1024 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/\.(las|laz)$/i.test(String(file.originalname || ''))) {
+      return cb(new Error('Only .las or .laz files are allowed'))
+    }
+    cb(null, true)
+  },
 })
 
 const BRIDGE_COLUMNS = new Set([
@@ -5786,6 +5814,128 @@ router.get('/lidar-reports/file', optionalAuth, async (req, res) => {
   }
 })
 
+/** Potree 2.x point clouds from s3://nhitbucket/upload/potree/ */
+router.get('/potree-convert/health', optionalAuth, async (_req, res) => {
+  try {
+    const viewer = await getPointcloudViewerHealth()
+    res.json({ status: 'success', data: viewer })
+  } catch (e) {
+    res.json({ status: 'success', data: { online: false, error: e.message } })
+  }
+})
+
+router.get('/potree-convert/las', optionalAuth, async (req, res) => {
+  try {
+    const prefix = String(req.query.prefix || 'upload/model_3d/').trim()
+    const data = await listLasSources(prefix)
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('potree-convert/las error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to list LAS sources' })
+  }
+})
+
+router.get('/potree-convert/status', optionalAuth, async (_req, res) => {
+  try {
+    const data = await getBulkConvertStatus()
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('potree-convert/status error:', e)
+    res.status(500).json({ message: e.message || 'Failed to read conversion status' })
+  }
+})
+
+router.post('/potree-convert/start', optionalAuth, async (req, res) => {
+  try {
+    const chainage = String(req.body?.chainage || req.query.chainage || '').trim()
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys : []
+    const prefix = String(req.body?.prefix || 'upload/model_3d/').trim()
+
+    let data
+    if (chainage) {
+      data = await startLasConversionForChainage(chainage, { prefix })
+    } else if (keys.length) {
+      data = await startLasConversion({ keys, prefix })
+    } else {
+      return res.status(400).json({ message: 'Provide chainage or keys[]' })
+    }
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('potree-convert/start error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to start LAS conversion' })
+  }
+})
+
+router.post('/potree-convert/upload', optionalAuth, uploadLasTemp.single('file'), async (req, res) => {
+  const tmpPath = req.file?.path
+  try {
+    if (!req.file) return res.status(400).json({ message: 'file is required (.las or .laz)' })
+    const chainage = String(req.body?.chainage || req.query.chainage || '').trim()
+    const data = await uploadLasToPointcloudViewer({
+      filePath: tmpPath,
+      originalName: req.file.originalname,
+      chainageKey: chainage,
+    })
+    invalidatePotreeCatalogCache()
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('potree-convert/upload error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to upload LAS for conversion' })
+  } finally {
+    if (tmpPath) {
+      try {
+        fs.unlinkSync(tmpPath)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+})
+
+router.get('/potree-convert/local-status', optionalAuth, async (req, res) => {
+  try {
+    const jobId = String(req.query.jobId || req.query.id || '').trim()
+    if (!jobId) return res.status(400).json({ message: 'jobId is required' })
+    const data = await getLocalConvertJobStatus(jobId)
+    if (data.phase === 'done') invalidatePotreeCatalogCache()
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('potree-convert/local-status error:', e)
+    res.status(e.status || 500).json({ message: e.message || 'Failed to read conversion status' })
+  }
+})
+
+router.get('/potree-models', optionalAuth, async (req, res) => {
+  try {
+    if (String(req.query.refresh || '') === '1') {
+      invalidatePotreeCatalogCache()
+    }
+    const chainage = String(req.query.chainage || '').trim()
+    if (chainage) {
+      const model = await findPotreeModelByChainage(chainage)
+      return res.json({ status: 'success', data: model, count: model ? 1 : 0 })
+    }
+    const models = await listPotreeModels()
+    res.json({ status: 'success', data: models, count: models.length })
+  } catch (e) {
+    console.error('potree-models list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list Potree models' })
+  }
+})
+
+router.get('/potree-models/:folder/:file', optionalAuth, async (req, res) => {
+  try {
+    const folder = String(req.params.folder || '').trim()
+    const file = sanitizePotreeFile(req.params.file)
+    if (!folder || !file) return res.status(400).json({ message: 'Invalid Potree path' })
+    const ok = await streamPotreeFile(res, folder, file, req.headers.range)
+    if (!ok) return res.status(404).json({ message: 'Potree file not found' })
+  } catch (e) {
+    console.error('potree-models file error:', e)
+    if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to serve Potree file' })
+  }
+})
+
 /** Unmatched SAR/LIDAR PDFs (S3 files with no approved inspection at that chainage). */
 router.get('/shm-reports/unmatched', optionalAuth, async (req, res) => {
   try {
@@ -5816,11 +5966,25 @@ router.get('/bridges/:bridgeId/panoramas', optionalAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
-    await ensurePanoramaMarkerTables(pool)
-    const dbStations = await listPanoramaStationsForBridge(pool, bridgeId)
+    let dbStations = []
+    try {
+      await ensurePanoramaMarkerTables(pool)
+      dbStations = await listPanoramaStationsForBridge(pool, bridgeId)
+    } catch (dbErr) {
+      console.warn('bridge panoramas DB skipped:', dbErr.code || dbErr.message)
+    }
     const stations = await listBridgePanoramas(uploadRoot, bridgeId, req, dbStations)
-    await syncPanoramaStations(pool, bridgeId, stations)
-    const data = await attachMarkersToStations(pool, bridgeId, stations)
+    try {
+      await syncPanoramaStations(pool, bridgeId, stations)
+    } catch {
+      /* non-fatal when DB is flaky */
+    }
+    let data = stations
+    try {
+      data = await attachMarkersToStations(pool, bridgeId, stations)
+    } catch {
+      data = stations
+    }
     res.setHeader('Cache-Control', 'no-store')
     res.json({ status: 'success', data })
   } catch (e) {

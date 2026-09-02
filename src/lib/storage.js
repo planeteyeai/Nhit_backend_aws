@@ -7,6 +7,8 @@
  */
 import fs from 'fs'
 import path from 'path'
+import { pipeline } from 'stream/promises'
+import { Readable } from 'stream'
 import {
   S3Client,
   PutObjectCommand,
@@ -355,19 +357,26 @@ export async function mirrorPanoramaUploadResult(uploadRootDir, { bridgeId, payl
 }
 
 /** Stream bucket object through API (avoids CORS issues with presigned redirect in browser). */
-export async function pipeBucketObjectToResponse(res, key) {
+export async function pipeBucketObjectToResponse(res, key, { range } = {}) {
   if (!isStorageEnabled()) return false
   const k = toObjectKey(key)
   if (!k || !(await objectExists(k))) return false
   const client = getClient()
   if (!client) return false
   try {
-    const out = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: k }))
+    const params = { Bucket: bucketName(), Key: k }
+    const rangeHeader = String(range || '').trim()
+    if (rangeHeader) params.Range = rangeHeader
+    const out = await client.send(new GetObjectCommand(params))
     const body = out.Body
     if (!body) return false
     res.setHeader('Content-Type', out.ContentType || guessContentType(k))
     res.setHeader('Accept-Ranges', 'bytes')
     res.setHeader('Cache-Control', 'public, max-age=86400')
+    if (out.ContentRange) {
+      res.status(206)
+      res.setHeader('Content-Range', out.ContentRange)
+    }
     if (out.ContentLength != null) {
       res.setHeader('Content-Length', String(out.ContentLength))
     }
@@ -433,12 +442,14 @@ export async function readObjectText(key, encoding = 'utf8') {
   return buf ? buf.toString(encoding) : null
 }
 
-/** Download bucket object onto local disk (creates parent dirs). */
+/** Download bucket object onto local disk (streams — safe for multi‑GB LAS files). */
 export async function downloadObjectToFile(key, localPath) {
-  const buf = await readObjectBuffer(key)
-  if (!buf) return false
+  const body = await getObjectStream(key)
+  if (!body) return false
   fs.mkdirSync(path.dirname(localPath), { recursive: true })
-  fs.writeFileSync(localPath, buf)
+  const nodeStream =
+    typeof body.pipe === 'function' ? body : Readable.fromWeb(body)
+  await pipeline(nodeStream, fs.createWriteStream(localPath))
   return true
 }
 

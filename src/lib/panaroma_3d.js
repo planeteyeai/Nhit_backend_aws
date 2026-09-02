@@ -302,7 +302,7 @@ function writePanoramaFromEntries(entries, savePath, baseUrl) {
   const targetName = `sphere${ext}`
   fs.writeFileSync(path.join(savePath, targetName), imgEntry.getData())
   results = { url: `${baseUrl}/${targetName}` }
-  pType = 'sphere'
+  pType = 'flat'
   return { panorama_type: pType, images: results, markers: [] }
 }
 
@@ -451,7 +451,7 @@ async function stationImagesFromBucketOrDisk(uploadRoot, stationId, panoramaType
     .find((p) => fs.existsSync(p))
   if (localSphere) {
     return {
-      panorama_type: 'sphere',
+      panorama_type: 'flat',
       images: { url: `${baseUrl}/${path.basename(localSphere)}` },
       previewUrl: `${baseUrl}/${path.basename(localSphere)}`,
     }
@@ -485,7 +485,7 @@ async function stationImagesFromBucketOrDisk(uploadRoot, stationId, panoramaType
   const sphereHit = sphereHits.find((h) => h.ok)
   if (sphereHit) {
     return {
-      panorama_type: 'sphere',
+      panorama_type: 'flat',
       images: { url: `${baseUrl}/${sphereHit.name}` },
       previewUrl: `${baseUrl}/${sphereHit.name}`,
     }
@@ -567,7 +567,13 @@ export async function ensureBridgePanoramaIndex(uploadRoot, bridgeId, dbStations
   let stations = readBridgePanoramaIndex(uploadRoot, id)
   const indexPath = bridgePanoramaIndexPath(uploadRoot, id)
   // Local index file is source of truth, including empty (user removed every station).
-  if (fs.existsSync(indexPath)) return stations
+  if (fs.existsSync(indexPath)) {
+    if (Array.isArray(dbStations) && dbStations.length > stations.length) {
+      const rebuilt = await rebuildBridgePanoramaIndexFromDb(uploadRoot, id, dbStations)
+      if (rebuilt.length > stations.length) return rebuilt
+    }
+    return stations
+  }
 
   await hydrateBridgePanoramaIndexFromBucket(uploadRoot, id)
   stations = readBridgePanoramaIndex(uploadRoot, id)

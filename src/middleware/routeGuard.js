@@ -14,6 +14,13 @@ function isPublicShmPdfRead(req) {
   return path === '/sar-reports/file' || path === '/lidar-reports/file'
 }
 
+/** Potree octree streaming — potree-core Range GETs; allow without JWT (S3 objects are not secret). */
+function isPublicPotreeRead(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false
+  const path = String(req.path || '').replace(/\/+$/, '') || '/'
+  return path === '/potree-models' || /^\/potree-models\/[^/]+\/[^/]+$/.test(path)
+}
+
 /** Routes that stay public (login / logout / CORS preflight / public image reads). */
 function isPublicRoute(req) {
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
@@ -27,6 +34,7 @@ function isPublicRoute(req) {
 
   if (isPublicBridgeImageRead(req)) return true
   if (isPublicShmPdfRead(req)) return true
+  if (isPublicPotreeRead(req)) return true
 
   return false
 }
