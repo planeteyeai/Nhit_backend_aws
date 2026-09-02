@@ -2,26 +2,42 @@
  * Bridge BMS ↔ pointcloud-viewer bulk LAS→Potree conversion (upload/model_3d → upload/potree).
  * Prefers the local pointcloud-viewer service; falls back to inline lasToPotree when offline.
  */
-import fs from 'fs'
+import path from 'path'
+import { createReadStream, statSync } from 'fs'
+import FormData from 'form-data'
 import {
+  convertLasFileFromS3,
   convertPendingLasFiles,
   getLasConvertStatus,
   listPendingLasConversions,
 } from './lasToPotree.js'
 import { invalidatePotreeCatalogCache } from './potreeModels.js'
+import { guessContentType, uploadFromFile } from './storage.js'
 
 const VIEWER_BASE = String(process.env.POINTCLOUD_VIEWER_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
 const MODEL_3D_PREFIX = 'upload/model_3d/'
+
+/** In-memory jobs when converting via S3 + backend PotreeConverter (no pointcloud-viewer). */
+const backendConvertJobs = new Map()
 
 async function viewerFetch(path, init = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15_000)
   try {
-    const res = await fetch(`${VIEWER_BASE}${path}`, {
-      ...init,
+    const headers = { Accept: 'application/json', ...(init.headers || {}) }
+    const fetchInit = {
+      method: init.method,
       signal: controller.signal,
-      headers: { Accept: 'application/json', ...(init.headers || {}) },
-    })
+      headers,
+    }
+    if (init.body != null) {
+      fetchInit.body = init.body
+      if (typeof init.body.getHeaders === 'function') {
+        Object.assign(headers, init.body.getHeaders())
+        fetchInit.duplex = 'half'
+      }
+    }
+    const res = await fetch(`${VIEWER_BASE}${path}`, fetchInit)
     const text = await res.text()
     let json = null
     try {
@@ -174,13 +190,21 @@ function buildLasUploadNameHint(chainageKey, originalName = '') {
   return `${Date.now()}-${base || 'pointcloud'}`
 }
 
-export async function uploadLasToPointcloudViewer({ filePath, originalName, chainageKey }) {
-  const nameHint = buildLasUploadNameHint(chainageKey, originalName)
-  const buffer = fs.readFileSync(filePath)
+function buildStreamUploadForm(filePath, originalName, nameHint) {
+  const fileName = originalName || 'scan.las'
+  const { size } = statSync(filePath)
   const form = new FormData()
-  form.append('file', new Blob([buffer]), originalName || 'scan.las')
+  form.append('file', createReadStream(filePath), {
+    filename: fileName,
+    contentType: 'application/octet-stream',
+    knownLength: size,
+  })
   form.append('name', nameHint)
+  return form
+}
 
+async function streamUploadToPointcloudViewer({ filePath, originalName, nameHint }) {
+  const form = buildStreamUploadForm(filePath, originalName, nameHint)
   const r = await viewerFetch(`/api/local/convert?name=${encodeURIComponent(nameHint)}`, {
     method: 'POST',
     body: form,
@@ -198,7 +222,86 @@ export async function uploadLasToPointcloudViewer({ filePath, originalName, chai
     jobId: r.json?.id,
     nameHint,
     expectedFolder: nameHint,
+    source: 'pointcloud-viewer',
   }
+}
+
+function createBackendConvertJob(id) {
+  const job = {
+    id,
+    phase: 'uploading',
+    percent: 5,
+    message: 'Uploading to S3…',
+    folder: null,
+    error: null,
+  }
+  backendConvertJobs.set(id, job)
+  return job
+}
+
+async function runBackendConvertJob(jobId, s3Key) {
+  const job = backendConvertJobs.get(jobId)
+  if (!job) return
+  try {
+    job.phase = 'converting'
+    job.percent = 35
+    job.message = 'Converting to Potree…'
+    const result = await convertLasFileFromS3(s3Key)
+    job.phase = 'done'
+    job.percent = 100
+    job.message = 'Complete'
+    job.folder = result.folder
+    invalidatePotreeCatalogCache()
+  } catch (e) {
+    job.phase = 'failed'
+    job.error = e.message || String(e)
+    job.message = job.error
+  }
+}
+
+async function uploadLasViaS3AndConvert({ filePath, originalName, nameHint }) {
+  const ext = path.extname(originalName || '') || '.las'
+  const fileName = `${nameHint}${ext}`
+  const s3Key = `${MODEL_3D_PREFIX}${fileName}`
+
+  const uploaded = await uploadFromFile(filePath, s3Key, guessContentType(ext))
+  if (!uploaded) {
+    const err = new Error('Failed to upload LAS to S3')
+    err.status = 500
+    throw err
+  }
+
+  const job = createBackendConvertJob(nameHint)
+  job.phase = 'converting'
+  job.percent = 20
+  job.message = 'File on S3 — starting Potree conversion…'
+  setImmediate(() => {
+    runBackendConvertJob(job.id, s3Key).catch((e) => {
+      console.error('[potree] backend convert job failed:', e.message)
+    })
+  })
+
+  return {
+    jobId: job.id,
+    nameHint,
+    expectedFolder: nameHint,
+    source: 'backend',
+  }
+}
+
+export async function uploadLasToPointcloudViewer({ filePath, originalName, chainageKey }) {
+  const nameHint = buildLasUploadNameHint(chainageKey, originalName)
+  const health = await getPointcloudViewerHealth()
+
+  if (health.online && health.localConvert) {
+    try {
+      return await streamUploadToPointcloudViewer({ filePath, originalName, nameHint })
+    } catch (e) {
+      console.warn('[potree] viewer stream upload failed, using S3 path:', e.message)
+    }
+  }
+
+  return uploadLasViaS3AndConvert({ filePath, originalName, nameHint })
 }
 
 export async function getLocalConvertJobStatus(jobId) {
@@ -208,6 +311,15 @@ export async function getLocalConvertJobStatus(jobId) {
     err.status = 400
     throw err
   }
+
+  const backendJob = backendConvertJobs.get(id)
+  if (backendJob) {
+    return {
+      ...backendJob,
+      folder: backendJob.folder || (backendJob.phase === 'done' ? id : null),
+    }
+  }
+
   const r = await viewerFetch(`/api/local/convert/status?id=${encodeURIComponent(id)}`)
   if (r.status === 404) {
     const err = new Error('Conversion job not found')

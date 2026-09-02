@@ -98,6 +98,15 @@ if (isProduction()) {
 const corsOrigin = (process.env.CORS_ORIGIN || '').trim()
 const allowedOrigins = corsOrigin ? corsOrigin.split(',').map((s) => s.trim()).filter(Boolean) : []
 
+/** Potree iframe (pointcloud-viewer) must fetch /potree-models from the API cross-origin. */
+const POTREE_VIEWER_ORIGINS = [
+  'https://pointcloud-viewer-nine.vercel.app',
+  ...String(process.env.POINTCLOUD_VIEWER_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+]
+
 /** Development only: allow Vite when opened via LAN IP (e.g. http://192.168.x.x:5173 from another device). */
 function isAllowedDevOrigin(origin) {
   try {
@@ -117,6 +126,13 @@ function isAllowedDevOrigin(origin) {
   }
 }
 
+function isAllowedCorsOrigin(origin) {
+  if (!origin) return true
+  if (allowedOrigins.includes(origin)) return true
+  if (POTREE_VIEWER_ORIGINS.includes(origin)) return true
+  return false
+}
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -129,13 +145,11 @@ app.use(
     origin: (origin, cb) => {
       if (!origin) return cb(null, true)
       if (isProduction()) {
-        if (allowedOrigins.includes(origin)) return cb(null, true)
-        return cb(null, false)
+        return cb(null, isAllowedCorsOrigin(origin))
       }
       if (isAllowedDevOrigin(origin)) return cb(null, true)
       if (allowedOrigins.length === 0) return cb(null, true)
-      if (allowedOrigins.includes(origin)) return cb(null, true)
-      return cb(null, false)
+      return cb(null, isAllowedCorsOrigin(origin))
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

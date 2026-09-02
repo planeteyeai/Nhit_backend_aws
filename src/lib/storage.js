@@ -225,12 +225,11 @@ export async function uploadFromFile(localPath, key, contentType) {
   const client = getClient()
   const k = toObjectKey(key)
   if (!client || !k) return false
-  const body = fs.readFileSync(localPath)
   await client.send(
     new PutObjectCommand({
       Bucket: bucketName(),
       Key: k,
-      Body: body,
+      Body: fs.createReadStream(localPath),
       ContentType: contentType || guessContentType(k),
     }),
   )
