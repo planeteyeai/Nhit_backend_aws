@@ -159,13 +159,14 @@ export function projectToPointCloudRows({
     if (!dataUrl) return
     const [px, py, pz] = asVec3(item?.position)
     const name = item?.image?.name || item?.name || 'Image'
+    const note = item?.text || item?.note || item?.description || ''
     rows.push({
       ...base,
       ...emptyMarkingFields,
       id: makeRowId('i', item?.id, `${cloudId}-i-${idx}`),
       annotation_uuid: strOrNull(item?.id, 100),
       annotation_title: strOrNull(name, 255),
-      annotation_description: strOrNull(item?.image?.mimeType || item?.mimeType, 255),
+      annotation_description: note != null && String(note).trim() !== '' ? String(note) : null,
       annotation_position_x: px,
       annotation_position_y: py,
       annotation_position_z: pz,
@@ -221,9 +222,11 @@ export function rowsToImageAnnotations(rows) {
       },
       image: {
         data: dataUrl,
-        mimeType: mimeMatch?.[1] || r.annotation_description || 'image/jpeg',
+        mimeType: mimeMatch?.[1] || 'image/jpeg',
         name: r.annotation_title || 'Image',
       },
+      text: r.annotation_description || '',
+      note: r.annotation_description || '',
       createdAt: r.created_at || null,
       updatedAt: r.created_at || null,
     })
