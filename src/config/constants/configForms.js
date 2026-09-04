@@ -263,7 +263,8 @@ export const scaling = {
 
 export const surfaceStainsAndRustStains = {
   'Surface Stains And Rust Stains': 'Surface Stains And Rust Stains',
-  No_Distress: 'No_Distress',
+  'Seepage Marks': 'Seepage Marks',
+  No_Distress: 'No Distress',
   'Good in conditions': 'Good in conditions',
   Honeycombing: 'Honeycombing',
   Delamination: 'Delamination',

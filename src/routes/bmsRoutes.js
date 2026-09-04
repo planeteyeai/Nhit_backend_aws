@@ -2479,9 +2479,10 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       return Math.min(4294967295, Math.floor(n))
     }
 
-    // keep only ids submitted for this table_type (optionally scoped to one expansion joint)
+    // Keep only ids submitted for this table_type, scoped to foundation / expansion / span when provided.
+    // Scope prevents one component/span save from wiping distresses belonging to another.
     const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
-    const tableTypeLower = String(tableType || '').trim().toLowerCase()
+    const savedDistressIds = []
 
     if (isFoundationScope) {
       const foundationWhere = ['bridge_inspection_id = ?', "LOWER(table_type) = 'foundation'"]
@@ -2503,19 +2504,27 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         )
       }
     } else {
-      const expansionClause = expansionScopeId > 0 ? ' AND expansion = ?' : ''
-      const scopeClause = expansionClause
-      const scopeParams = expansionScopeId > 0 ? [expansionScopeId] : []
+      const scopeClauses = []
+      const scopeParams = []
+      if (expansionScopeId > 0) {
+        scopeClauses.push('expansion = ?')
+        scopeParams.push(expansionScopeId)
+      }
+      if (spansScopeId > 0) {
+        scopeClauses.push('spans = ?')
+        scopeParams.push(spansScopeId)
+      }
+      const scopeSql = scopeClauses.length ? ` AND ${scopeClauses.join(' AND ')}` : ''
       if (incomingIds.length) {
         await conn.query(
           `DELETE FROM bridge_inspection_distress
-           WHERE bridge_inspection_id = ? AND table_type = ?${scopeClause} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
-          [inspectionId, tableType, ...scopeParams, ...incomingIds]
+           WHERE bridge_inspection_id = ? AND table_type = ?${scopeSql} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+          [inspectionId, persistTableType, ...scopeParams, ...incomingIds]
         )
       } else {
         await conn.query(
-          `DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?${scopeClause}`,
-          [inspectionId, tableType, ...scopeParams]
+          `DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?${scopeSql}`,
+          [inspectionId, persistTableType, ...scopeParams]
         )
       }
     }
@@ -2526,6 +2535,13 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
       const id = Number(row?.id || 0)
       const distressNosVal = hasDistressNosCol ? distressNosOrNull(row?.distress_nos) : null
+      // Prefer explicit scope ids from the request when the row omitted them.
+      const spansValue =
+        numeric(row?.spans) ||
+        (spansScopeId > 0 ? spansScopeId : 0) ||
+        numeric(row?.superstructure_id)
+      const foundationValue = numeric(row?.foundation) || (foundationScopeId > 0 ? foundationScopeId : 0)
+      const expansionValue = numeric(row?.expansion) || (expansionScopeId > 0 ? expansionScopeId : 0)
       const baseData = [
         distressType,
         String(row?.name_of_span || '').trim() || null,
@@ -2539,9 +2555,9 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         numeric(row?.abutment_A1),
         numeric(row?.abutment_A2),
         numeric(row?.piers),
-        numeric(row?.spans),
-        numeric(row?.foundation),
-        numeric(row?.expansion),
+        spansValue,
+        foundationValue,
+        expansionValue,
         numeric(row?.lhs_distress),
         numeric(row?.rhs_distress),
       ]
@@ -2549,42 +2565,9 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
         : String(row?.images || row?.distress_images || '').trim()
 
-      let distressId = id
-      if (distressId <= 0) {
-        // Prevent duplicate inserts during edit flows when frontend misses id:
-        // reuse an existing row for same component/field/span/distress signature.
-        const lookupWhere = [
-          'bridge_inspection_id = ?',
-          isFoundationScope ? "LOWER(table_type) = 'foundation'" : 'table_type = ?',
-          'IFNULL(field_type, \'\') = ?',
-          'IFNULL(distress_type, \'\') = ?',
-          'IFNULL(name_of_span, \'\') = ?',
-        ]
-        const lookupParams = [
-          inspectionId,
-          ...(isFoundationScope ? [] : [persistTableType]),
-          String(row?.field_type || '').trim(),
-          distressType,
-          String(row?.name_of_span || '').trim(),
-        ]
-        const spansValue = numeric(row?.spans)
-        if (tableType === 'superstructure' && spansValue > 0) {
-          lookupWhere.push('spans = ?')
-          lookupParams.push(spansValue)
-        }
-        const foundationValue = numeric(row?.foundation)
-        if (isFoundationScope && foundationValue > 0) {
-          lookupWhere.push('foundation = ?')
-          lookupParams.push(foundationValue)
-        }
-        const [matchedRows] = await conn.query(
-          `SELECT id FROM bridge_inspection_distress
-           WHERE ${lookupWhere.join(' AND ')}
-           ORDER BY id DESC LIMIT 1`,
-          lookupParams
-        )
-        if (matchedRows[0]?.id) distressId = Number(matchedRows[0].id)
-      }
+      // Do NOT reuse another row by distress_type signature — multiple rows can share the same type.
+      // Missing frontend ids used to collapse N rows into 1 on save.
+      let distressId = id > 0 ? id : 0
       if (distressId > 0) {
         const updateSetImages = distressImagesCol ? `, \`${distressImagesCol}\` = ?` : ''
         const updateParams = [...baseData]
@@ -2651,6 +2634,8 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         )
       }
 
+      if (distressId > 0) savedDistressIds.push(distressId)
+
       const ratings = row?.ratings && typeof row.ratings === 'object' ? row.ratings : {}
       const [existingCR] = await conn.query(
         'SELECT id FROM inspection_cause_rating WHERE inspection_distress_id = ? LIMIT 1',
@@ -2700,7 +2685,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     }
 
     await conn.commit()
-    return res.json({ success: true })
+    return res.json({ success: true, ids: savedDistressIds, count: savedDistressIds.length })
   } catch (e) {
     await conn.rollback().catch(() => {})
     return res.status(500).json({ success: false, message: e.message })
