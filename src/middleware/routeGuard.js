@@ -35,8 +35,16 @@ function isPublicRoute(req) {
   if (isPublicBridgeImageRead(req)) return true
   if (isPublicShmPdfRead(req)) return true
   if (isPublicPotreeRead(req)) return true
+  if (isPublicPointCloudDataWrite(req)) return true
 
   return false
+}
+
+/** Point-cloud measurement/image sync from Potree iframe (Bearer preferred; optionalAuth on route). */
+function isPublicPointCloudDataWrite(req) {
+  const path = String(req.path || '').replace(/\/+$/, '') || '/'
+  if (!/^\/bridges\/\d+\/point-cloud-data$/.test(path)) return false
+  return req.method === 'GET' || req.method === 'PUT' || req.method === 'OPTIONS'
 }
 
 /**

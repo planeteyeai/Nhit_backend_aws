@@ -32,6 +32,12 @@ import {
   updateBridgePonoPhotoMarkers,
 } from '../lib/ponoPhotos.js'
 import {
+  listPointCloudData,
+  replacePointCloudData,
+  ensurePointCloudDataSchema,
+  rowsToImageAnnotations,
+} from '../lib/pointCloudData.js'
+import {
   addPanoramaMarkerImage,
   attachMarkersToStations,
   createPanoramaMarker,
@@ -5416,6 +5422,61 @@ router.post('/bridges/:bridgeId/3d-assets/upload', optionalAuth, upload3d.array(
     res.status(500).json({ message: 'Failed to upload bridge 3D assets' })
   }
 })
+/** Persist Potree measurements/annotations into MySQL `point_cloud_data` for a bridge. */
+router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim() || null
+    const rows = await listPointCloudData(pool, { bridgeId, pointCloudId })
+    res.json({
+      status: 'success',
+      data: rows,
+      imageAnnotations: rowsToImageAnnotations(rows),
+    })
+  } catch (e) {
+    console.error('point-cloud-data list error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to fetch point cloud data' })
+  }
+})
+
+router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const pointCloudId = String(body.pointCloudId || body.point_cloud_id || '').trim()
+    const bridgeInspectionId =
+      body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
+    const project = body.project && typeof body.project === 'object' ? body.project : null
+    const imageAnnotations = Array.isArray(body.imageAnnotations) ? body.imageAnnotations : []
+    if (!project && !imageAnnotations.length) {
+      return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
+    }
+    const result = await replacePointCloudData(pool, {
+      bridgeId,
+      bridgeInspectionId,
+      pointCloudId,
+      project: project || { type: 'Potree', version: 1.7 },
+      imageAnnotations,
+    })
+    res.json({
+      status: 'success',
+      message: 'Point cloud data saved',
+      data: {
+        bridgeId: result.bridgeId,
+        pointCloudId: result.pointCloudId,
+        bridgeInspectionId: result.bridgeInspectionId,
+        rowCount: result.rowCount,
+        imageCount: imageAnnotations.length,
+      },
+    })
+  } catch (e) {
+    console.error('point-cloud-data save error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to save point cloud data' })
+  }
+})
+
 router.get('/inspection/bridge_details/:bridgeId', async (req, res) => {
   const [rows] = await pool.query('SELECT * FROM bridge WHERE bridge_id = ?', [req.params.bridgeId])
   res.json(rows[0] || {})
@@ -6179,6 +6240,21 @@ const SUBSTRUCTURE_REVERSE_FIELD_MAP = Object.fromEntries(
   Object.entries(SUBSTRUCTURE_FIELD_MAP).map(([k, v]) => [v, k])
 )
 
+/** Ensure inspection `substructure` has separate A1/A2 span-name columns. */
+async function ensureSubstructureSpanNameColumns() {
+  for (const col of ['substructure_span_name_a1', 'substructure_span_name_a2']) {
+    try {
+      await pool.query(
+        `ALTER TABLE substructure ADD COLUMN \`${col}\` VARCHAR(256) NULL AFTER substructure_name`
+      )
+    } catch (e) {
+      if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
+        console.warn(`[substructure] add ${col}:`, e.message)
+      }
+    }
+  }
+}
+
 const COMPONENT_FIELD_MAPS = {
   subways: SUBWAYS_FIELD_MAP,
   substructure: SUBSTRUCTURE_FIELD_MAP,
@@ -6395,6 +6471,7 @@ router.get('/inspection/component/:key/:inspectionId', async (req, res) => {
     if (!cfg) return res.status(400).json({ message: 'Unknown component' })
     const inspectionId = Number(req.params.inspectionId)
     if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
+    if (key === 'substructure') await ensureSubstructureSpanNameColumns()
     const resolvedPk = await resolveInspectionComponentPk(cfg)
     const [rows] = await pool.query(
       `SELECT * FROM \`${cfg.table}\` WHERE bridge_inspection_id = ? ORDER BY \`${resolvedPk}\` DESC LIMIT 1`,
@@ -6591,6 +6668,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
 
     const dataObj = toDbComponentPayload(key, req.body || {})
+    if (key === 'substructure') await ensureSubstructureSpanNameColumns()
     const [metaRows] = await pool.query(
       `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
        FROM information_schema.COLUMNS
