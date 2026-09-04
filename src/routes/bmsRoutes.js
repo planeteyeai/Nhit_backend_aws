@@ -2571,9 +2571,22 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
         : String(row?.images || row?.distress_images || '').trim()
 
-      // Do NOT reuse another row by distress_type signature — multiple rows can share the same type.
-      // Missing frontend ids used to collapse N rows into 1 on save.
       let distressId = id > 0 ? id : 0
+      if (distressId > 0) {
+        const [exists] = await conn.query(
+          `SELECT id FROM bridge_inspection_distress
+           WHERE id = ? AND bridge_inspection_id = ?${
+             isFoundationScope ? " AND LOWER(table_type) = 'foundation'" : ' AND table_type = ?'
+           } LIMIT 1`,
+          isFoundationScope
+            ? [distressId, inspectionId]
+            : [distressId, inspectionId, persistTableType]
+        )
+        if (!exists?.[0]?.id) {
+          // Stale/wrong id from client — always insert a new row instead of silently no-op update.
+          distressId = 0
+        }
+      }
       if (distressId > 0) {
         const updateSetImages = distressImagesCol ? `, \`${distressImagesCol}\` = ?` : ''
         const updateParams = [...baseData]
