@@ -55,6 +55,20 @@ function makeRowId(prefix, uuid, fallbackKey) {
   return raw.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 50)
 }
 
+/** Global PK is on `id` alone — must include bridge + cloud or saves collide across bridges. */
+function entityRowId(bridgeId, pointCloudId, kind, uuid, idx) {
+  const bid = Number(bridgeId) || 0
+  const cloud = String(pointCloudId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .slice(0, 24)
+  const ent = String(uuid || `${kind}${idx}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .slice(0, 18)
+  return makeRowId('', null, `${bid}_${cloud}_${kind}_${ent}`)
+}
+
 /**
  * Map a Potree saveProject payload (+ optional image annotations) into `point_cloud_data` rows.
  */
@@ -124,7 +138,7 @@ export function projectToPointCloudRows({
     rows.push({
       ...base,
       ...emptyMarkingFields,
-      id: makeRowId('m', m?.uuid, `${cloudId}-m-${idx}`),
+      id: entityRowId(bid, cloudId, 'm', m?.uuid, idx),
       measurement_name: strOrNull(m?.name, 100),
       point_1_x: p1x,
       point_1_y: p1y,
@@ -141,7 +155,7 @@ export function projectToPointCloudRows({
     rows.push({
       ...base,
       ...emptyMarkingFields,
-      id: makeRowId('a', a?.uuid, `${cloudId}-a-${idx}`),
+      id: entityRowId(bid, cloudId, 'a', a?.uuid, idx),
       annotation_uuid: strOrNull(a?.uuid, 100),
       annotation_title: strOrNull(a?.title, 255),
       annotation_description: a?.description != null ? String(a.description) : null,
@@ -163,7 +177,7 @@ export function projectToPointCloudRows({
     rows.push({
       ...base,
       ...emptyMarkingFields,
-      id: makeRowId('i', item?.id, `${cloudId}-i-${idx}`),
+      id: entityRowId(bid, cloudId, 'i', item?.id, idx),
       annotation_uuid: strOrNull(item?.id, 100),
       annotation_title: strOrNull(name, 255),
       annotation_description: note != null && String(note).trim() !== '' ? String(note) : null,
@@ -179,7 +193,7 @@ export function projectToPointCloudRows({
     rows.push({
       ...base,
       ...emptyMarkingFields,
-      id: makeRowId('s', null, `${cloudId}-summary`),
+      id: entityRowId(bid, cloudId, 's', 'summary', 0),
     })
   }
 
@@ -341,6 +355,35 @@ const INSERT_SQL = `
     volumes_count, profiles_count, camera_animations_count, oriented_images_count, annotation_children_count,
     images
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON DUPLICATE KEY UPDATE
+    bridge_id = VALUES(bridge_id),
+    point_cloud_id = VALUES(point_cloud_id),
+    created_at = VALUES(created_at),
+    bridge_inspection_id = VALUES(bridge_inspection_id),
+    project_type = VALUES(project_type),
+    project_version = VALUES(project_version),
+    measurement_name = VALUES(measurement_name),
+    point_1_x = VALUES(point_1_x),
+    point_1_y = VALUES(point_1_y),
+    point_1_z = VALUES(point_1_z),
+    point_2_x = VALUES(point_2_x),
+    point_2_y = VALUES(point_2_y),
+    point_2_z = VALUES(point_2_z),
+    annotation_uuid = VALUES(annotation_uuid),
+    annotation_title = VALUES(annotation_title),
+    annotation_description = VALUES(annotation_description),
+    annotation_position_x = VALUES(annotation_position_x),
+    annotation_position_y = VALUES(annotation_position_y),
+    annotation_position_z = VALUES(annotation_position_z),
+    annotation_offset_x = VALUES(annotation_offset_x),
+    annotation_offset_y = VALUES(annotation_offset_y),
+    annotation_offset_z = VALUES(annotation_offset_z),
+    volumes_count = VALUES(volumes_count),
+    profiles_count = VALUES(profiles_count),
+    camera_animations_count = VALUES(camera_animations_count),
+    oriented_images_count = VALUES(oriented_images_count),
+    annotation_children_count = VALUES(annotation_children_count),
+    images = VALUES(images)
 `
 
 /**

@@ -5486,7 +5486,8 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     })
   } catch (e) {
     console.error('point-cloud-data save error:', e)
-    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to save point cloud data' })
+    const msg = e.sqlMessage || e.message || 'Failed to save point cloud data'
+    res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
   }
 })
 
