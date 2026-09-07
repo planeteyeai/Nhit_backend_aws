@@ -98,9 +98,8 @@ if (isProduction()) {
 const corsOrigin = (process.env.CORS_ORIGIN || '').trim()
 const allowedOrigins = corsOrigin ? corsOrigin.split(',').map((s) => s.trim()).filter(Boolean) : []
 
-/** Potree iframe (pointcloud-viewer) must fetch /potree-models from the API cross-origin. */
+/** Potree iframe origins that may call /potree-models cross-origin (optional extra hosts). */
 const POTREE_VIEWER_ORIGINS = [
-  'https://pointcloud-viewer-nine.vercel.app',
   ...String(process.env.POINTCLOUD_VIEWER_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
