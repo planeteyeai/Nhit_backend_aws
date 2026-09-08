@@ -13,3 +13,6 @@ ALTER TABLE point_cloud_data
 
 -- Base64 data-URL for image annotations placed on the point cloud
 ALTER TABLE point_cloud_data ADD COLUMN images LONGTEXT NULL;
+
+-- Full Potree project snapshot (all measurements / volumes / profiles / annotations)
+ALTER TABLE point_cloud_data ADD COLUMN project_json LONGTEXT NULL;

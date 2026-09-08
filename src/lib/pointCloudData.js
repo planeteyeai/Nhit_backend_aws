@@ -23,6 +23,15 @@ function asVec3(point) {
     return [numOrNull(point[0]), numOrNull(point[1]), numOrNull(point[2])]
   }
   if (point && typeof point === 'object') {
+    // Potree Measure markers are often { position: Vector3|[x,y,z] }
+    if (point.position != null) return asVec3(point.position)
+    if (typeof point.toArray === 'function') {
+      try {
+        return asVec3(point.toArray())
+      } catch {
+        /* ignore */
+      }
+    }
     return [numOrNull(point.x), numOrNull(point.y), numOrNull(point.z)]
   }
   return [null, null, null]
@@ -98,6 +107,8 @@ export function projectToPointCloudRows({
     annotation_children_count: countAnnotationChildren(annotationRoots),
   }
 
+  const projectSnapshot = compactProjectForStorage(proj)
+
   const base = {
     bridge_id: bid,
     point_cloud_id: cloudId.slice(0, 255),
@@ -105,6 +116,7 @@ export function projectToPointCloudRows({
     bridge_inspection_id: bridgeInspectionId == null || bridgeInspectionId === '' ? null : Number(bridgeInspectionId) || null,
     project_type: strOrNull(proj.type || 'Potree', 100),
     project_version: numOrNull(proj.version ?? 1.7),
+    project_json: projectSnapshot,
     images: null,
     ...counts,
   }
@@ -248,6 +260,160 @@ export function rowsToImageAnnotations(rows) {
   return out
 }
 
+/** Compact Potree project for MySQL (no pointclouds / heavy blobs). */
+export function compactProjectForStorage(project) {
+  if (!project || typeof project !== 'object') return null
+  try {
+    return JSON.stringify({
+      type: project.type || 'Potree',
+      version: project.version ?? 1.7,
+      view: project.view || null,
+      settings: project.settings || null,
+      classification: project.classification || null,
+      measurements: Array.isArray(project.measurements) ? project.measurements : [],
+      volumes: Array.isArray(project.volumes) ? project.volumes : [],
+      profiles: Array.isArray(project.profiles) ? project.profiles : [],
+      annotations: Array.isArray(project.annotations) ? project.annotations : [],
+      cameraAnimations: Array.isArray(project.cameraAnimations) ? project.cameraAnimations : [],
+      orientedImages: Array.isArray(project.orientedImages) ? project.orientedImages : [],
+      geopackages: Array.isArray(project.geopackages) ? project.geopackages : [],
+    })
+  } catch {
+    return null
+  }
+}
+
+function parseStoredProjectJson(raw) {
+  if (!raw) return null
+  if (typeof raw === 'object') return raw
+  if (typeof raw !== 'string') return null
+  const s = raw.trim()
+  if (!s) return null
+  try {
+    const parsed = JSON.parse(s)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** Rebuild a Potree project from DB rows (prefer project_json; else flat columns). */
+export function rowsToPotreeProject(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  for (const r of list) {
+    const fromJson = parseStoredProjectJson(r?.project_json)
+    if (fromJson) {
+      return {
+        type: fromJson.type || 'Potree',
+        version: fromJson.version ?? 1.7,
+        view: fromJson.view || null,
+        settings: fromJson.settings || null,
+        classification: fromJson.classification || null,
+        pointclouds: [],
+        measurements: Array.isArray(fromJson.measurements) ? fromJson.measurements : [],
+        volumes: Array.isArray(fromJson.volumes) ? fromJson.volumes : [],
+        profiles: Array.isArray(fromJson.profiles) ? fromJson.profiles : [],
+        annotations: Array.isArray(fromJson.annotations) ? fromJson.annotations : [],
+        cameraAnimations: Array.isArray(fromJson.cameraAnimations) ? fromJson.cameraAnimations : [],
+        orientedImages: Array.isArray(fromJson.orientedImages) ? fromJson.orientedImages : [],
+        geopackages: Array.isArray(fromJson.geopackages) ? fromJson.geopackages : [],
+      }
+    }
+  }
+
+  const measurements = []
+  const annotations = []
+  let projectType = 'Potree'
+  let projectVersion = 1.7
+
+  for (const r of list) {
+    if (r?.project_type) projectType = String(r.project_type)
+    if (r?.project_version != null && Number.isFinite(Number(r.project_version))) {
+      projectVersion = Number(r.project_version)
+    }
+
+    const hasMeas =
+      r?.measurement_name ||
+      r?.point_1_x != null ||
+      r?.point_2_x != null
+    if (hasMeas) {
+      const points = []
+      if (r.point_1_x != null || r.point_1_y != null || r.point_1_z != null) {
+        points.push([
+          numOrNull(r.point_1_x) ?? 0,
+          numOrNull(r.point_1_y) ?? 0,
+          numOrNull(r.point_1_z) ?? 0,
+        ])
+      }
+      if (r.point_2_x != null || r.point_2_y != null || r.point_2_z != null) {
+        points.push([
+          numOrNull(r.point_2_x) ?? 0,
+          numOrNull(r.point_2_y) ?? 0,
+          numOrNull(r.point_2_z) ?? 0,
+        ])
+      }
+      if (points.length) {
+        measurements.push({
+          uuid: String(r.id || `m-${measurements.length}`),
+          name: r.measurement_name || `Measurement ${measurements.length + 1}`,
+          points,
+          showDistances: true,
+          showCoordinates: false,
+          showArea: false,
+          closed: false,
+          showAngles: false,
+          showHeight: false,
+          showCircle: false,
+          showAzimuth: false,
+          showEdges: true,
+        })
+      }
+    }
+
+    // Image rows also use annotation_* — skip those (they have images set).
+    const isImageRow = Boolean(r?.images)
+    const hasAnno =
+      !isImageRow &&
+      (r?.annotation_uuid || r?.annotation_title || r?.annotation_position_x != null)
+    if (hasAnno) {
+      annotations.push({
+        uuid: r.annotation_uuid || String(r.id || `a-${annotations.length}`),
+        title: r.annotation_title || '',
+        description: r.annotation_description || '',
+        position: [
+          numOrNull(r.annotation_position_x) ?? 0,
+          numOrNull(r.annotation_position_y) ?? 0,
+          numOrNull(r.annotation_position_z) ?? 0,
+        ],
+        offset: [
+          numOrNull(r.annotation_offset_x) ?? 0,
+          numOrNull(r.annotation_offset_y) ?? 10,
+          numOrNull(r.annotation_offset_z) ?? 0,
+        ],
+        children: [],
+      })
+    }
+  }
+
+  if (!measurements.length && !annotations.length) return null
+
+  return {
+    type: projectType || 'Potree',
+    version: projectVersion,
+    view: null,
+    settings: null,
+    classification: null,
+    pointclouds: [],
+    measurements,
+    volumes: [],
+    profiles: [],
+    annotations,
+    cameraAnimations: [],
+    orientedImages: [],
+    geopackages: [],
+  }
+}
+
 /**
  * Ensure table allows multiple entity rows per potree folder and optional inspection.
  * Safe to call repeatedly.
@@ -320,6 +486,17 @@ export async function ensurePointCloudDataSchema(pool) {
     }
   }
 
+  // Full Potree project snapshot so multi-point measurements restore correctly.
+  try {
+    await pool.query(
+      'ALTER TABLE point_cloud_data ADD COLUMN project_json LONGTEXT NULL'
+    )
+  } catch (e) {
+    if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
+      console.warn('[point_cloud_data] add project_json column:', e.message)
+    }
+  }
+
   schemaReady = true
 }
 
@@ -347,14 +524,14 @@ async function resolveInspectionId(pool, bridgeId, requestedId) {
 const INSERT_SQL = `
   INSERT INTO point_cloud_data (
     bridge_id, id, point_cloud_id, created_at, bridge_inspection_id,
-    project_type, project_version,
+    project_type, project_version, project_json,
     measurement_name, point_1_x, point_1_y, point_1_z, point_2_x, point_2_y, point_2_z,
     annotation_uuid, annotation_title, annotation_description,
     annotation_position_x, annotation_position_y, annotation_position_z,
     annotation_offset_x, annotation_offset_y, annotation_offset_z,
     volumes_count, profiles_count, camera_animations_count, oriented_images_count, annotation_children_count,
     images
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON DUPLICATE KEY UPDATE
     bridge_id = VALUES(bridge_id),
     point_cloud_id = VALUES(point_cloud_id),
@@ -362,6 +539,7 @@ const INSERT_SQL = `
     bridge_inspection_id = VALUES(bridge_inspection_id),
     project_type = VALUES(project_type),
     project_version = VALUES(project_version),
+    project_json = VALUES(project_json),
     measurement_name = VALUES(measurement_name),
     point_1_x = VALUES(point_1_x),
     point_1_y = VALUES(point_1_y),
@@ -445,6 +623,7 @@ export async function replacePointCloudData(pool, {
         row.bridge_inspection_id,
         row.project_type,
         row.project_version,
+        row.project_json,
         row.measurement_name,
         row.point_1_x,
         row.point_1_y,

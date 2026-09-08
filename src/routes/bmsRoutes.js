@@ -36,6 +36,7 @@ import {
   replacePointCloudData,
   ensurePointCloudDataSchema,
   rowsToImageAnnotations,
+  rowsToPotreeProject,
 } from '../lib/pointCloudData.js'
 import {
   addPanoramaMarkerImage,
@@ -5445,6 +5446,7 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     res.json({
       status: 'success',
       data: rows,
+      project: rowsToPotreeProject(rows),
       imageAnnotations: rowsToImageAnnotations(rows),
     })
   } catch (e) {
