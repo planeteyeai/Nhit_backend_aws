@@ -213,14 +213,28 @@ export function projectToPointCloudRows({
 }
 
 /** Pull a data-URL / base64 string from an image-annotation payload. */
+function coerceTextField(v) {
+  if (v == null) return null
+  if (typeof v === 'string') return v
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('utf8')
+  if (v instanceof Uint8Array) {
+    return Buffer.from(v).toString('utf8')
+  }
+  // mysql2 sometimes returns { type: 'Buffer', data: number[] } after JSON round-trips
+  if (typeof v === 'object' && v.type === 'Buffer' && Array.isArray(v.data)) {
+    return Buffer.from(v.data).toString('utf8')
+  }
+  return null
+}
+
 function extractImageDataUrl(item) {
   if (!item || typeof item !== 'object') return null
   const raw =
-    item.image?.data ||
-    item.data ||
-    (typeof item.images === 'string' ? item.images : null) ||
+    coerceTextField(item.image?.data) ||
+    coerceTextField(item.data) ||
+    coerceTextField(item.images) ||
     null
-  if (!raw || typeof raw !== 'string') return null
+  if (!raw) return null
   const s = raw.trim()
   if (!s) return null
   if (s.startsWith('data:')) return s
@@ -260,6 +274,20 @@ export function rowsToImageAnnotations(rows) {
   return out
 }
 
+/** API list payload without duplicating multi-MB base64 blobs in `data`. */
+export function rowsForApiList(rows) {
+  return (Array.isArray(rows) ? rows : []).map((r) => {
+    const imagesText = coerceTextField(r?.images)
+    const hasImage = Boolean(imagesText && imagesText.trim())
+    return {
+      ...r,
+      images: null,
+      has_image: hasImage,
+      images_bytes: hasImage ? imagesText.length : 0,
+    }
+  })
+}
+
 /** Compact Potree project for MySQL (no pointclouds / heavy blobs). */
 export function compactProjectForStorage(project) {
   if (!project || typeof project !== 'object') return null
@@ -284,43 +312,138 @@ export function compactProjectForStorage(project) {
 }
 
 function parseStoredProjectJson(raw) {
-  if (!raw) return null
-  if (typeof raw === 'object') return raw
-  if (typeof raw !== 'string') return null
-  const s = raw.trim()
-  if (!s) return null
-  try {
-    const parsed = JSON.parse(s)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
+  if (raw == null || raw === '') return null
+  // mysql2 may return LONGTEXT as Buffer
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(raw)) {
+    raw = raw.toString('utf8')
+  }
+  let obj = null
+  if (typeof raw === 'object') {
+    if (Array.isArray(raw)) return null
+    obj = raw
+  } else if (typeof raw === 'string') {
+    const s = raw.trim()
+    if (!s) return null
+    try {
+      const parsed = JSON.parse(s)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+      obj = parsed
+    } catch {
+      return null
+    }
+  } else {
     return null
+  }
+  // Reject non-project objects (e.g. accidental row wrappers)
+  const looksLikeProject =
+    obj.type != null ||
+    Array.isArray(obj.measurements) ||
+    Array.isArray(obj.annotations) ||
+    Array.isArray(obj.volumes) ||
+    Array.isArray(obj.profiles) ||
+    Array.isArray(obj.cameraAnimations) ||
+    Array.isArray(obj.orientedImages) ||
+    Array.isArray(obj.geopackages)
+  return looksLikeProject ? obj : null
+}
+
+/** Potree.loadMeasurement expects points as [x,y,z] arrays, not {position:[...]}. */
+function normalizeMeasurePoint(point) {
+  const v = asVec3(point)
+  if (!v) return [0, 0, 0]
+  return [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0]
+}
+
+function normalizeProjectMeasurements(list) {
+  return (Array.isArray(list) ? list : []).map((m, idx) => {
+    const points = Array.isArray(m?.points) ? m.points.map(normalizeMeasurePoint) : []
+    return {
+      ...m,
+      uuid: m?.uuid || `m-${idx}`,
+      name: m?.name || `Measurement ${idx + 1}`,
+      points,
+      showDistances: m?.showDistances !== false,
+      showEdges: m?.showEdges !== false,
+      closed: Boolean(m?.closed),
+      showCoordinates: Boolean(m?.showCoordinates),
+      showArea: Boolean(m?.showArea),
+      showAngles: Boolean(m?.showAngles),
+      showHeight: Boolean(m?.showHeight),
+      showCircle: Boolean(m?.showCircle),
+      showAzimuth: Boolean(m?.showAzimuth),
+    }
+  }).filter((m) => m.points.length > 0)
+}
+
+function normalizeProjectAnnotations(list) {
+  const walk = (items) =>
+    (Array.isArray(items) ? items : []).map((a, idx) => {
+      const pos = asVec3(a?.position) || [0, 0, 0]
+      const off = asVec3(a?.offset) || [0, 10, 0]
+      return {
+        ...a,
+        uuid: a?.uuid || `a-${idx}`,
+        title: a?.title || '',
+        description: a?.description || '',
+        position: [pos[0] ?? 0, pos[1] ?? 0, pos[2] ?? 0],
+        offset: [off[0] ?? 0, off[1] ?? 10, off[2] ?? 0],
+        children: walk(a?.children),
+      }
+    })
+  return walk(list)
+}
+
+function countProjectMarkings(project) {
+  if (!project || typeof project !== 'object') return 0
+  return (
+    (Array.isArray(project.measurements) ? project.measurements.length : 0) +
+    (Array.isArray(project.annotations) ? project.annotations.length : 0) +
+    (Array.isArray(project.volumes) ? project.volumes.length : 0) +
+    (Array.isArray(project.profiles) ? project.profiles.length : 0) +
+    (Array.isArray(project.cameraAnimations) ? project.cameraAnimations.length : 0) +
+    (Array.isArray(project.orientedImages) ? project.orientedImages.length : 0) +
+    (Array.isArray(project.geopackages) ? project.geopackages.length : 0)
+  )
+}
+
+function finishProject(project) {
+  if (!project) return null
+  const measurements = normalizeProjectMeasurements(project.measurements)
+  const annotations = normalizeProjectAnnotations(project.annotations)
+  const volumes = Array.isArray(project.volumes) ? project.volumes : []
+  const profiles = Array.isArray(project.profiles) ? project.profiles : []
+  const cameraAnimations = Array.isArray(project.cameraAnimations) ? project.cameraAnimations : []
+  const orientedImages = Array.isArray(project.orientedImages) ? project.orientedImages : []
+  const geopackages = Array.isArray(project.geopackages) ? project.geopackages : []
+  if (
+    !measurements.length &&
+    !annotations.length &&
+    !volumes.length &&
+    !profiles.length &&
+    !cameraAnimations.length &&
+    !orientedImages.length &&
+    !geopackages.length
+  ) {
+    return null
+  }
+  return {
+    type: project.type || 'Potree',
+    version: project.version ?? 1.7,
+    view: project.view || null,
+    settings: project.settings || null,
+    classification: project.classification || null,
+    pointclouds: [],
+    measurements,
+    volumes,
+    profiles,
+    annotations,
+    cameraAnimations,
+    orientedImages,
+    geopackages,
   }
 }
 
-/** Rebuild a Potree project from DB rows (prefer project_json; else flat columns). */
-export function rowsToPotreeProject(rows) {
-  const list = Array.isArray(rows) ? rows : []
-  for (const r of list) {
-    const fromJson = parseStoredProjectJson(r?.project_json)
-    if (fromJson) {
-      return {
-        type: fromJson.type || 'Potree',
-        version: fromJson.version ?? 1.7,
-        view: fromJson.view || null,
-        settings: fromJson.settings || null,
-        classification: fromJson.classification || null,
-        pointclouds: [],
-        measurements: Array.isArray(fromJson.measurements) ? fromJson.measurements : [],
-        volumes: Array.isArray(fromJson.volumes) ? fromJson.volumes : [],
-        profiles: Array.isArray(fromJson.profiles) ? fromJson.profiles : [],
-        annotations: Array.isArray(fromJson.annotations) ? fromJson.annotations : [],
-        cameraAnimations: Array.isArray(fromJson.cameraAnimations) ? fromJson.cameraAnimations : [],
-        orientedImages: Array.isArray(fromJson.orientedImages) ? fromJson.orientedImages : [],
-        geopackages: Array.isArray(fromJson.geopackages) ? fromJson.geopackages : [],
-      }
-    }
-  }
-
+function rebuildProjectFromFlatColumns(list) {
   const measurements = []
   const annotations = []
   let projectType = 'Potree'
@@ -395,23 +518,69 @@ export function rowsToPotreeProject(rows) {
     }
   }
 
-  if (!measurements.length && !annotations.length) return null
-
-  return {
+  return finishProject({
     type: projectType || 'Potree',
     version: projectVersion,
-    view: null,
-    settings: null,
-    classification: null,
-    pointclouds: [],
     measurements,
-    volumes: [],
-    profiles: [],
     annotations,
-    cameraAnimations: [],
-    orientedImages: [],
-    geopackages: [],
+  })
+}
+
+/**
+ * Rebuild a Potree project from DB rows.
+ * Prefer the richest non-empty project_json; fall back to flat columns.
+ * Never treat an empty project_json as authoritative when flat rows have data.
+ */
+export function rowsToPotreeProject(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  let bestFromJson = null
+  let bestScore = -1
+
+  for (const r of list) {
+    const fromJson = parseStoredProjectJson(r?.project_json)
+    if (!fromJson) continue
+    const candidate = {
+      type: fromJson.type || 'Potree',
+      version: fromJson.version ?? 1.7,
+      view: fromJson.view || null,
+      settings: fromJson.settings || null,
+      classification: fromJson.classification || null,
+      measurements: Array.isArray(fromJson.measurements) ? fromJson.measurements : [],
+      volumes: Array.isArray(fromJson.volumes) ? fromJson.volumes : [],
+      profiles: Array.isArray(fromJson.profiles) ? fromJson.profiles : [],
+      annotations: Array.isArray(fromJson.annotations) ? fromJson.annotations : [],
+      cameraAnimations: Array.isArray(fromJson.cameraAnimations) ? fromJson.cameraAnimations : [],
+      orientedImages: Array.isArray(fromJson.orientedImages) ? fromJson.orientedImages : [],
+      geopackages: Array.isArray(fromJson.geopackages) ? fromJson.geopackages : [],
+    }
+    const score = countProjectMarkings(candidate)
+    if (score > bestScore) {
+      bestScore = score
+      bestFromJson = candidate
+    }
   }
+
+  const fromFlat = rebuildProjectFromFlatColumns(list)
+  if (bestScore > 0) {
+    const fromJson = finishProject(bestFromJson)
+    // If JSON is sparse but flat columns have more measures/annotations, prefer the richer set.
+    if (fromFlat && countProjectMarkings(fromFlat) > countProjectMarkings(fromJson)) {
+      return {
+        ...fromJson,
+        measurements:
+          (fromFlat.measurements?.length || 0) > (fromJson?.measurements?.length || 0)
+            ? fromFlat.measurements
+            : fromJson.measurements,
+        annotations:
+          (fromFlat.annotations?.length || 0) > (fromJson?.annotations?.length || 0)
+            ? fromFlat.annotations
+            : fromJson.annotations,
+      }
+    }
+    return fromJson
+  }
+
+  return fromFlat
 }
 
 /**
@@ -606,6 +775,40 @@ export async function replacePointCloudData(pool, {
     imageAnnotations,
     createdAt: now,
   })
+
+  // Refuse accidental wipe: empty incoming must not DELETE existing markings.
+  const incomingHasContent = rows.some(
+    (r) =>
+      r.measurement_name ||
+      r.point_1_x != null ||
+      r.annotation_uuid ||
+      r.annotation_title ||
+      r.images
+  )
+  if (!incomingHasContent) {
+    const [existing] = await pool.query(
+      `SELECT id, measurement_name, point_1_x, annotation_uuid, images
+       FROM point_cloud_data
+       WHERE bridge_id = ? AND point_cloud_id = ?
+       LIMIT 50`,
+      [bid, cloudId]
+    )
+    const existingHasContent = (existing || []).some(
+      (r) =>
+        r.measurement_name ||
+        r.point_1_x != null ||
+        r.annotation_uuid ||
+        r.images
+    )
+    if (existingHasContent) {
+      const err = new Error(
+        'Refusing to overwrite existing point_cloud_data with an empty save. Re-open the cloud, wait for markings to restore, then save again.'
+      )
+      err.status = 409
+      err.code = 'REFUSE_EMPTY_OVERWRITE'
+      throw err
+    }
+  }
 
   const conn = await pool.getConnection()
   try {

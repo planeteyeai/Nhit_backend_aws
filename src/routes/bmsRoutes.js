@@ -39,6 +39,7 @@ import {
   ensurePointCloudDataSchema,
   rowsToImageAnnotations,
   rowsToPotreeProject,
+  rowsForApiList,
 } from '../lib/pointCloudData.js'
 import {
   addPanoramaMarkerImage,
@@ -5445,13 +5446,17 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     const bridgeId = Number(req.params.bridgeId || 0)
     const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim() || null
     const rows = await listPointCloudData(pool, { bridgeId, pointCloudId })
+    const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
     res.json({
       status: 'success',
-      data: rows,
+      // Omit base64 blobs from `data` — they live only in imageAnnotations (half the payload).
+      data: rowsForApiList(rows),
       project: rowsToPotreeProject(rows),
-      imageAnnotations: rowsToImageAnnotations(rows),
+      imageAnnotations,
       bridgeId,
       pointCloudId,
+      imageCount: imageAnnotations.length,
     })
   } catch (e) {
     console.error('point-cloud-data list error:', e)
@@ -5510,13 +5515,16 @@ router.get('/point-cloud-data', optionalAuth, async (req, res) => {
     }
     const rows = await listPointCloudDataByCloudId(pool, pointCloudId)
     const bridgeId = rows.length ? Number(rows[0].bridge_id) || null : null
+    const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
     res.json({
       status: 'success',
-      data: rows,
+      data: rowsForApiList(rows),
       project: rowsToPotreeProject(rows),
-      imageAnnotations: rowsToImageAnnotations(rows),
+      imageAnnotations,
       bridgeId,
       pointCloudId,
+      imageCount: imageAnnotations.length,
     })
   } catch (e) {
     console.error('point-cloud-data by cloud list error:', e)

@@ -158,8 +158,8 @@ app.use(
   })
 )
 app.options('*', cors())
-app.use(express.json({ limit: '25mb' }))
-app.use(express.urlencoded({ extended: true, limit: '25mb' }))
+app.use(express.json({ limit: '64mb' }))
+app.use(express.urlencoded({ extended: true, limit: '64mb' }))
 /** Block direct static access to signatures and PDFs without login. */
 function uploadSensitiveGuard(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next()
