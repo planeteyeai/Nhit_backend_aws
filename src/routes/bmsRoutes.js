@@ -33,6 +33,8 @@ import {
 } from '../lib/ponoPhotos.js'
 import {
   listPointCloudData,
+  listPointCloudDataByCloudId,
+  resolveBridgeIdForPointCloud,
   replacePointCloudData,
   ensurePointCloudDataSchema,
   rowsToImageAnnotations,
@@ -5448,6 +5450,8 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
       data: rows,
       project: rowsToPotreeProject(rows),
       imageAnnotations: rowsToImageAnnotations(rows),
+      bridgeId,
+      pointCloudId,
     })
   } catch (e) {
     console.error('point-cloud-data list error:', e)
@@ -5488,6 +5492,84 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     })
   } catch (e) {
     console.error('point-cloud-data save error:', e)
+    const msg = e.sqlMessage || e.message || 'Failed to save point cloud data'
+    res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
+  }
+})
+
+/**
+ * Dual-store access: load / save MySQL `point_cloud_data` by pointCloudId alone.
+ * GET works from standalone viewer; PUT resolves bridge_id from existing rows or body.bridgeId.
+ */
+router.get('/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim()
+    if (!pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
+    }
+    const rows = await listPointCloudDataByCloudId(pool, pointCloudId)
+    const bridgeId = rows.length ? Number(rows[0].bridge_id) || null : null
+    res.json({
+      status: 'success',
+      data: rows,
+      project: rowsToPotreeProject(rows),
+      imageAnnotations: rowsToImageAnnotations(rows),
+      bridgeId,
+      pointCloudId,
+    })
+  } catch (e) {
+    console.error('point-cloud-data by cloud list error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to fetch point cloud data' })
+  }
+})
+
+router.put('/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const pointCloudId = String(body.pointCloudId || body.point_cloud_id || '').trim()
+    if (!pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
+    }
+    let bridgeId = Number(body.bridgeId || body.bridge_id || 0) || 0
+    if (!bridgeId) {
+      bridgeId = (await resolveBridgeIdForPointCloud(pool, pointCloudId)) || 0
+    }
+    if (!bridgeId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'bridgeId is required for first MySQL save of this point cloud',
+        code: 'BRIDGE_ID_REQUIRED',
+      })
+    }
+    const bridgeInspectionId =
+      body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
+    const project = body.project && typeof body.project === 'object' ? body.project : null
+    const imageAnnotations = Array.isArray(body.imageAnnotations) ? body.imageAnnotations : []
+    if (!project && !imageAnnotations.length) {
+      return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
+    }
+    const result = await replacePointCloudData(pool, {
+      bridgeId,
+      bridgeInspectionId,
+      pointCloudId,
+      project: project || { type: 'Potree', version: 1.7 },
+      imageAnnotations,
+    })
+    res.json({
+      status: 'success',
+      message: 'Point cloud data saved',
+      data: {
+        bridgeId: result.bridgeId,
+        pointCloudId: result.pointCloudId,
+        bridgeInspectionId: result.bridgeInspectionId,
+        rowCount: result.rowCount,
+        imageCount: imageAnnotations.length,
+      },
+    })
+  } catch (e) {
+    console.error('point-cloud-data by cloud save error:', e)
     const msg = e.sqlMessage || e.message || 'Failed to save point cloud data'
     res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
   }

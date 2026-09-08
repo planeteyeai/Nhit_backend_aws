@@ -685,3 +685,37 @@ export async function listPointCloudData(pool, { bridgeId, pointCloudId = null }
   )
   return rows
 }
+
+/** Load markings by point cloud id only (any bridge) — for standalone / dual-store restore. */
+export async function listPointCloudDataByCloudId(pool, pointCloudId) {
+  await ensurePointCloudDataSchema(pool)
+  const cloudId = String(pointCloudId || '').trim()
+  if (!cloudId) {
+    const err = new Error('pointCloudId is required')
+    err.status = 400
+    throw err
+  }
+  const [rows] = await pool.query(
+    `SELECT * FROM point_cloud_data
+     WHERE point_cloud_id = ?
+     ORDER BY created_at DESC, id ASC`,
+    [cloudId]
+  )
+  return rows
+}
+
+/** Prefer the most recently used bridge_id for a cloud (if any rows exist). */
+export async function resolveBridgeIdForPointCloud(pool, pointCloudId) {
+  await ensurePointCloudDataSchema(pool)
+  const cloudId = String(pointCloudId || '').trim()
+  if (!cloudId) return null
+  const [rows] = await pool.query(
+    `SELECT bridge_id FROM point_cloud_data
+     WHERE point_cloud_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [cloudId]
+  )
+  const bid = Number(rows?.[0]?.bridge_id || 0)
+  return bid || null
+}
