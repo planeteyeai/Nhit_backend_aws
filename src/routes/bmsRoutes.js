@@ -64,6 +64,12 @@ import {
   replaceExpansionJointBridgeItems,
   ensureExpansionJointBridgeLinkColumn,
 } from '../lib/expansionJointDb.js'
+import {
+  fetchDashboardProjectsMeta,
+  fetchDashboardProjectRows,
+  fetchDashboardProjectCards,
+  summarizeDashboardProjectRows,
+} from '../lib/dashboardProjects.js'
 import { assertValid3dUploadFiles, isValidGlbFile } from '../lib/glbValidate.js'
 import { countValidGlbs } from '../lib/glbEnsure.js'
 import {
@@ -4593,11 +4599,41 @@ router.get('/dashboard/counts', optionalAuth, async (req, res) => {
 router.get('/dashboard/statistics', async (_req, res) => {
   res.json({ bridges: 0, inspections: 0, message: 'Summary placeholder' })
 })
-router.get('/dashboard/chainage_wise', async (_req, res) => {
-  res.json([])
+
+router.get('/dashboard/projects', optionalAuth, async (_req, res) => {
+  try {
+    const meta = await fetchDashboardProjectsMeta(pool)
+    res.json({ success: true, data: meta })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
 })
-router.get('/dashboard/location_data', async (_req, res) => {
-  res.json([])
+
+router.get('/dashboard/project_cards', optionalAuth, async (_req, res) => {
+  try {
+    const data = await fetchDashboardProjectCards(pool, { listPotreeModels })
+    res.json({ success: true, data })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.get('/dashboard/chainage_wise', optionalAuth, async (req, res) => {
+  try {
+    const rows = await fetchDashboardProjectRows(pool, req.query || {})
+    res.json({ success: true, data: rows, summary: summarizeDashboardProjectRows(rows) })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+router.get('/dashboard/location_data', optionalAuth, async (req, res) => {
+  try {
+    const rows = await fetchDashboardProjectRows(pool, req.query || {})
+    res.json({ success: true, data: rows, summary: summarizeDashboardProjectRows(rows) })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
 })
 
 router.get('/inspection/:inspectionId/ratings', async (req, res) => {

@@ -3,7 +3,7 @@
 -- Generated at: 2026-04-01T13:15:15.863Z
 
 -- NOTE: tables present in DB but not listed in PDF TOC:
---   - PowerBI
+--   - Dashboard_projects (replaces legacy PowerBI)
 --   - powerbidash
 
 SET FOREIGN_KEY_CHECKS=0;
@@ -1568,6 +1568,7 @@ CREATE TABLE `superstructure_bridge` (
   `bridge_id` int NOT NULL,
   `reinforced_concrete_and_prestressed_concrete_members` varchar(256) COLLATE utf8mb4_general_ci NOT NULL,
   `check_steel_members` varchar(256) COLLATE utf8mb4_general_ci NOT NULL,
+  
   `status` enum('Active','In-Active') COLLATE utf8mb4_general_ci NOT NULL,
   `updated_by` int NOT NULL,
   `updated_on` date NOT NULL
