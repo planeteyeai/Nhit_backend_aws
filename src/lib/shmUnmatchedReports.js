@@ -92,9 +92,11 @@ function normalizeProjectLabel(name) {
   if (!raw || raw === '—') return ''
   const lower = raw.toLowerCase()
   for (const entry of DASHBOARD_PROJECT_CATALOG) {
-    if (String(entry.fullName || '').toLowerCase() === lower) return entry.fullName
-    if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return entry.fullName
-    if (String(entry.shortLabel || '').toLowerCase() === lower) return entry.fullName
+    const short = String(entry.shortLabel || entry.shortNames?.[0] || '').trim()
+    if (!short) continue
+    if (String(entry.fullName || '').toLowerCase() === lower) return short
+    if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return short
+    if (String(entry.shortLabel || '').toLowerCase() === lower) return short
   }
   return raw
 }
@@ -106,8 +108,26 @@ function resolveProjectName(report, bridgeMeta) {
 
   const km = chainageKeyToKm(report.chainageKey)
   const catalog = findCatalogProjectByKm(km)
-  if (catalog?.fullName) return catalog.fullName
+  if (catalog?.shortLabel) return catalog.shortLabel
+  if (catalog?.fullName) return normalizeProjectLabel(catalog.fullName) || catalog.fullName
   return '—'
+}
+
+function resolveProjectFullName(report, bridgeMeta) {
+  const meta = bridgeMeta.get(report.chainageKey) || {}
+  const raw = String(meta.projectName || '').trim()
+  if (raw) {
+    const lower = raw.toLowerCase()
+    for (const entry of DASHBOARD_PROJECT_CATALOG) {
+      if (String(entry.fullName || '').toLowerCase() === lower) return entry.fullName
+      if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return entry.fullName
+      if (String(entry.shortLabel || '').toLowerCase() === lower) return entry.fullName
+    }
+    return raw
+  }
+  const km = chainageKeyToKm(report.chainageKey)
+  const catalog = findCatalogProjectByKm(km)
+  return catalog?.fullName || ''
 }
 
 function enrichReport(report, bridgeMeta) {
@@ -116,6 +136,7 @@ function enrichReport(report, bridgeMeta) {
     ...report,
     chainage: report.chainageKey,
     projectName: resolveProjectName(report, bridgeMeta),
+    projectFullName: resolveProjectFullName(report, bridgeMeta),
     structureType: report.structureType || meta.bridgeStructureType || '',
   }
 }
