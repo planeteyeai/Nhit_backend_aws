@@ -129,6 +129,19 @@ function isAllowedCorsOrigin(origin) {
   if (!origin) return true
   if (allowedOrigins.includes(origin)) return true
   if (POTREE_VIEWER_ORIGINS.includes(origin)) return true
+  // Local HTTPS Vite debugging against live Railway MySQL (Potree iframe).
+  try {
+    const { protocol, hostname, port } = new URL(origin)
+    if (
+      protocol === 'https:' &&
+      (hostname === 'localhost' || hostname === '127.0.0.1') &&
+      (port === '5173' || port === '4173' || port === '')
+    ) {
+      return true
+    }
+  } catch {
+    /* ignore */
+  }
   return false
 }
 
