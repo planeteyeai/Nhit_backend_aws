@@ -40,6 +40,9 @@ import {
   rowsToImageAnnotations,
   rowsToPotreeProject,
   rowsForApiList,
+  countPointCloudImages,
+  listPointCloudImageMeta,
+  getPointCloudImage,
 } from '../lib/pointCloudData.js'
 import {
   addPanoramaMarkerImage,
@@ -5481,9 +5484,12 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     await ensurePointCloudDataSchema(pool)
     const bridgeId = Number(req.params.bridgeId || 0)
     const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim() || null
-    const rows = await listPointCloudData(pool, { bridgeId, pointCloudId })
     const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    const rows = await listPointCloudData(pool, { bridgeId, pointCloudId, includeImages })
     const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
+    const imageCount = includeImages
+      ? imageAnnotations.length
+      : await countPointCloudImages(pool, { bridgeId, pointCloudId })
     res.json({
       status: 'success',
       // Omit base64 blobs from `data` — they live only in imageAnnotations (half the payload).
@@ -5492,11 +5498,45 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
       imageAnnotations,
       bridgeId,
       pointCloudId,
-      imageCount: imageAnnotations.length,
+      imageCount,
     })
   } catch (e) {
     console.error('point-cloud-data list error:', e)
     res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to fetch point cloud data' })
+  }
+})
+
+router.get('/bridges/:bridgeId/point-cloud-data/images', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim()
+    if (!bridgeId || !pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'bridgeId and pointCloudId are required' })
+    }
+    const images = await listPointCloudImageMeta(pool, { bridgeId, pointCloudId })
+    res.json({ status: 'success', images, imageCount: images.length, bridgeId, pointCloudId })
+  } catch (e) {
+    console.error('point-cloud-data image list error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to list photos' })
+  }
+})
+
+router.get('/bridges/:bridgeId/point-cloud-data/images/:imageId', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim()
+    const imageId = decodeURIComponent(String(req.params.imageId || '').trim())
+    if (!bridgeId || !pointCloudId || !imageId) {
+      return res.status(400).json({ status: 'error', message: 'bridgeId, pointCloudId and imageId are required' })
+    }
+    const image = await getPointCloudImage(pool, { bridgeId, pointCloudId, imageId })
+    if (!image) return res.status(404).json({ status: 'error', message: 'Photo not found' })
+    res.json({ status: 'success', image, imageAnnotations: [image] })
+  } catch (e) {
+    console.error('point-cloud-data image get error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to load photo' })
   }
 })
 
@@ -5510,6 +5550,7 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
       body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
     const project = body.project && typeof body.project === 'object' ? body.project : null
     const imageAnnotations = Array.isArray(body.imageAnnotations) ? body.imageAnnotations : []
+    const preserveExistingImages = body.preserveExistingImages === true || body.preserve_existing_images === true
     if (!project && !imageAnnotations.length) {
       return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
     }
@@ -5519,6 +5560,7 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
       pointCloudId,
       project: project || { type: 'Potree', version: 1.7 },
       imageAnnotations,
+      preserveExistingImages,
     })
     res.json({
       status: 'success',
@@ -5528,7 +5570,7 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
         pointCloudId: result.pointCloudId,
         bridgeInspectionId: result.bridgeInspectionId,
         rowCount: result.rowCount,
-        imageCount: imageAnnotations.length,
+        imageCount: result.imageCount ?? imageAnnotations.length,
       },
     })
   } catch (e) {
@@ -5549,10 +5591,13 @@ router.get('/point-cloud-data', optionalAuth, async (req, res) => {
     if (!pointCloudId) {
       return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
     }
-    const rows = await listPointCloudDataByCloudId(pool, pointCloudId)
-    const bridgeId = rows.length ? Number(rows[0].bridge_id) || null : null
     const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    const rows = await listPointCloudDataByCloudId(pool, pointCloudId, { includeImages })
+    const bridgeId = rows.length ? Number(rows[0].bridge_id) || null : null
     const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
+    const imageCount = includeImages
+      ? imageAnnotations.length
+      : await countPointCloudImages(pool, { bridgeId, pointCloudId })
     res.json({
       status: 'success',
       data: rowsForApiList(rows),
@@ -5560,11 +5605,43 @@ router.get('/point-cloud-data', optionalAuth, async (req, res) => {
       imageAnnotations,
       bridgeId,
       pointCloudId,
-      imageCount: imageAnnotations.length,
+      imageCount,
     })
   } catch (e) {
     console.error('point-cloud-data by cloud list error:', e)
     res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to fetch point cloud data' })
+  }
+})
+
+router.get('/point-cloud-data/images', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim()
+    if (!pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
+    }
+    const images = await listPointCloudImageMeta(pool, { pointCloudId })
+    res.json({ status: 'success', images, imageCount: images.length, pointCloudId })
+  } catch (e) {
+    console.error('point-cloud-data by-cloud image list error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to list photos' })
+  }
+})
+
+router.get('/point-cloud-data/images/:imageId', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim()
+    const imageId = decodeURIComponent(String(req.params.imageId || '').trim())
+    if (!pointCloudId || !imageId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId and imageId are required' })
+    }
+    const image = await getPointCloudImage(pool, { pointCloudId, imageId })
+    if (!image) return res.status(404).json({ status: 'error', message: 'Photo not found' })
+    res.json({ status: 'success', image, imageAnnotations: [image] })
+  } catch (e) {
+    console.error('point-cloud-data by-cloud image get error:', e)
+    res.status(e.status || 500).json({ status: 'error', message: e.message || 'Failed to load photo' })
   }
 })
 
@@ -5591,6 +5668,7 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
       body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
     const project = body.project && typeof body.project === 'object' ? body.project : null
     const imageAnnotations = Array.isArray(body.imageAnnotations) ? body.imageAnnotations : []
+    const preserveExistingImages = body.preserveExistingImages === true || body.preserve_existing_images === true
     if (!project && !imageAnnotations.length) {
       return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
     }
@@ -5600,6 +5678,7 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
       pointCloudId,
       project: project || { type: 'Potree', version: 1.7 },
       imageAnnotations,
+      preserveExistingImages,
     })
     res.json({
       status: 'success',
@@ -5609,7 +5688,7 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
         pointCloudId: result.pointCloudId,
         bridgeInspectionId: result.bridgeInspectionId,
         rowCount: result.rowCount,
-        imageCount: imageAnnotations.length,
+        imageCount: result.imageCount ?? imageAnnotations.length,
       },
     })
   } catch (e) {

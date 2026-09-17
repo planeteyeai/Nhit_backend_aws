@@ -43,8 +43,8 @@ function isPublicRoute(req) {
 /** Point-cloud measurement/image sync from Potree iframe (Bearer preferred; optionalAuth on route). */
 function isPublicPointCloudDataWrite(req) {
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
-  const byBridge = /^\/bridges\/\d+\/point-cloud-data$/.test(path)
-  const byCloud = path === '/point-cloud-data'
+  const byBridge = /^\/bridges\/\d+\/point-cloud-data(?:\/images(?:\/[^/]+)?)?$/.test(path)
+  const byCloud = path === '/point-cloud-data' || path.startsWith('/point-cloud-data/images')
   if (!byBridge && !byCloud) return false
   return req.method === 'GET' || req.method === 'PUT' || req.method === 'OPTIONS'
 }

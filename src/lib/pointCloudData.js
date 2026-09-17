@@ -245,6 +245,18 @@ function extractImageDataUrl(item) {
   return s
 }
 
+function isPointCloudImageRow(r) {
+  if (!r || typeof r !== 'object') return false
+  if (r.images) return true
+  const id = String(r.id || '')
+  if (/_i_/i.test(id)) return true
+  const uuid = String(r.annotation_uuid || '')
+  if (/^img_/i.test(uuid)) return true
+  const title = String(r.annotation_title || '')
+  if (/\.(png|jpe?g|gif|webp)$/i.test(title)) return true
+  return false
+}
+
 /** Rebuild viewer imageAnnotations from DB rows that have `images` set. */
 export function rowsToImageAnnotations(rows) {
   const out = []
@@ -292,6 +304,7 @@ export function rowsForApiList(rows) {
 export function compactProjectForStorage(project) {
   if (!project || typeof project !== 'object') return null
   try {
+    const distress = project.highlightDistress
     return JSON.stringify({
       type: project.type || 'Potree',
       version: project.version ?? 1.7,
@@ -305,6 +318,8 @@ export function compactProjectForStorage(project) {
       cameraAnimations: Array.isArray(project.cameraAnimations) ? project.cameraAnimations : [],
       orientedImages: Array.isArray(project.orientedImages) ? project.orientedImages : [],
       geopackages: Array.isArray(project.geopackages) ? project.geopackages : [],
+      highlightDistress:
+        distress && Array.isArray(distress.polygons) && distress.polygons.length ? distress : null,
     })
   } catch {
     return null
@@ -343,20 +358,28 @@ function parseStoredProjectJson(raw) {
     Array.isArray(obj.profiles) ||
     Array.isArray(obj.cameraAnimations) ||
     Array.isArray(obj.orientedImages) ||
-    Array.isArray(obj.geopackages)
+    Array.isArray(obj.geopackages) ||
+    Array.isArray(obj.highlightDistress?.polygons)
   return looksLikeProject ? obj : null
 }
 
 /** Potree.loadMeasurement expects points as [x,y,z] arrays, not {position:[...]}. */
 function normalizeMeasurePoint(point) {
   const v = asVec3(point)
-  if (!v) return [0, 0, 0]
+  if (!v) return null
+  if (v[0] == null && v[1] == null && v[2] == null) return null
   return [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0]
+}
+
+function isOriginPoint(p) {
+  return Array.isArray(p) && p.every((n) => Number(n) === 0)
 }
 
 function normalizeProjectMeasurements(list) {
   return (Array.isArray(list) ? list : []).map((m, idx) => {
-    const points = Array.isArray(m?.points) ? m.points.map(normalizeMeasurePoint) : []
+    const points = (Array.isArray(m?.points) ? m.points : [])
+      .map(normalizeMeasurePoint)
+      .filter((p) => Array.isArray(p) && p.length >= 3)
     return {
       ...m,
       uuid: m?.uuid || `m-${idx}`,
@@ -372,7 +395,7 @@ function normalizeProjectMeasurements(list) {
       showCircle: Boolean(m?.showCircle),
       showAzimuth: Boolean(m?.showAzimuth),
     }
-  }).filter((m) => m.points.length > 0)
+  }).filter((m) => m.points.length > 0 && !m.points.every(isOriginPoint))
 }
 
 function normalizeProjectAnnotations(list) {
@@ -395,6 +418,9 @@ function normalizeProjectAnnotations(list) {
 
 function countProjectMarkings(project) {
   if (!project || typeof project !== 'object') return 0
+  const distressCount = Array.isArray(project.highlightDistress?.polygons)
+    ? project.highlightDistress.polygons.length
+    : 0
   return (
     (Array.isArray(project.measurements) ? project.measurements.length : 0) +
     (Array.isArray(project.annotations) ? project.annotations.length : 0) +
@@ -402,7 +428,8 @@ function countProjectMarkings(project) {
     (Array.isArray(project.profiles) ? project.profiles.length : 0) +
     (Array.isArray(project.cameraAnimations) ? project.cameraAnimations.length : 0) +
     (Array.isArray(project.orientedImages) ? project.orientedImages.length : 0) +
-    (Array.isArray(project.geopackages) ? project.geopackages.length : 0)
+    (Array.isArray(project.geopackages) ? project.geopackages.length : 0) +
+    distressCount
   )
 }
 
@@ -415,6 +442,13 @@ function finishProject(project) {
   const cameraAnimations = Array.isArray(project.cameraAnimations) ? project.cameraAnimations : []
   const orientedImages = Array.isArray(project.orientedImages) ? project.orientedImages : []
   const geopackages = Array.isArray(project.geopackages) ? project.geopackages : []
+  const highlightDistress =
+    project.highlightDistress && Array.isArray(project.highlightDistress.polygons)
+      ? project.highlightDistress
+      : null
+  const distressCount = Array.isArray(highlightDistress?.polygons)
+    ? highlightDistress.polygons.length
+    : 0
   if (
     !measurements.length &&
     !annotations.length &&
@@ -422,7 +456,8 @@ function finishProject(project) {
     !profiles.length &&
     !cameraAnimations.length &&
     !orientedImages.length &&
-    !geopackages.length
+    !geopackages.length &&
+    !distressCount
   ) {
     return null
   }
@@ -440,6 +475,7 @@ function finishProject(project) {
     cameraAnimations,
     orientedImages,
     geopackages,
+    highlightDistress: distressCount ? highlightDistress : null,
   }
 }
 
@@ -493,8 +529,8 @@ function rebuildProjectFromFlatColumns(list) {
       }
     }
 
-    // Image rows also use annotation_* — skip those (they have images set).
-    const isImageRow = Boolean(r?.images)
+    // Image rows also use annotation_* — skip those (photos have images or an `_i_` row id).
+    const isImageRow = isPointCloudImageRow(r)
     const hasAnno =
       !isImageRow &&
       (r?.annotation_uuid || r?.annotation_title || r?.annotation_position_x != null)
@@ -552,6 +588,7 @@ export function rowsToPotreeProject(rows) {
       cameraAnimations: Array.isArray(fromJson.cameraAnimations) ? fromJson.cameraAnimations : [],
       orientedImages: Array.isArray(fromJson.orientedImages) ? fromJson.orientedImages : [],
       geopackages: Array.isArray(fromJson.geopackages) ? fromJson.geopackages : [],
+      highlightDistress: fromJson.highlightDistress || null,
     }
     const score = countProjectMarkings(candidate)
     if (score > bestScore) {
@@ -742,6 +779,7 @@ export async function replacePointCloudData(pool, {
   pointCloudId,
   project,
   imageAnnotations = [],
+  preserveExistingImages = false,
 } = {}) {
   await ensurePointCloudDataSchema(pool)
 
@@ -765,6 +803,32 @@ export async function replacePointCloudData(pool, {
     throw err
   }
 
+  let images = Array.isArray(imageAnnotations) ? imageAnnotations : []
+  const shouldPreserve = Boolean(preserveExistingImages) || images.length === 0
+  if (shouldPreserve) {
+    const existingRows = await listPointCloudData(pool, {
+      bridgeId: bid,
+      pointCloudId: cloudId,
+      includeImages: true,
+    })
+    const existingImages = rowsToImageAnnotations(existingRows)
+    if (existingImages.length) {
+      if (!images.length) {
+        images = existingImages
+      } else {
+        const map = new Map()
+        for (const img of existingImages) {
+          map.set(String(img.id || img.annotation_uuid || `keep-${map.size}`), img)
+        }
+        for (const img of images) {
+          const key = String(img.id || img.annotation_uuid || `new-${map.size}`)
+          map.set(key, img)
+        }
+        images = Array.from(map.values())
+      }
+    }
+  }
+
   const inspectionId = await resolveInspectionId(pool, bid, bridgeInspectionId)
   const now = new Date()
   const rows = projectToPointCloudRows({
@@ -772,7 +836,7 @@ export async function replacePointCloudData(pool, {
     bridgeInspectionId: inspectionId,
     pointCloudId: cloudId,
     project,
-    imageAnnotations,
+    imageAnnotations: images,
     createdAt: now,
   })
 
@@ -859,10 +923,71 @@ export async function replacePointCloudData(pool, {
     conn.release()
   }
 
-  return { bridgeId: bid, pointCloudId: cloudId, bridgeInspectionId: inspectionId, rowCount: rows.length, rows }
+  return {
+    bridgeId: bid,
+    pointCloudId: cloudId,
+    bridgeInspectionId: inspectionId,
+    rowCount: rows.length,
+    imageCount: rows.filter((r) => r.images).length,
+    rows,
+  }
 }
 
-export async function listPointCloudData(pool, { bridgeId, pointCloudId = null } = {}) {
+const POINT_CLOUD_DATA_COLUMNS = `
+  bridge_id, id, point_cloud_id, created_at, bridge_inspection_id,
+  project_type, project_version, project_json,
+  measurement_name, point_1_x, point_1_y, point_1_z, point_2_x, point_2_y, point_2_z,
+  annotation_uuid, annotation_title, annotation_description,
+  annotation_position_x, annotation_position_y, annotation_position_z,
+  annotation_offset_x, annotation_offset_y, annotation_offset_z,
+  volumes_count, profiles_count, camera_animations_count, oriented_images_count, annotation_children_count
+`
+
+function pointCloudSelectSql(includeImages) {
+  const imagesCol = includeImages ? ', images' : ', NULL AS images'
+  return `SELECT ${POINT_CLOUD_DATA_COLUMNS}${imagesCol} FROM point_cloud_data`
+}
+
+function normalizeCloudId(id) {
+  return String(id || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+async function resolveStoredCloudId(pool, requested, { bridgeId = null } = {}) {
+  const raw = String(requested || '').trim()
+  if (!raw) return raw
+  if (bridgeId) {
+    const [exact] = await pool.query(
+      `SELECT point_cloud_id FROM point_cloud_data
+       WHERE bridge_id = ? AND point_cloud_id = ?
+       LIMIT 1`,
+      [bridgeId, raw]
+    )
+    if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+    const [ids] = await pool.query(
+      `SELECT DISTINCT point_cloud_id FROM point_cloud_data WHERE bridge_id = ?`,
+      [bridgeId]
+    )
+    const want = normalizeCloudId(raw)
+    const hit = (ids || []).find((r) => normalizeCloudId(r.point_cloud_id) === want)
+    return hit?.point_cloud_id || raw
+  }
+  const [exact] = await pool.query(
+    `SELECT point_cloud_id FROM point_cloud_data WHERE point_cloud_id = ? LIMIT 1`,
+    [raw]
+  )
+  if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+  const [ids] = await pool.query(`SELECT DISTINCT point_cloud_id FROM point_cloud_data`)
+  const want = normalizeCloudId(raw)
+  const hit = (ids || []).find((r) => normalizeCloudId(r.point_cloud_id) === want)
+  return hit?.point_cloud_id || raw
+}
+
+export async function listPointCloudData(pool, { bridgeId, pointCloudId = null, includeImages = true } = {}) {
   await ensurePointCloudDataSchema(pool)
   const bid = Number(bridgeId)
   if (!bid) {
@@ -870,18 +995,20 @@ export async function listPointCloudData(pool, { bridgeId, pointCloudId = null }
     err.status = 400
     throw err
   }
+  const select = pointCloudSelectSql(includeImages)
   const cloudId = String(pointCloudId || '').trim()
   if (cloudId) {
+    const storedId = await resolveStoredCloudId(pool, cloudId, { bridgeId: bid })
     const [rows] = await pool.query(
-      `SELECT * FROM point_cloud_data
+      `${select}
        WHERE bridge_id = ? AND point_cloud_id = ?
        ORDER BY created_at DESC, id ASC`,
-      [bid, cloudId]
+      [bid, storedId]
     )
     return rows
   }
   const [rows] = await pool.query(
-    `SELECT * FROM point_cloud_data
+    `${select}
      WHERE bridge_id = ?
      ORDER BY created_at DESC, point_cloud_id ASC, id ASC`,
     [bid]
@@ -890,7 +1017,7 @@ export async function listPointCloudData(pool, { bridgeId, pointCloudId = null }
 }
 
 /** Load markings by point cloud id only (any bridge) — for standalone / dual-store restore. */
-export async function listPointCloudDataByCloudId(pool, pointCloudId) {
+export async function listPointCloudDataByCloudId(pool, pointCloudId, { includeImages = true } = {}) {
   await ensurePointCloudDataSchema(pool)
   const cloudId = String(pointCloudId || '').trim()
   if (!cloudId) {
@@ -898,11 +1025,12 @@ export async function listPointCloudDataByCloudId(pool, pointCloudId) {
     err.status = 400
     throw err
   }
+  const storedId = await resolveStoredCloudId(pool, cloudId)
   const [rows] = await pool.query(
-    `SELECT * FROM point_cloud_data
+    `${pointCloudSelectSql(includeImages)}
      WHERE point_cloud_id = ?
      ORDER BY created_at DESC, id ASC`,
-    [cloudId]
+    [storedId]
   )
   return rows
 }
@@ -921,4 +1049,88 @@ export async function resolveBridgeIdForPointCloud(pool, pointCloudId) {
   )
   const bid = Number(rows?.[0]?.bridge_id || 0)
   return bid || null
+}
+
+function imageWhereSql(cloudId, bridgeId) {
+  const where = ['point_cloud_id = ?', 'images IS NOT NULL', 'CHAR_LENGTH(images) > 20']
+  const params = [cloudId]
+  if (bridgeId) {
+    where.push('bridge_id = ?')
+    params.push(Number(bridgeId))
+  }
+  return { where: where.join(' AND '), params }
+}
+
+/** Count photo rows without pulling LONGTEXT blobs. */
+export async function countPointCloudImages(pool, { bridgeId = null, pointCloudId } = {}) {
+  await ensurePointCloudDataSchema(pool)
+  const cloudId = await resolveStoredCloudId(pool, pointCloudId, bridgeId ? { bridgeId } : {})
+  const { where, params } = imageWhereSql(cloudId, bridgeId)
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS n FROM point_cloud_data WHERE ${where}`,
+    params
+  )
+  return Number(rows?.[0]?.n || 0)
+}
+
+/** Photo pin metadata only — no base64. */
+export async function listPointCloudImageMeta(pool, { bridgeId = null, pointCloudId } = {}) {
+  await ensurePointCloudDataSchema(pool)
+  const cloudId = String(pointCloudId || '').trim()
+  if (!cloudId) {
+    const err = new Error('pointCloudId is required')
+    err.status = 400
+    throw err
+  }
+  const storedId = await resolveStoredCloudId(pool, cloudId, bridgeId ? { bridgeId } : {})
+  const { where, params } = imageWhereSql(storedId, bridgeId)
+  const [rows] = await pool.query(
+    `SELECT id, annotation_uuid, annotation_title, annotation_description,
+            annotation_position_x, annotation_position_y, annotation_position_z,
+            CHAR_LENGTH(images) AS images_bytes, created_at
+     FROM point_cloud_data
+     WHERE ${where}
+     ORDER BY created_at DESC, id ASC`,
+    params
+  )
+  return (rows || []).map((r) => ({
+    id: r.annotation_uuid || r.id,
+    rowId: r.id,
+    title: r.annotation_title || 'Image',
+    text: r.annotation_description || '',
+    position: {
+      x: numOrNull(r.annotation_position_x) ?? 0,
+      y: numOrNull(r.annotation_position_y) ?? 0,
+      z: numOrNull(r.annotation_position_z) ?? 0,
+    },
+    bytes: Number(r.images_bytes) || 0,
+    createdAt: r.created_at || null,
+  })).filter((item, idx, arr) => arr.findIndex((x) => String(x.id) === String(item.id)) === idx)
+}
+
+/** One photo blob as a viewer imageAnnotation. */
+export async function getPointCloudImage(pool, { bridgeId = null, pointCloudId, imageId } = {}) {
+  await ensurePointCloudDataSchema(pool)
+  const cloudId = String(pointCloudId || '').trim()
+  const key = String(imageId || '').trim()
+  if (!cloudId || !key) {
+    const err = new Error('pointCloudId and imageId are required')
+    err.status = 400
+    throw err
+  }
+  const storedId = await resolveStoredCloudId(pool, cloudId, bridgeId ? { bridgeId } : {})
+  const params = [storedId, key, key]
+  let sql = `SELECT id, annotation_uuid, annotation_title, annotation_description,
+                    annotation_position_x, annotation_position_y, annotation_position_z,
+                    images, created_at
+             FROM point_cloud_data
+             WHERE point_cloud_id = ? AND (annotation_uuid = ? OR id = ?)`
+  if (bridgeId) {
+    sql += ' AND bridge_id = ?'
+    params.push(Number(bridgeId))
+  }
+  sql += ' LIMIT 1'
+  const [rows] = await pool.query(sql, params)
+  const anns = rowsToImageAnnotations(rows)
+  return anns[0] || null
 }
