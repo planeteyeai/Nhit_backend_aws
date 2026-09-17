@@ -7,6 +7,29 @@ import { listLidarReportFiles } from './lidarReports.js'
 import { listSarReportFiles } from './sarReports.js'
 import { DASHBOARD_PROJECT_CATALOG, chainageKeyToKm } from './dashboardProjects.js'
 
+/** Hidden from unmatched PDF project filter / assignment. */
+const EXCLUDED_PROJECT_IDS = new Set([
+  'chichra-kharagpur',
+  'kaljhar-patacharkuchi',
+  'kochugaon-kaljar-1',
+  'kochugaon-kaljar-2',
+])
+
+function isExcludedCatalogEntry(entry) {
+  return Boolean(entry && EXCLUDED_PROJECT_IDS.has(String(entry.id || '')))
+}
+
+function isExcludedProjectName(name) {
+  const lower = String(name || '')
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+  if (!lower || lower === '—') return false
+  if (/chichra|kharagpur/.test(lower)) return true
+  if (/kaljhar|khaljhar|patacharkuchi|pattacharkuchi/.test(lower)) return true
+  if (/kochugaon/.test(lower)) return true
+  return false
+}
+
 function approvedWhereClause(scope = 'bmc') {
   const notClosed = `LOWER(TRIM(i.status)) <> 'closed'`
   const isSite = String(scope || '').toLowerCase() === 'site'
@@ -75,6 +98,7 @@ function findCatalogProjectByKm(km) {
   let best = null
   let bestWidth = Infinity
   for (const entry of DASHBOARD_PROJECT_CATALOG) {
+    if (isExcludedCatalogEntry(entry)) continue
     const ranges = catalogRanges(entry)
     const hit = ranges.some(([lo, hi]) => Number.isFinite(lo) && Number.isFinite(hi) && km >= lo - pad && km <= hi + pad)
     if (!hit) continue
@@ -90,14 +114,18 @@ function findCatalogProjectByKm(km) {
 function normalizeProjectLabel(name) {
   const raw = String(name || '').trim()
   if (!raw || raw === '—') return ''
+  if (isExcludedProjectName(raw)) return ''
   const lower = raw.toLowerCase()
   for (const entry of DASHBOARD_PROJECT_CATALOG) {
+    if (isExcludedCatalogEntry(entry)) continue
     const short = String(entry.shortLabel || entry.shortNames?.[0] || '').trim()
     if (!short) continue
     if (String(entry.fullName || '').toLowerCase() === lower) return short
     if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return short
     if (String(entry.shortLabel || '').toLowerCase() === lower) return short
   }
+  // Unknown / excluded corridors stay unassigned for this panel
+  if (isExcludedProjectName(raw)) return ''
   return raw
 }
 
@@ -116,9 +144,10 @@ function resolveProjectName(report, bridgeMeta) {
 function resolveProjectFullName(report, bridgeMeta) {
   const meta = bridgeMeta.get(report.chainageKey) || {}
   const raw = String(meta.projectName || '').trim()
-  if (raw) {
+  if (raw && !isExcludedProjectName(raw)) {
     const lower = raw.toLowerCase()
     for (const entry of DASHBOARD_PROJECT_CATALOG) {
+      if (isExcludedCatalogEntry(entry)) continue
       if (String(entry.fullName || '').toLowerCase() === lower) return entry.fullName
       if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return entry.fullName
       if (String(entry.shortLabel || '').toLowerCase() === lower) return entry.fullName
@@ -180,7 +209,9 @@ function buildProjectOptions(unmatchedLidar, unmatchedSar) {
   }
   for (const r of unmatchedLidar) bump(r.projectName, 'lidar')
   for (const r of unmatchedSar) bump(r.projectName, 'sar')
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  return [...map.values()]
+    .filter((p) => !isExcludedProjectName(p.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 function buildStructureTypeOptions(unmatchedLidar, unmatchedSar) {
