@@ -21,6 +21,13 @@ function isPublicPotreeRead(req) {
   return path === '/potree-models' || /^\/potree-models\/[^/]+\/[^/]+$/.test(path)
 }
 
+/** InSAR workbook bytes for dashboard iframe (no JWT — same pattern as Potree reads). */
+function isPublicInsarWorkbook(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false
+  const path = String(req.path || '').replace(/\/+$/, '') || '/'
+  return path === '/insar/workbook' || path === '/insar/status'
+}
+
 /** Routes that stay public (login / logout / CORS preflight / public image reads). */
 function isPublicRoute(req) {
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
@@ -36,6 +43,7 @@ function isPublicRoute(req) {
   if (isPublicShmPdfRead(req)) return true
   if (isPublicPotreeRead(req)) return true
   if (isPublicPointCloudDataWrite(req)) return true
+  if (isPublicInsarWorkbook(req)) return true
 
   return false
 }

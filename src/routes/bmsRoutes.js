@@ -8873,4 +8873,81 @@ router.get('/index.php/bmc/inspection/download_sar_pdf/:inspectionId', async (re
 
 router.post('/thermal/generate', requireAuth, thermalGenerateHandler)
 
+/** InSAR workbook — public read so the iframe dashboard can auto-load without JWT. */
+router.get('/insar/workbook', async (req, res) => {
+  try {
+    const { resolveInsarWorkbook } = await import('../lib/insarWorkbook.js')
+    const refresh = String(req.query.refresh || '') === '1'
+    const file = await resolveInsarWorkbook({ refresh })
+    if (!file?.ok || !file.buf) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'InSAR workbook not available. SharePoint needs login or an anonymous download URL (INSAR_EXCEL_URL). Place BMS.xlsx under upload/insar/ as fallback.',
+        reason: file?.reason || 'missing',
+      })
+    }
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    res.setHeader('Content-Disposition', 'inline; filename="BMS.xlsx"')
+    res.setHeader('Cache-Control', 'no-store')
+    res.setHeader('X-Insar-Source', file.source || 'unknown')
+    return res.send(file.buf)
+  } catch (e) {
+    console.error('[insar/workbook]', e)
+    return res.status(500).json({ success: false, message: e?.message || 'Failed' })
+  }
+})
+
+router.get('/insar/status', async (_req, res) => {
+  try {
+    const { resolveInsarWorkbook, inspectInsarWorkbook, INSAR_REMOTE_URL } = await import(
+      '../lib/insarWorkbook.js'
+    )
+    const file = await resolveInsarWorkbook({ refresh: false })
+    if (!file?.ok || !file.buf) {
+      return res.json({
+        success: false,
+        remoteUrl: INSAR_REMOTE_URL,
+        reason: file?.reason || 'missing',
+        message: 'No local/remote workbook loaded',
+      })
+    }
+    const meta = await inspectInsarWorkbook(file.buf)
+    return res.json({
+      success: true,
+      source: file.source,
+      remoteUrl: INSAR_REMOTE_URL,
+      bytes: file.buf.length,
+      ...meta,
+    })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e?.message || 'Failed' })
+  }
+})
+
+router.post('/insar/refresh', requireAuth, async (_req, res) => {
+  try {
+    const { resolveInsarWorkbook, inspectInsarWorkbook, INSAR_REMOTE_URL } = await import(
+      '../lib/insarWorkbook.js'
+    )
+    const file = await resolveInsarWorkbook({ refresh: true })
+    if (!file?.ok || !file.buf) {
+      return res.status(502).json({
+        success: false,
+        remoteUrl: INSAR_REMOTE_URL,
+        reason: file?.reason || 'missing',
+        message:
+          'SharePoint download failed (login HTML). Use an anonymous download link in INSAR_EXCEL_URL, or copy BMS.xlsx to upload/insar/.',
+      })
+    }
+    const meta = await inspectInsarWorkbook(file.buf)
+    return res.json({ success: true, source: file.source, bytes: file.buf.length, ...meta })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e?.message || 'Failed' })
+  }
+})
+
 export default router
