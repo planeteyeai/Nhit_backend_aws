@@ -5,6 +5,7 @@ import { pool } from '../config/db.js'
 import { extractChainageKey } from './lidarReports.js'
 import { listLidarReportFiles } from './lidarReports.js'
 import { listSarReportFiles } from './sarReports.js'
+import { DASHBOARD_PROJECT_CATALOG, chainageKeyToKm } from './dashboardProjects.js'
 
 function approvedWhereClause(scope = 'bmc') {
   const notClosed = `LOWER(TRIM(i.status)) <> 'closed'`
@@ -53,12 +54,68 @@ async function getBridgeMetaByChainage() {
   return map
 }
 
+function catalogRanges(entry) {
+  if (Array.isArray(entry.chainageRanges) && entry.chainageRanges.length) {
+    return entry.chainageRanges.map(([lo, hi]) => [Number(lo), Number(hi)])
+  }
+  return [[Number(entry.chainageMin), Number(entry.chainageMax)]]
+}
+
+function rangeWidth(ranges) {
+  return ranges.reduce((sum, [lo, hi]) => {
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return sum
+    return sum + Math.abs(hi - lo)
+  }, 0)
+}
+
+/** Prefer narrowest corridor match so broad windows (e.g. 0–32) don't steal other projects. */
+function findCatalogProjectByKm(km) {
+  if (!Number.isFinite(km)) return null
+  const pad = 0.5
+  let best = null
+  let bestWidth = Infinity
+  for (const entry of DASHBOARD_PROJECT_CATALOG) {
+    const ranges = catalogRanges(entry)
+    const hit = ranges.some(([lo, hi]) => Number.isFinite(lo) && Number.isFinite(hi) && km >= lo - pad && km <= hi + pad)
+    if (!hit) continue
+    const width = rangeWidth(ranges)
+    if (width < bestWidth) {
+      best = entry
+      bestWidth = width
+    }
+  }
+  return best
+}
+
+function normalizeProjectLabel(name) {
+  const raw = String(name || '').trim()
+  if (!raw || raw === '—') return ''
+  const lower = raw.toLowerCase()
+  for (const entry of DASHBOARD_PROJECT_CATALOG) {
+    if (String(entry.fullName || '').toLowerCase() === lower) return entry.fullName
+    if ((entry.shortNames || []).some((n) => String(n).toLowerCase() === lower)) return entry.fullName
+    if (String(entry.shortLabel || '').toLowerCase() === lower) return entry.fullName
+  }
+  return raw
+}
+
+function resolveProjectName(report, bridgeMeta) {
+  const meta = bridgeMeta.get(report.chainageKey) || {}
+  const fromBridge = normalizeProjectLabel(meta.projectName)
+  if (fromBridge) return fromBridge
+
+  const km = chainageKeyToKm(report.chainageKey)
+  const catalog = findCatalogProjectByKm(km)
+  if (catalog?.fullName) return catalog.fullName
+  return '—'
+}
+
 function enrichReport(report, bridgeMeta) {
   const meta = bridgeMeta.get(report.chainageKey) || {}
   return {
     ...report,
     chainage: report.chainageKey,
-    projectName: meta.projectName || '—',
+    projectName: resolveProjectName(report, bridgeMeta),
     structureType: report.structureType || meta.bridgeStructureType || '',
   }
 }
@@ -76,6 +133,47 @@ function filterReports(reports, { projectName = '', structureType = '' } = {}) {
   return list
 }
 
+function sortByProjectThenChainage(a, b) {
+  const pa = String(a.projectName || '')
+  const pb = String(b.projectName || '')
+  if (pa !== pb) {
+    if (pa === '—') return 1
+    if (pb === '—') return -1
+    return pa.localeCompare(pb)
+  }
+  return String(a.chainageKey || '').localeCompare(String(b.chainageKey || ''), undefined, {
+    numeric: true,
+  })
+}
+
+function buildProjectOptions(unmatchedLidar, unmatchedSar) {
+  const map = new Map()
+  const bump = (projectName, kind) => {
+    const name = String(projectName || '').trim()
+    if (!name || name === '—') return
+    if (!map.has(name)) map.set(name, { name, count: 0, lidar: 0, sar: 0 })
+    const row = map.get(name)
+    row.count += 1
+    if (kind === 'lidar') row.lidar += 1
+    if (kind === 'sar') row.sar += 1
+  }
+  for (const r of unmatchedLidar) bump(r.projectName, 'lidar')
+  for (const r of unmatchedSar) bump(r.projectName, 'sar')
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function buildStructureTypeOptions(unmatchedLidar, unmatchedSar) {
+  const map = new Map()
+  for (const r of [...unmatchedLidar, ...unmatchedSar]) {
+    const type = String(r.structureType || '').trim().toUpperCase()
+    if (!type) continue
+    map.set(type, (map.get(type) || 0) + 1)
+  }
+  return [...map.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export async function listUnmatchedShmReports(options = {}) {
   const scope = String(options.scope || 'bmc').toLowerCase()
   const projectName = String(options.projectName || '').trim()
@@ -91,22 +189,18 @@ export async function listUnmatchedShmReports(options = {}) {
   const unmatchedSar = sarFiles
     .filter((f) => f.chainageKey && !approvedKeys.has(f.chainageKey))
     .map((f) => enrichReport(f, bridgeMeta))
+    .sort(sortByProjectThenChainage)
 
   const unmatchedLidar = lidarFiles
     .filter((f) => f.chainageKey && !approvedKeys.has(f.chainageKey))
     .map((f) => enrichReport(f, bridgeMeta))
+    .sort(sortByProjectThenChainage)
 
   const lidar = filterReports(unmatchedLidar, { projectName, structureType })
   const sar = filterReports(unmatchedSar, { projectName, structureType })
 
-  const projects = [...new Set([...unmatchedLidar, ...unmatchedSar].map((r) => r.projectName).filter((p) => p && p !== '—'))].sort()
-  const structureTypes = [
-    ...new Set(
-      [...unmatchedLidar, ...unmatchedSar]
-        .map((r) => String(r.structureType || '').trim().toUpperCase())
-        .filter(Boolean)
-    ),
-  ].sort()
+  const projects = buildProjectOptions(unmatchedLidar, unmatchedSar)
+  const structureTypes = buildStructureTypeOptions(unmatchedLidar, unmatchedSar)
 
   return {
     lidar,
