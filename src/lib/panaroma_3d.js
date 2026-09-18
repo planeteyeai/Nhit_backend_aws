@@ -435,7 +435,11 @@ async function hydrateBridgePanoramaIndexFromBucket(uploadRoot, bridgeId) {
     }
     return true
   } catch (e) {
-    console.warn('[panorama] hydrate index from bucket failed:', id, e.message)
+    const msg = String(e?.message || e || '')
+    // Missing index for a bridge is normal — don't spam Railway logs.
+    if (!/NoSuchKey|not found|does not exist|404/i.test(msg)) {
+      console.warn('[panorama] hydrate index from bucket failed:', id, msg)
+    }
     return false
   }
 }

@@ -48,7 +48,10 @@ async function hydrateBridgePonoIndexFromBucket(uploadRoot, bridgeId) {
     writeBridgePonoIndex(uploadRoot, bid, photos)
     return true
   } catch (e) {
-    console.warn('[pono] hydrate index from bucket failed:', bid, e.message)
+    const msg = String(e?.message || e || '')
+    if (!/NoSuchKey|not found|does not exist|404/i.test(msg)) {
+      console.warn('[pono] hydrate index from bucket failed:', bid, msg)
+    }
     return false
   }
 }

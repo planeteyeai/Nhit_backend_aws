@@ -16,11 +16,30 @@ import { guessContentType, uploadFromFile } from './storage.js'
 
 const VIEWER_BASE = String(process.env.POINTCLOUD_VIEWER_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
 const MODEL_3D_PREFIX = 'upload/model_3d/'
+const isProd = process.env.NODE_ENV === 'production'
+/** Live Railway has no local pointcloud-viewer — only call it when explicitly configured or in dev. */
+const viewerEnabled =
+  Boolean(String(process.env.POINTCLOUD_VIEWER_URL || '').trim()) || !isProd
 
 /** In-memory jobs when converting via S3 + backend PotreeConverter (no pointcloud-viewer). */
 const backendConvertJobs = new Map()
+let loggedViewerOffline = false
+
+function viewerOfflineResult(reason = 'offline') {
+  if (!loggedViewerOffline) {
+    loggedViewerOffline = true
+    console.warn(
+      `[potree] pointcloud-viewer unreachable (${VIEWER_BASE}) — using backend/S3 convert path. ${reason}`,
+    )
+  }
+  return { ok: false, status: 0, json: null, text: '', offline: true }
+}
 
 async function viewerFetch(path, init = {}) {
+  if (!viewerEnabled) {
+    return viewerOfflineResult('POINTCLOUD_VIEWER_URL not set in production')
+  }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15_000)
   try {
@@ -46,12 +65,18 @@ async function viewerFetch(path, init = {}) {
       json = null
     }
     return { ok: res.ok, status: res.status, json, text }
+  } catch (e) {
+    const cause = e?.cause?.code || e?.code || e?.name || e?.message || 'fetch_failed'
+    return viewerOfflineResult(String(cause))
   } finally {
     clearTimeout(timer)
   }
 }
 
 export async function getPointcloudViewerHealth() {
+  if (!viewerEnabled) {
+    return { online: false, localConvert: false, url: VIEWER_BASE, skipped: true }
+  }
   const r = await viewerFetch('/api/health')
   if (!r.ok || !r.json) {
     return { online: false, localConvert: false, url: VIEWER_BASE }

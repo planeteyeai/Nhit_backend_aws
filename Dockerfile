@@ -1,5 +1,5 @@
 # Railway / Docker — GLB files via git-lfs (clone fallback when .git is missing from context).
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
