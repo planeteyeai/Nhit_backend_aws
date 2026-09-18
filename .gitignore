@@ -26,6 +26,10 @@ upload/**/*
 !upload/model_3d/lfs-manifest.json
 !upload/model_3d/README.md
 !upload/model_3d/*.glb
+# InSAR workbook cache for Railway (SharePoint often needs login)
+!upload/insar/
+!upload/insar/.gitkeep
+!upload/insar/BMS.xlsx
 download/
 tmp-*.txt
 *.log
