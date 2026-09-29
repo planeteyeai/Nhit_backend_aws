@@ -703,6 +703,34 @@ export async function ensurePointCloudDataSchema(pool) {
     }
   }
 
+  // One entity payload per row (not a copy of the whole project).
+  try {
+    await pool.query(
+      'ALTER TABLE point_cloud_data ADD COLUMN entity_json LONGTEXT NULL'
+    )
+  } catch (e) {
+    if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
+      console.warn('[point_cloud_data] add entity_json column:', e.message)
+    }
+  }
+
+  // One project snapshot per bridge + cloud. Legacy row copies of project_json stay readable.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS point_cloud_projects (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        bridge_id INT NOT NULL,
+        point_cloud_id VARCHAR(255) NOT NULL,
+        project_json LONGTEXT NULL,
+        version INT NOT NULL DEFAULT 0,
+        updated_at DATETIME NULL,
+        UNIQUE KEY uk_pcd_project (bridge_id, point_cloud_id)
+      )
+    `)
+  } catch (e) {
+    console.warn('[point_cloud_projects] create:', e.message)
+  }
+
   schemaReady = true
 }
 
@@ -946,6 +974,358 @@ export async function replacePointCloudData(pool, {
       : rows.filter((r) => r.images).length,
     rows,
   }
+}
+
+function httpError(message, status, code) {
+  const err = new Error(message)
+  err.status = status
+  err.code = code
+  return err
+}
+
+function cloneCanonicalProject(raw) {
+  const base = raw && typeof raw === 'object' ? raw : {}
+  return {
+    type: base.type || 'Potree',
+    version: base.version ?? 1.7,
+    view: base.view || null,
+    settings: base.settings || null,
+    classification: base.classification || null,
+    measurements: Array.isArray(base.measurements) ? base.measurements.slice() : [],
+    annotations: Array.isArray(base.annotations) ? base.annotations : [],
+    volumes: Array.isArray(base.volumes) ? base.volumes : [],
+    profiles: Array.isArray(base.profiles) ? base.profiles : [],
+    cameraAnimations: Array.isArray(base.cameraAnimations) ? base.cameraAnimations : [],
+    orientedImages: Array.isArray(base.orientedImages) ? base.orientedImages : [],
+    geopackages: Array.isArray(base.geopackages) ? base.geopackages : [],
+    highlightDistress: base.highlightDistress || null,
+  }
+}
+
+const PROJECT_PATCH_KEYS = [
+  'highlightDistress',
+  'classification',
+  'view',
+  'settings',
+  'annotations',
+  'volumes',
+  'profiles',
+  'cameraAnimations',
+  'orientedImages',
+  'geopackages',
+]
+
+function entityKind(type) {
+  const t = String(type || 'measurement').toLowerCase()
+  if (t === 'annotation' || t === 'anno') return 'a'
+  if (t === 'photo' || t === 'image') return 'i'
+  return 'm'
+}
+
+function upsertByUuid(list, item, uuid) {
+  const next = Array.isArray(list) ? list.slice() : []
+  const key = String(uuid)
+  const idx = next.findIndex((entry) => String(entry?.uuid || entry?.id || '') === key)
+  if (idx >= 0) next[idx] = item
+  else next.push(item)
+  return next
+}
+
+function removeByUuid(list, uuid) {
+  const key = String(uuid)
+  return (Array.isArray(list) ? list : []).filter(
+    (entry) => String(entry?.uuid || entry?.id || '') !== key
+  )
+}
+
+/**
+ * Apply one measurement/annotation/photo change without deleting the rest of the cloud.
+ * project_json is stored once on point_cloud_projects.
+ */
+export async function applyPointCloudChanges(pool, {
+  bridgeId,
+  bridgeInspectionId = null,
+  pointCloudId,
+  upserts = [],
+  deletes = [],
+  projectPatch = null,
+  version = null,
+} = {}) {
+  await ensurePointCloudDataSchema(pool)
+
+  const bid = Number(bridgeId)
+  const cloudId = String(pointCloudId || '').trim()
+  if (!bid) throw httpError('Invalid bridgeId', 400, 'POINT_CLOUD_SAVE_INVALID')
+  if (!cloudId) throw httpError('pointCloudId is required', 400, 'POINT_CLOUD_SAVE_INVALID')
+
+  const changes = Array.isArray(upserts) ? upserts : []
+  const removals = Array.isArray(deletes) ? deletes : []
+  const patch = projectPatch && typeof projectPatch === 'object' ? projectPatch : null
+  if (!changes.length && !removals.length && !patch) {
+    throw httpError('No point-cloud changes to save', 400, 'POINT_CLOUD_SAVE_EMPTY')
+  }
+
+  const [bridgeRows] = await pool.query('SELECT bridge_id FROM bridge WHERE bridge_id = ? LIMIT 1', [bid])
+  if (!bridgeRows.length) throw httpError('Bridge not found', 404, 'POINT_CLOUD_SAVE_INVALID')
+
+  const inspectionId = await resolveInspectionId(pool, bid, bridgeInspectionId)
+  const storedId = await resolveStoredCloudId(pool, cloudId, { bridgeId: bid })
+  const lockName = `pcd:${bid}:${storedId}`.slice(0, 64)
+  const conn = await pool.getConnection()
+  let locked = false
+  try {
+    const [[lockRow]] = await conn.query('SELECT GET_LOCK(?, 8) AS ok', [lockName])
+    if (Number(lockRow?.ok) !== 1) {
+      throw httpError(
+        'Another save is still writing this point cloud. Wait a moment and try again.',
+        409,
+        'POINT_CLOUD_SAVE_CONFLICT'
+      )
+    }
+    locked = true
+    await conn.beginTransaction()
+
+    const [[existingProject]] = await conn.query(
+      `SELECT project_json, version FROM point_cloud_projects
+       WHERE bridge_id = ? AND point_cloud_id = ? LIMIT 1 FOR UPDATE`,
+      [bid, storedId]
+    )
+    const dbVersion = existingProject ? Number(existingProject.version) || 0 : 0
+    if (version != null && version !== '' && Number(version) !== dbVersion) {
+      throw httpError(
+        'This point cloud was updated somewhere else. Reload the viewer, then save again.',
+        409,
+        'POINT_CLOUD_VERSION_CONFLICT'
+      )
+    }
+
+    let canonical = null
+    if (existingProject?.project_json) {
+      const parsed = parseStoredProjectJson(existingProject.project_json)
+      if (parsed) canonical = cloneCanonicalProject(parsed)
+    }
+    if (!canonical) {
+      const legacyRows = await listPointCloudData(pool, {
+        bridgeId: bid,
+        pointCloudId: storedId,
+        includeImages: false,
+      })
+      canonical = cloneCanonicalProject(rowsToPotreeProject(legacyRows))
+    }
+
+    if (patch) {
+      for (const key of PROJECT_PATCH_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) canonical[key] = patch[key]
+      }
+    }
+
+    const now = new Date()
+    for (const change of changes) {
+      const type = String(change?.type || 'measurement')
+      const kind = entityKind(type)
+      const data = change?.data && typeof change.data === 'object' ? change.data : {}
+      const uuid = String(data.uuid || data.id || change?.id || '').trim()
+      if (!uuid) throw httpError('Each upsert needs a stable id', 400, 'POINT_CLOUD_SAVE_INVALID')
+      if (kind === 'm') {
+        const measure = { ...data, uuid }
+        canonical.measurements = upsertByUuid(canonical.measurements, measure, uuid)
+        await upsertMeasurementRow(conn, {
+          bid, storedId, inspectionId, uuid, measure, now,
+        })
+      } else if (kind === 'a') {
+        const annotation = { ...data, uuid }
+        canonical.annotations = upsertByUuid(canonical.annotations, annotation, uuid)
+        await upsertAnnotationRow(conn, {
+          bid, storedId, inspectionId, uuid, annotation, now,
+        })
+      } else if (kind === 'i') {
+        await upsertPhotoRow(conn, {
+          bid, storedId, inspectionId, uuid, photo: data, now,
+        })
+      }
+    }
+
+    for (const removal of removals) {
+      const id = String(typeof removal === 'string' ? removal : removal?.id || '').trim()
+      const type = typeof removal === 'string' ? 'measurement' : removal?.type || 'measurement'
+      if (!id) continue
+      const kind = entityKind(type)
+      if (kind === 'm') canonical.measurements = removeByUuid(canonical.measurements, id)
+      if (kind === 'a') canonical.annotations = removeByUuid(canonical.annotations, id)
+      const rowId = entityRowId(bid, storedId, kind, id, 0)
+      await conn.query(
+        `DELETE FROM point_cloud_data
+         WHERE bridge_id = ? AND point_cloud_id = ? AND (id = ? OR annotation_uuid = ? OR id = ?)`,
+        [bid, storedId, rowId, id, id]
+      )
+    }
+
+    const snapshot = compactProjectForStorage(canonical)
+    const nextVersion = dbVersion + 1
+    await conn.query(
+      `INSERT INTO point_cloud_projects (bridge_id, point_cloud_id, project_json, version, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         project_json = VALUES(project_json),
+         version = VALUES(version),
+         updated_at = VALUES(updated_at)`,
+      [bid, storedId, snapshot, nextVersion, now]
+    )
+    // Stop duplicating the full snapshot onto every measurement row.
+    await conn.query(
+      `UPDATE point_cloud_data SET project_json = NULL
+       WHERE bridge_id = ? AND point_cloud_id = ? AND project_json IS NOT NULL`,
+      [bid, storedId]
+    )
+
+    await conn.commit()
+    return {
+      bridgeId: bid,
+      pointCloudId: storedId,
+      version: nextVersion,
+      upserted: changes.length,
+      deleted: removals.length,
+    }
+  } catch (e) {
+    try { await conn.rollback() } catch { /* ignore */ }
+    throw e
+  } finally {
+    if (locked) {
+      try { await conn.query('SELECT RELEASE_LOCK(?)', [lockName]) } catch { /* ignore */ }
+    }
+    conn.release()
+  }
+}
+
+async function upsertMeasurementRow(conn, { bid, storedId, inspectionId, uuid, measure, now }) {
+  const points = Array.isArray(measure?.points) ? measure.points : []
+  const [p1x, p1y, p1z] = asVec3(points[0])
+  const [p2x, p2y, p2z] = asVec3(points[1])
+  const rowId = entityRowId(bid, storedId, 'm', uuid, 0)
+  const entityJson = JSON.stringify(measure)
+  await conn.query(
+    `INSERT INTO point_cloud_data (
+      bridge_id, id, point_cloud_id, created_at, bridge_inspection_id,
+      project_type, project_version, project_json,
+      measurement_name, point_1_x, point_1_y, point_1_z, point_2_x, point_2_y, point_2_z,
+      annotation_uuid, entity_json
+    ) VALUES (?, ?, ?, ?, ?, 'Potree', 1.7, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+    ON DUPLICATE KEY UPDATE
+      measurement_name = VALUES(measurement_name),
+      point_1_x = VALUES(point_1_x),
+      point_1_y = VALUES(point_1_y),
+      point_1_z = VALUES(point_1_z),
+      point_2_x = VALUES(point_2_x),
+      point_2_y = VALUES(point_2_y),
+      point_2_z = VALUES(point_2_z),
+      entity_json = VALUES(entity_json),
+      project_json = NULL,
+      bridge_inspection_id = VALUES(bridge_inspection_id)`,
+    [
+      bid, rowId, storedId, now, inspectionId,
+      strOrNull(measure?.name, 100),
+      p1x, p1y, p1z, p2x, p2y, p2z,
+      entityJson,
+    ]
+  )
+}
+
+async function upsertAnnotationRow(conn, { bid, storedId, inspectionId, uuid, annotation, now }) {
+  const [px, py, pz] = asVec3(annotation?.position)
+  const rowId = entityRowId(bid, storedId, 'a', uuid, 0)
+  await conn.query(
+    `INSERT INTO point_cloud_data (
+      bridge_id, id, point_cloud_id, created_at, bridge_inspection_id,
+      project_type, project_version, project_json,
+      annotation_uuid, annotation_title, annotation_description,
+      annotation_position_x, annotation_position_y, annotation_position_z,
+      entity_json
+    ) VALUES (?, ?, ?, ?, ?, 'Potree', 1.7, NULL, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      annotation_title = VALUES(annotation_title),
+      annotation_description = VALUES(annotation_description),
+      annotation_position_x = VALUES(annotation_position_x),
+      annotation_position_y = VALUES(annotation_position_y),
+      annotation_position_z = VALUES(annotation_position_z),
+      entity_json = VALUES(entity_json),
+      project_json = NULL`,
+    [
+      bid, rowId, storedId, now, inspectionId,
+      strOrNull(uuid, 100),
+      strOrNull(annotation?.title, 255),
+      annotation?.description != null ? String(annotation.description) : null,
+      px, py, pz,
+      JSON.stringify(annotation),
+    ]
+  )
+}
+
+async function upsertPhotoRow(conn, { bid, storedId, inspectionId, uuid, photo, now }) {
+  const dataUrl = extractImageDataUrl(photo)
+  if (!dataUrl) throw httpError('Photo save is missing image data', 400, 'POINT_CLOUD_SAVE_INVALID')
+  const [px, py, pz] = asVec3(photo?.position)
+  const rowId = entityRowId(bid, storedId, 'i', uuid, 0)
+  const name = photo?.image?.name || photo?.name || 'Image'
+  const note = photo?.text || photo?.note || photo?.description || ''
+  const meta = {
+    ...photo,
+    id: uuid,
+    image: photo?.image ? { ...photo.image, data: undefined } : undefined,
+  }
+  await conn.query(
+    `INSERT INTO point_cloud_data (
+      bridge_id, id, point_cloud_id, created_at, bridge_inspection_id,
+      project_type, project_version, project_json,
+      annotation_uuid, annotation_title, annotation_description,
+      annotation_position_x, annotation_position_y, annotation_position_z,
+      images, entity_json
+    ) VALUES (?, ?, ?, ?, ?, 'Potree', 1.7, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      annotation_title = VALUES(annotation_title),
+      annotation_description = VALUES(annotation_description),
+      annotation_position_x = VALUES(annotation_position_x),
+      annotation_position_y = VALUES(annotation_position_y),
+      annotation_position_z = VALUES(annotation_position_z),
+      images = VALUES(images),
+      entity_json = VALUES(entity_json),
+      project_json = NULL`,
+    [
+      bid, rowId, storedId, now, inspectionId,
+      strOrNull(uuid, 100),
+      strOrNull(name, 255),
+      note != null && String(note).trim() !== '' ? String(note) : null,
+      px, py, pz,
+      dataUrl,
+      JSON.stringify(meta),
+    ]
+  )
+}
+
+/** Prefer the single project row; fall back to legacy per-row project_json. */
+export async function loadPointCloudView(pool, { bridgeId, pointCloudId, rows }) {
+  const bid = Number(bridgeId) || Number(rows?.[0]?.bridge_id) || 0
+  const cloudId = String(pointCloudId || rows?.[0]?.point_cloud_id || '').trim()
+  const legacy = rowsToPotreeProject(rows)
+  if (!bid || !cloudId) return { project: legacy, version: 0 }
+  try {
+    const [projRows] = await pool.query(
+      `SELECT project_json, version FROM point_cloud_projects
+       WHERE bridge_id = ? AND point_cloud_id = ? LIMIT 1`,
+      [bid, cloudId]
+    )
+    if (projRows[0]?.project_json) {
+      const stored = parseStoredProjectJson(projRows[0].project_json)
+      if (stored) {
+        return {
+          project: finishProject(cloneCanonicalProject(stored)),
+          version: Number(projRows[0].version) || 0,
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[point_cloud_projects] load:', e.message)
+  }
+  return { project: legacy, version: 0 }
 }
 
 const POINT_CLOUD_DATA_COLUMNS = `
