@@ -13,7 +13,7 @@ import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { diagGuard } from './middleware/diagGuard.js'
 import { requireAuth } from './middleware/auth.js'
-import { assertProductionConfig, isProduction } from './lib/envValidate.js'
+import { assertProductionConfig, isProduction, resolvePublicApiBase } from './lib/envValidate.js'
 import {
   createPointcloudViewerRouter,
   getPointcloudViewerHealthSnapshot,
@@ -311,7 +311,16 @@ function startModel3dWarmup() {
 }
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`BMS backend listening on http://${HOST}:${PORT} (${isProduction() ? 'production' : 'development'})`)
+  const mode = isProduction() ? 'production' : 'development'
+  console.log(`BMS backend bind http://${HOST}:${PORT} (${mode})`)
+  const publicBase = resolvePublicApiBase()
+  if (publicBase) {
+    console.log(`BMS backend live API ${publicBase}`)
+    console.log(`BMS backend health ${publicBase}/health`)
+  } else if (!isProduction()) {
+    console.log(`BMS backend local API http://127.0.0.1:${PORT}`)
+    console.log(`BMS backend health http://127.0.0.1:${PORT}/health`)
+  }
   const st = storageStatus()
   console.log(`[storage] bucket ${st.enabled ? 'enabled' : 'disabled'}${st.bucket ? ` (${st.bucket})` : ''}`)
   ensureNonStructuralDistressTable(pool).catch((e) =>

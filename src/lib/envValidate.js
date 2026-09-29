@@ -8,6 +8,28 @@ export function isProduction() {
   return String(process.env.NODE_ENV || '').toLowerCase() === 'production'
 }
 
+/** Public HTTPS URL for logs / docs (Railway sets RAILWAY_PUBLIC_DOMAIN). */
+export function resolvePublicApiBase() {
+  const explicit = String(
+    process.env.PUBLIC_API_URL ||
+      process.env.API_PUBLIC_URL ||
+      process.env.BMS_PUBLIC_URL ||
+      ''
+  ).trim()
+  if (explicit) return explicit.replace(/\/+$/, '')
+
+  const railwayDomain = String(process.env.RAILWAY_PUBLIC_DOMAIN || '').trim()
+  if (railwayDomain) {
+    const host = railwayDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+    return `https://${host}`
+  }
+
+  const staticUrl = String(process.env.RAILWAY_STATIC_URL || '').trim()
+  if (staticUrl) return staticUrl.replace(/\/+$/, '')
+
+  return ''
+}
+
 /**
  * Warn about missing production configuration. Does NOT exit — lets the
  * server start so /api/diag/db can be used to debug connectivity issues.
