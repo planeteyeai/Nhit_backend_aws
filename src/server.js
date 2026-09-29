@@ -280,7 +280,10 @@ app.use((err, _req, res, _next) => {
 
   // Invalid JSON (malformed client body) — return clean 400 without stack spam.
   if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
-    console.warn('[body] JSON parse failed:', String(err.message || err).slice(0, 120))
+    // One-line debug only in non-prod; production stays silent (bots / bad clients are common).
+    if (!isProduction()) {
+      console.warn('[body] JSON parse failed:', String(err.message || err).slice(0, 120))
+    }
     if (!res.headersSent) {
       res.status(400).json({
         ok: false,
