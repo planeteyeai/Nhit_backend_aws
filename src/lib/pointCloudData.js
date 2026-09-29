@@ -780,6 +780,7 @@ export async function replacePointCloudData(pool, {
   project,
   imageAnnotations = [],
   preserveExistingImages = false,
+  allowEmptyOverwrite = false,
 } = {}) {
   await ensurePointCloudDataSchema(pool)
 
@@ -842,7 +843,8 @@ export async function replacePointCloudData(pool, {
     createdAt: now,
   })
 
-  // Refuse accidental wipe: empty incoming must not DELETE existing markings.
+  // Refuse accidental wipe: empty incoming must not DELETE existing markings
+  // unless the client explicitly opted in (user deleted all annotations/measurements).
   const incomingHasContent = rows.some(
     (r) =>
       r.measurement_name ||
@@ -851,7 +853,7 @@ export async function replacePointCloudData(pool, {
       r.annotation_title ||
       r.images
   )
-  if (!incomingHasContent) {
+  if (!incomingHasContent && !allowEmptyOverwrite) {
     const [existing] = await pool.query(
       `SELECT id, measurement_name, point_1_x, annotation_uuid, images
        FROM point_cloud_data

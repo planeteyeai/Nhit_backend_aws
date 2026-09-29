@@ -5552,6 +5552,10 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     const project = body.project && typeof body.project === 'object' ? body.project : null
     const imageAnnotations = Array.isArray(body.imageAnnotations) ? body.imageAnnotations : []
     const preserveExistingImages = body.preserveExistingImages === true || body.preserve_existing_images === true
+    const allowEmptyOverwrite =
+      body.allowEmptyOverwrite === true ||
+      body.allow_empty_overwrite === true ||
+      body.clearMarkings === true
     if (!project && !imageAnnotations.length) {
       return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
     }
@@ -5562,6 +5566,7 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
       project: project || { type: 'Potree', version: 1.7 },
       imageAnnotations,
       preserveExistingImages,
+      allowEmptyOverwrite,
     })
     res.json({
       status: 'success',
@@ -5711,6 +5716,10 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
     if (!project && !imageAnnotations.length) {
       return res.status(400).json({ status: 'error', message: 'project or imageAnnotations is required' })
     }
+    const allowEmptyOverwrite =
+      body.allowEmptyOverwrite === true ||
+      body.allow_empty_overwrite === true ||
+      body.clearMarkings === true
     const result = await replacePointCloudData(pool, {
       bridgeId,
       bridgeInspectionId,
@@ -5718,6 +5727,7 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
       project: project || { type: 'Potree', version: 1.7 },
       imageAnnotations,
       preserveExistingImages,
+      allowEmptyOverwrite,
     })
     res.json({
       status: 'success',
