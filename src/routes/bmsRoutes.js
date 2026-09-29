@@ -36,6 +36,7 @@ import {
   listPointCloudDataByCloudId,
   resolveBridgeIdForPointCloud,
   replacePointCloudData,
+  applyPointCloudDataPatch,
   ensurePointCloudDataSchema,
   rowsToImageAnnotations,
   rowsToPotreeProject,
@@ -5580,6 +5581,44 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
   }
 })
 
+router.patch('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || 0)
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const pointCloudId = String(body.pointCloudId || body.point_cloud_id || '').trim()
+    if (!pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
+    }
+    const bridgeInspectionId =
+      body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
+    const result = await applyPointCloudDataPatch(pool, {
+      bridgeId,
+      bridgeInspectionId,
+      pointCloudId,
+      upserts: Array.isArray(body.upserts) ? body.upserts : [],
+      deletes: Array.isArray(body.deletes) ? body.deletes : [],
+      projectPatch: body.projectPatch && typeof body.projectPatch === 'object' ? body.projectPatch : null,
+    })
+    res.json({
+      status: 'success',
+      message: 'Point cloud data patched',
+      version: body.version != null ? Number(body.version) + 1 : 1,
+      data: {
+        bridgeId: result.bridgeId,
+        pointCloudId: result.pointCloudId,
+        bridgeInspectionId: result.bridgeInspectionId,
+        rowCount: result.rowCount,
+        imageCount: result.imageCount,
+      },
+    })
+  } catch (e) {
+    console.error('point-cloud-data patch error:', e)
+    const msg = e.sqlMessage || e.message || 'Failed to patch point cloud data'
+    res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
+  }
+})
+
 /**
  * Dual-store access: load / save MySQL `point_cloud_data` by pointCloudId alone.
  * GET works from standalone viewer; PUT resolves bridge_id from existing rows or body.bridgeId.
@@ -5694,6 +5733,54 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
   } catch (e) {
     console.error('point-cloud-data by cloud save error:', e)
     const msg = e.sqlMessage || e.message || 'Failed to save point cloud data'
+    res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
+  }
+})
+
+router.patch('/point-cloud-data', optionalAuth, async (req, res) => {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const pointCloudId = String(body.pointCloudId || body.point_cloud_id || '').trim()
+    if (!pointCloudId) {
+      return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
+    }
+    let bridgeId = Number(body.bridgeId || body.bridge_id || 0) || 0
+    if (!bridgeId) {
+      bridgeId = (await resolveBridgeIdForPointCloud(pool, pointCloudId)) || 0
+    }
+    if (!bridgeId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'bridgeId is required for first MySQL save of this point cloud',
+        code: 'BRIDGE_ID_REQUIRED',
+      })
+    }
+    const bridgeInspectionId =
+      body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
+    const result = await applyPointCloudDataPatch(pool, {
+      bridgeId,
+      bridgeInspectionId,
+      pointCloudId,
+      upserts: Array.isArray(body.upserts) ? body.upserts : [],
+      deletes: Array.isArray(body.deletes) ? body.deletes : [],
+      projectPatch: body.projectPatch && typeof body.projectPatch === 'object' ? body.projectPatch : null,
+    })
+    res.json({
+      status: 'success',
+      message: 'Point cloud data patched',
+      version: body.version != null ? Number(body.version) + 1 : 1,
+      data: {
+        bridgeId: result.bridgeId,
+        pointCloudId: result.pointCloudId,
+        bridgeInspectionId: result.bridgeInspectionId,
+        rowCount: result.rowCount,
+        imageCount: result.imageCount,
+      },
+    })
+  } catch (e) {
+    console.error('point-cloud-data by cloud patch error:', e)
+    const msg = e.sqlMessage || e.message || 'Failed to patch point cloud data'
     res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
   }
 })

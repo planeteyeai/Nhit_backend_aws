@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "dev": "node --watch-path=src src/server.js",
     "verify:glb": "node scripts/verify-glb-deploy.js",
     "test:bucket": "node scripts/test-bucket-connection.mjs",
     "verify:storage": "node scripts/verify-file-storage.mjs",

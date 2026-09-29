@@ -395,7 +395,7 @@ function normalizeProjectMeasurements(list) {
       showCircle: Boolean(m?.showCircle),
       showAzimuth: Boolean(m?.showAzimuth),
     }
-  }).filter((m) => m.points.length > 0 && !m.points.every(isOriginPoint))
+  }).filter((m) => m.points.length >= 2 && !m.points.every(isOriginPoint))
 }
 
 function normalizeProjectAnnotations(list) {
@@ -805,7 +805,9 @@ export async function replacePointCloudData(pool, {
 
   let images = Array.isArray(imageAnnotations) ? imageAnnotations : []
   const shouldPreserve = Boolean(preserveExistingImages) || images.length === 0
-  if (shouldPreserve) {
+  /** When preserving photos, avoid loading huge base64 blobs — keep image rows untouched in SQL. */
+  const preserveImagesInPlace = shouldPreserve && images.length === 0
+  if (shouldPreserve && !preserveImagesInPlace) {
     const existingRows = await listPointCloudData(pool, {
       bridgeId: bid,
       pointCloudId: cloudId,
@@ -836,7 +838,7 @@ export async function replacePointCloudData(pool, {
     bridgeInspectionId: inspectionId,
     pointCloudId: cloudId,
     project,
-    imageAnnotations: images,
+    imageAnnotations: preserveImagesInPlace ? [] : images,
     createdAt: now,
   })
 
@@ -877,10 +879,20 @@ export async function replacePointCloudData(pool, {
   const conn = await pool.getConnection()
   try {
     await conn.beginTransaction()
-    await conn.query(
-      'DELETE FROM point_cloud_data WHERE bridge_id = ? AND point_cloud_id = ?',
-      [bid, cloudId]
-    )
+    if (preserveImagesInPlace) {
+      // Keep photo rows; replace measurements / annotations / project snapshot rows only.
+      await conn.query(
+        `DELETE FROM point_cloud_data
+         WHERE bridge_id = ? AND point_cloud_id = ?
+           AND (images IS NULL OR images = '')`,
+        [bid, cloudId]
+      )
+    } else {
+      await conn.query(
+        'DELETE FROM point_cloud_data WHERE bridge_id = ? AND point_cloud_id = ?',
+        [bid, cloudId]
+      )
+    }
     for (const row of rows) {
       await conn.query(INSERT_SQL, [
         row.bridge_id,
@@ -928,7 +940,9 @@ export async function replacePointCloudData(pool, {
     pointCloudId: cloudId,
     bridgeInspectionId: inspectionId,
     rowCount: rows.length,
-    imageCount: rows.filter((r) => r.images).length,
+    imageCount: preserveImagesInPlace
+      ? undefined
+      : rows.filter((r) => r.images).length,
     rows,
   }
 }
@@ -1133,4 +1147,130 @@ export async function getPointCloudImage(pool, { bridgeId = null, pointCloudId, 
   const [rows] = await pool.query(sql, params)
   const anns = rowsToImageAnnotations(rows)
   return anns[0] || null
+}
+
+function entityKey(item) {
+  return String(item?.uuid || item?.id || '').trim()
+}
+
+function mergeEntityList(list, upsert, deleteIds) {
+  const next = (Array.isArray(list) ? list : []).filter((item) => {
+    const id = entityKey(item)
+    return id && !deleteIds.has(id)
+  })
+  const byId = new Map(next.map((item) => [entityKey(item), item]))
+  if (upsert?.data) {
+    const id = String(upsert.id || entityKey(upsert.data) || '').trim()
+    if (id) byId.set(id, { ...upsert.data, uuid: upsert.data.uuid || id, id: upsert.data.id || id })
+  }
+  return Array.from(byId.values())
+}
+
+/**
+ * Apply Potree viewer incremental PATCH (upserts / deletes / projectPatch) onto MySQL rows.
+ */
+export async function applyPointCloudDataPatch(pool, {
+  bridgeId,
+  bridgeInspectionId = null,
+  pointCloudId,
+  upserts = [],
+  deletes = [],
+  projectPatch = null,
+} = {}) {
+  await ensurePointCloudDataSchema(pool)
+  const bid = Number(bridgeId)
+  const cloudId = String(pointCloudId || '').trim()
+  if (!bid) {
+    const err = new Error('Invalid bridgeId')
+    err.status = 400
+    throw err
+  }
+  if (!cloudId) {
+    const err = new Error('pointCloudId is required')
+    err.status = 400
+    throw err
+  }
+
+  const needsImages =
+    (Array.isArray(upserts) ? upserts : []).some((u) => u?.type === 'photo') ||
+    (Array.isArray(deletes) ? deletes : []).some((d) => d?.type === 'photo')
+
+  const rows = await listPointCloudData(pool, {
+    bridgeId: bid,
+    pointCloudId: cloudId,
+    includeImages: needsImages,
+  })
+  const project = rowsToPotreeProject(rows) || {
+    type: 'Potree',
+    version: 1.7,
+    measurements: [],
+    annotations: [],
+    volumes: [],
+    profiles: [],
+    cameraAnimations: [],
+    orientedImages: [],
+    geopackages: [],
+  }
+  let images = needsImages ? rowsToImageAnnotations(rows) : []
+
+  const deleteMeasureIds = new Set(
+    (Array.isArray(deletes) ? deletes : [])
+      .filter((d) => d?.type === 'measurement')
+      .map((d) => String(d.id || '').trim())
+      .filter(Boolean)
+  )
+  const deletePhotoIds = new Set(
+    (Array.isArray(deletes) ? deletes : [])
+      .filter((d) => d?.type === 'photo')
+      .map((d) => String(d.id || '').trim())
+      .filter(Boolean)
+  )
+
+  if (deletePhotoIds.size) {
+    images = images.filter((img) => !deletePhotoIds.has(String(img.id || img.annotation_uuid || '').trim()))
+  }
+
+  project.measurements = mergeEntityList(project.measurements, null, deleteMeasureIds)
+
+  for (const upsert of Array.isArray(upserts) ? upserts : []) {
+    const type = String(upsert?.type || '').trim()
+    if (type === 'measurement') {
+      project.measurements = mergeEntityList(project.measurements, upsert, new Set())
+    } else if (type === 'photo' && upsert?.data) {
+      const id = String(upsert.id || upsert.data.id || upsert.data.annotation_uuid || '').trim()
+      if (!id) continue
+      const idx = images.findIndex((img) => String(img.id || img.annotation_uuid || '').trim() === id)
+      const next = { ...upsert.data, id }
+      if (idx >= 0) images[idx] = { ...images[idx], ...next }
+      else images.push(next)
+    }
+  }
+
+  if (projectPatch && typeof projectPatch === 'object') {
+    for (const key of [
+      'annotations',
+      'volumes',
+      'profiles',
+      'cameraAnimations',
+      'orientedImages',
+      'geopackages',
+      'classification',
+      'highlightDistress',
+      'settings',
+      'view',
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(projectPatch, key)) {
+        project[key] = projectPatch[key]
+      }
+    }
+  }
+
+  return replacePointCloudData(pool, {
+    bridgeId: bid,
+    bridgeInspectionId,
+    pointCloudId: cloudId,
+    project,
+    imageAnnotations: needsImages ? images : [],
+    preserveExistingImages: !needsImages,
+  })
 }
