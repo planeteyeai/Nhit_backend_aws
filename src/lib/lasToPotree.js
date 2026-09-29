@@ -6,6 +6,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { spawn } from 'child_process'
+import { fileURLToPath } from 'url'
 import {
   downloadObjectToFile,
   guessContentType,
@@ -50,13 +51,11 @@ function defaultConverterPath() {
   if (env) return env
   if (process.platform === 'win32') {
     return path.join(
-      process.env.USERPROFILE || '',
-      'Desktop',
-      'las to poctree converter',
-      'PotreeConverter.exe'
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../../tools/PotreeConverter/PotreeConverter.exe'
     )
   }
-  return ''
+  return '/usr/local/bin/PotreeConverter'
 }
 
 function runPotreeConverter(exePath, inputLas, outputDir) {

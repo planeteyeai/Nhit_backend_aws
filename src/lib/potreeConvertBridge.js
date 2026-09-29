@@ -1,10 +1,10 @@
 /**
- * Bridge BMS ↔ pointcloud-viewer bulk LAS→Potree conversion (upload/model_3d → upload/potree).
- * Prefers the local pointcloud-viewer service; falls back to inline lasToPotree when offline.
+ * LAS→Potree conversion facade (formerly bridged to a separate pointcloud-viewer process).
+ * Uses in-process pointcloudViewer modules, with lasToPotree as S3 fallback.
  */
 import path from 'path'
-import { createReadStream, statSync } from 'fs'
-import FormData from 'form-data'
+import { statSync } from 'fs'
+import { createRequire } from 'module'
 import {
   convertLasFileFromS3,
   convertPendingLasFiles,
@@ -13,90 +13,47 @@ import {
 } from './lasToPotree.js'
 import { invalidatePotreeCatalogCache } from './potreeModels.js'
 import { guessContentType, uploadFromFile } from './storage.js'
+import {
+  bulkConvert,
+  getPointcloudViewerHealthSnapshot,
+  localConvert,
+} from '../routes/pointcloudViewerRoutes.js'
 
-const VIEWER_BASE = String(process.env.POINTCLOUD_VIEWER_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
+const require = createRequire(import.meta.url)
+const s3 = require('../pointcloudViewer/lib/s3.js')
+
 const MODEL_3D_PREFIX = 'upload/model_3d/'
-const isProd = process.env.NODE_ENV === 'production'
-/** Live Railway has no local pointcloud-viewer — only call it when explicitly configured or in dev. */
-const viewerEnabled =
-  Boolean(String(process.env.POINTCLOUD_VIEWER_URL || '').trim()) || !isProd
 
-/** In-memory jobs when converting via S3 + backend PotreeConverter (no pointcloud-viewer). */
+/** In-memory jobs when converting via S3 + backend PotreeConverter. */
 const backendConvertJobs = new Map()
-let loggedViewerOffline = false
-
-function viewerOfflineResult(reason = 'offline') {
-  if (!loggedViewerOffline) {
-    loggedViewerOffline = true
-    console.warn(
-      `[potree] pointcloud-viewer unreachable (${VIEWER_BASE}) — using backend/S3 convert path. ${reason}`,
-    )
-  }
-  return { ok: false, status: 0, json: null, text: '', offline: true }
-}
-
-async function viewerFetch(path, init = {}) {
-  if (!viewerEnabled) {
-    return viewerOfflineResult('POINTCLOUD_VIEWER_URL not set in production')
-  }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15_000)
-  try {
-    const headers = { Accept: 'application/json', ...(init.headers || {}) }
-    const fetchInit = {
-      method: init.method,
-      signal: controller.signal,
-      headers,
-    }
-    if (init.body != null) {
-      fetchInit.body = init.body
-      if (typeof init.body.getHeaders === 'function') {
-        Object.assign(headers, init.body.getHeaders())
-        fetchInit.duplex = 'half'
-      }
-    }
-    const res = await fetch(`${VIEWER_BASE}${path}`, fetchInit)
-    const text = await res.text()
-    let json = null
-    try {
-      json = text ? JSON.parse(text) : null
-    } catch {
-      json = null
-    }
-    return { ok: res.ok, status: res.status, json, text }
-  } catch (e) {
-    const cause = e?.cause?.code || e?.code || e?.name || e?.message || 'fetch_failed'
-    return viewerOfflineResult(String(cause))
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 export async function getPointcloudViewerHealth() {
-  if (!viewerEnabled) {
-    return { online: false, localConvert: false, url: VIEWER_BASE, skipped: true }
-  }
-  const r = await viewerFetch('/api/health')
-  if (!r.ok || !r.json) {
-    return { online: false, localConvert: false, url: VIEWER_BASE }
-  }
-  return {
-    online: true,
-    localConvert: Boolean(r.json.localConvert),
-    configured: Boolean(r.json.configured),
-    url: VIEWER_BASE,
+  try {
+    const snap = getPointcloudViewerHealthSnapshot()
+    return {
+      online: true,
+      localConvert: Boolean(snap.localConvert),
+      configured: Boolean(snap.configured),
+      url: 'integrated',
+      ...snap,
+    }
+  } catch {
+    return { online: false, localConvert: false, url: 'integrated' }
   }
 }
 
 export async function listLasSources(prefix = MODEL_3D_PREFIX) {
-  const viewer = await viewerFetch(`/api/bulk/las?prefix=${encodeURIComponent(prefix)}`)
-  if (viewer.ok && viewer.json?.items) {
-    return {
-      source: 'pointcloud-viewer',
-      prefix: viewer.json.prefix || prefix,
-      items: viewer.json.items,
+  try {
+    const data = await bulkConvert.listLas(prefix)
+    if (data?.items) {
+      return {
+        source: 'backend',
+        prefix: data.prefix || prefix,
+        items: data.items,
+      }
     }
+  } catch (e) {
+    console.warn('[potree] bulk listLas failed, using pending scan:', e.message)
   }
 
   const pending = await listPendingLasConversions()
@@ -111,9 +68,9 @@ export async function listLasSources(prefix = MODEL_3D_PREFIX) {
 }
 
 export async function getBulkConvertStatus() {
-  const viewer = await viewerFetch('/api/bulk/status')
-  if (viewer.ok && viewer.json) {
-    return { source: 'pointcloud-viewer', ...viewer.json }
+  const data = bulkConvert.publicBatch()
+  if (data) {
+    return { source: 'backend', ...data }
   }
   const inline = getLasConvertStatus()
   return {
@@ -134,19 +91,13 @@ export async function startLasConversion({ keys = [], prefix = MODEL_3D_PREFIX, 
     throw err
   }
 
-  const viewer = await viewerFetch('/api/bulk/publish', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keys: validKeys, prefix }),
-    timeoutMs: 30_000,
-  })
-
-  if (viewer.ok && viewer.json) {
-    return { source: 'pointcloud-viewer', ...viewer.json }
-  }
-
-  if (viewer.status === 409 && viewer.json) {
-    return { source: 'pointcloud-viewer', ...viewer.json }
+  try {
+    const data = bulkConvert.startPublish({ keys: validKeys, prefix })
+    return { source: 'backend', ...data }
+  } catch (e) {
+    if (e.status === 409) throw e
+    if (e.status && e.status >= 400 && e.status < 500) throw e
+    console.warn('[potree] bulk publish failed, using inline convert:', e.message)
   }
 
   const result = await convertPendingLasFiles({
@@ -215,42 +166,6 @@ function buildLasUploadNameHint(chainageKey, originalName = '') {
   return `${Date.now()}-${base || 'pointcloud'}`
 }
 
-function buildStreamUploadForm(filePath, originalName, nameHint) {
-  const fileName = originalName || 'scan.las'
-  const { size } = statSync(filePath)
-  const form = new FormData()
-  form.append('file', createReadStream(filePath), {
-    filename: fileName,
-    contentType: 'application/octet-stream',
-    knownLength: size,
-  })
-  form.append('name', nameHint)
-  return form
-}
-
-async function streamUploadToPointcloudViewer({ filePath, originalName, nameHint }) {
-  const form = buildStreamUploadForm(filePath, originalName, nameHint)
-  const r = await viewerFetch(`/api/local/convert?name=${encodeURIComponent(nameHint)}`, {
-    method: 'POST',
-    body: form,
-    timeoutMs: 30 * 60_000,
-  })
-
-  if (!r.ok) {
-    const msg = r.json?.error || r.text || `Viewer upload HTTP ${r.status}`
-    const err = new Error(msg)
-    err.status = r.status
-    throw err
-  }
-
-  return {
-    jobId: r.json?.id,
-    nameHint,
-    expectedFolder: nameHint,
-    source: 'pointcloud-viewer',
-  }
-}
-
 function createBackendConvertJob(id) {
   const job = {
     id,
@@ -314,15 +229,54 @@ async function uploadLasViaS3AndConvert({ filePath, originalName, nameHint }) {
   }
 }
 
+async function runLocalConvertUpload({ filePath, originalName, nameHint }) {
+  const id = s3.slugify(nameHint)
+  localConvert.createJob({ id, name: nameHint })
+  const job = localConvert.getJob(id)
+  if (job) {
+    job.name = nameHint
+    job.phase = 'receiving'
+    job.percent = 15
+    job.message = 'File received — starting conversion...'
+    try {
+      const { size } = statSync(filePath)
+      job.uploadedBytes = size
+      job.totalBytes = size
+    } catch {
+      /* ignore */
+    }
+    localConvert.notify(job)
+  }
+
+  const origin = s3.getViewerOrigin()
+  setImmediate(() => {
+    localConvert
+      .processLocalJob({
+        id,
+        name: nameHint,
+        inputPath: filePath,
+        origin,
+      })
+      .catch((e) => console.error('[potree] local convert failed:', e.message))
+  })
+
+  return {
+    jobId: id,
+    nameHint,
+    expectedFolder: id,
+    source: 'backend',
+  }
+}
+
 export async function uploadLasToPointcloudViewer({ filePath, originalName, chainageKey }) {
   const nameHint = buildLasUploadNameHint(chainageKey, originalName)
   const health = await getPointcloudViewerHealth()
 
-  if (health.online && health.localConvert) {
+  if (health.localConvert) {
     try {
-      return await streamUploadToPointcloudViewer({ filePath, originalName, nameHint })
+      return await runLocalConvertUpload({ filePath, originalName, nameHint })
     } catch (e) {
-      console.warn('[potree] viewer stream upload failed, using S3 path:', e.message)
+      console.warn('[potree] local convert upload failed, using S3 path:', e.message)
     }
   }
 
@@ -345,18 +299,13 @@ export async function getLocalConvertJobStatus(jobId) {
     }
   }
 
-  const r = await viewerFetch(`/api/local/convert/status?id=${encodeURIComponent(id)}`)
-  if (r.status === 404) {
+  const job = localConvert.getJob(id)
+  if (!job) {
     const err = new Error('Conversion job not found')
     err.status = 404
     throw err
   }
-  if (!r.ok) {
-    const err = new Error(r.json?.error || r.text || `Viewer status HTTP ${r.status}`)
-    err.status = r.status
-    throw err
-  }
-  const job = r.json || {}
-  const folder = folderFromPotreeMetadataUrl(job.s3) || (job.phase === 'done' ? id : null)
-  return { ...job, folder }
+  const pub = localConvert.publicJob(job)
+  const folder = folderFromPotreeMetadataUrl(pub.s3) || (pub.phase === 'done' ? id : null)
+  return { ...pub, folder }
 }

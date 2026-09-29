@@ -43,3 +43,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .vscode/
+
+tmp/
+data/pointcloud-state/
+

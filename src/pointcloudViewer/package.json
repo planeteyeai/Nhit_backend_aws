@@ -1,0 +1,5 @@
+﻿{
+  "type": "commonjs",
+  "private": true,
+  "description": "Former pointcloud-viewer Node APIs (CommonJS), mounted by BMS Express"
+}

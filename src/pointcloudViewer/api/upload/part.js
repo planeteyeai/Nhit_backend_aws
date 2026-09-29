@@ -1,0 +1,20 @@
+const s3 = require("../../lib/s3");
+const { send, readJson } = require("../../lib/http");
+
+module.exports = async function handler(req, res) {
+	if (req.method === "OPTIONS") return send(res, 204, {});
+	if (req.method !== "POST") return send(res, 405, { error: "POST only" });
+
+	try {
+		const body = await readJson(req);
+		const { key, uploadId, partNumber } = body;
+		if (!key || !uploadId || !partNumber) {
+			return send(res, 400, { error: "key, uploadId, partNumber required" });
+		}
+		const signed = await s3.signPart({ key, uploadId, partNumber });
+		return send(res, 200, signed);
+	} catch (err) {
+		console.error(err);
+		return send(res, err.status || 500, { error: err.message || "Failed to sign part" });
+	}
+};

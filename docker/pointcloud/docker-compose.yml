@@ -1,0 +1,41 @@
+# Deploy this on a cloud VPS / Lightsail / EC2 — conversion does NOT run on your PC.
+# UI can stay on Vercel; only the worker service is required online for LAS→Potree.
+
+services:
+  worker:
+    build: .
+    image: pointcloud-viewer:latest
+    environment:
+      ROLE: worker
+      AWS_S3_REGION_NAME: ${AWS_S3_REGION_NAME}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      POTREE_CONVERTER_PATH: /usr/local/bin/PotreeConverter
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-5000}
+    restart: unless-stopped
+    volumes:
+      - convert_tmp:/app/tmp
+
+  # Optional: full stack (API + UI + worker) on one cloud box instead of Vercel
+  web:
+    profiles: ["full"]
+    build: .
+    image: pointcloud-viewer:latest
+    ports:
+      - "3000:3000"
+    environment:
+      ROLE: all
+      PORT: 3000
+      AWS_S3_REGION_NAME: ${AWS_S3_REGION_NAME}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      POTREE_CONVERTER_PATH: /usr/local/bin/PotreeConverter
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-5000}
+    restart: unless-stopped
+    volumes:
+      - convert_tmp:/app/tmp
+
+volumes:
+  convert_tmp:

@@ -14,6 +14,10 @@ import bmsRoutes from './routes/bmsRoutes.js'
 import { diagGuard } from './middleware/diagGuard.js'
 import { requireAuth } from './middleware/auth.js'
 import { assertProductionConfig, isProduction } from './lib/envValidate.js'
+import {
+  createPointcloudViewerRouter,
+  getPointcloudViewerHealthSnapshot,
+} from './routes/pointcloudViewerRoutes.js'
 
 dotenv.config()
 assertProductionConfig()
@@ -184,11 +188,36 @@ function uploadSensitiveGuard(req, res, next) {
 app.use('/upload', uploadSensitiveGuard, uploadS3Fallback, uploadStaticGuard, express.static(uploadDir))
 
 app.get(['/health', '/api/health'], (_req, res) => {
-  if (isProduction()) {
-    return res.json({ ok: true })
+  let pointcloud = null
+  try {
+    pointcloud = getPointcloudViewerHealthSnapshot()
+  } catch (e) {
+    pointcloud = { ok: false, error: e.message || String(e) }
   }
-  res.json({ ok: true, service: 'bms-backend', storage: storageStatus() })
+  if (isProduction()) {
+    return res.json({
+      ok: true,
+      // Fields the embedded Potree manager expects from the former viewer /api/health.
+      configured: Boolean(pointcloud?.configured),
+      localConvert: Boolean(pointcloud?.localConvert),
+      pointcloud,
+    })
+  }
+  res.json({
+    ok: true,
+    service: 'bms-backend',
+    storage: storageStatus(),
+    configured: Boolean(pointcloud?.configured),
+    localConvert: Boolean(pointcloud?.localConvert),
+    converter: pointcloud?.converter || null,
+    viewerOrigin: pointcloud?.viewerOrigin || null,
+    mode: pointcloud?.mode || 'integrated',
+    pointcloud,
+  })
 })
+
+/** Former pointcloud-viewer APIs (clouds, upload, LAS, bulk, local convert, viewer state). */
+app.use(createPointcloudViewerRouter())
 
 app.get('/', (_req, res) => {
   if (isProduction()) {
