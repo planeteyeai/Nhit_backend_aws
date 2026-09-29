@@ -265,13 +265,41 @@ app.use((err, _req, res, _next) => {
   if (err?.status === 416 || err?.name === 'RangeNotSatisfiableError') {
     return res.status(404).json({ ok: false, error: 'File not found or empty' })
   }
+
+  // Client disconnected mid-body (large Potree photo save / proxy timeout) — not a server bug.
+  const aborted =
+    err?.type === 'request.aborted' ||
+    err?.code === 'ECONNABORTED' ||
+    err?.message === 'request aborted'
+  if (aborted) {
+    if (!res.headersSent) {
+      res.status(400).json({ ok: false, error: 'Request aborted', code: 'REQUEST_ABORTED' })
+    }
+    return
+  }
+
+  // Invalid JSON (malformed client body) — return clean 400 without stack spam.
+  if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    console.warn('[body] JSON parse failed:', String(err.message || err).slice(0, 120))
+    if (!res.headersSent) {
+      res.status(400).json({
+        ok: false,
+        error: 'Invalid JSON body',
+        code: 'INVALID_JSON',
+      })
+    }
+    return
+  }
+
   console.error(err)
   const status = err.status && Number.isInteger(err.status) ? err.status : 500
   const body = { ok: false, error: 'Internal server error' }
   if (!isProduction() && err.message) {
     body.detail = err.message
   }
-  res.status(status).json(body)
+  if (!res.headersSent) {
+    res.status(status).json(body)
+  }
 })
 
 function startModel3dWarmup() {
