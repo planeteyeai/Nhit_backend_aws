@@ -843,8 +843,7 @@ export async function replacePointCloudData(pool, {
     createdAt: now,
   })
 
-  // Refuse accidental wipe: empty incoming must not DELETE existing markings
-  // unless the client explicitly opted in (user deleted all annotations/measurements).
+  // Refuse accidental wipe unless client proves intentional clear (deleted last markings).
   const incomingHasContent = rows.some(
     (r) =>
       r.measurement_name ||
@@ -853,7 +852,7 @@ export async function replacePointCloudData(pool, {
       r.annotation_title ||
       r.images
   )
-  if (!incomingHasContent && !allowEmptyOverwrite) {
+  if (!incomingHasContent) {
     const [existing] = await pool.query(
       `SELECT id, measurement_name, point_1_x, annotation_uuid, images
        FROM point_cloud_data
@@ -868,7 +867,7 @@ export async function replacePointCloudData(pool, {
         r.annotation_uuid ||
         r.images
     )
-    if (existingHasContent) {
+    if (existingHasContent && !allowEmptyOverwrite) {
       const err = new Error(
         'Refusing to overwrite existing point_cloud_data with an empty save. Re-open the cloud, wait for markings to restore, then save again.'
       )
