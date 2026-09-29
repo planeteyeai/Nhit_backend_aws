@@ -5790,30 +5790,29 @@ router.patch('/point-cloud-data', optionalAuth, async (req, res) => {
     }
     const bridgeInspectionId =
       body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null
-    const result = await applyPointCloudDataPatch(pool, {
+    const result = await applyPointCloudChanges(pool, {
       bridgeId,
       bridgeInspectionId,
       pointCloudId,
       upserts: Array.isArray(body.upserts) ? body.upserts : [],
       deletes: Array.isArray(body.deletes) ? body.deletes : [],
       projectPatch: body.projectPatch && typeof body.projectPatch === 'object' ? body.projectPatch : null,
+      version: body.version,
     })
     res.json({
+      success: true,
       status: 'success',
-      message: 'Point cloud data patched',
-      version: body.version != null ? Number(body.version) + 1 : 1,
-      data: {
-        bridgeId: result.bridgeId,
-        pointCloudId: result.pointCloudId,
-        bridgeInspectionId: result.bridgeInspectionId,
-        rowCount: result.rowCount,
-        imageCount: result.imageCount,
-      },
+      message: 'Point cloud changes saved',
+      version: result.version,
+      data: result,
     })
   } catch (e) {
     console.error('point-cloud-data by cloud patch error:', e)
-    const msg = e.sqlMessage || e.message || 'Failed to patch point cloud data'
-    res.status(e.status || 500).json({ status: 'error', message: msg, code: e.code || undefined })
+    const status = e.status || (e.type === 'entity.too.large' ? 413 : 500)
+    const code = e.code || (status === 413 ? 'POINT_CLOUD_PAYLOAD_TOO_LARGE' : 'POINT_CLOUD_SAVE_FAILED')
+    const message =
+      status === 500 ? 'Failed to save point-cloud changes' : e.message || 'Failed to save point-cloud changes'
+    res.status(status).json({ success: false, status: 'error', message, code })
   }
 })
 
