@@ -54,7 +54,7 @@ function isPublicPointCloudDataWrite(req) {
   const byBridge = /^\/bridges\/\d+\/point-cloud-data(?:\/images(?:\/[^/]+)?)?$/.test(path)
   const byCloud = path === '/point-cloud-data' || path.startsWith('/point-cloud-data/images')
   if (!byBridge && !byCloud) return false
-  return req.method === 'GET' || req.method === 'PUT' || req.method === 'OPTIONS'
+  return req.method === 'GET' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'OPTIONS'
 }
 
 /**

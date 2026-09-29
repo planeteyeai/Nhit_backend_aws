@@ -43,6 +43,8 @@ import {
   countPointCloudImages,
   listPointCloudImageMeta,
   getPointCloudImage,
+  applyPointCloudChanges,
+  loadPointCloudView,
 } from '../lib/pointCloudData.js'
 import {
   addPanoramaMarkerImage,
@@ -5490,11 +5492,15 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     const imageCount = includeImages
       ? imageAnnotations.length
       : await countPointCloudImages(pool, { bridgeId, pointCloudId })
+    const loaded = pointCloudId
+      ? await loadPointCloudView(pool, { bridgeId, pointCloudId, rows })
+      : { project: rowsToPotreeProject(rows), version: 0 }
     res.json({
       status: 'success',
       // Omit base64 blobs from `data` — they live only in imageAnnotations (half the payload).
       data: rowsForApiList(rows),
-      project: rowsToPotreeProject(rows),
+      project: loaded.project,
+      version: loaded.version,
       imageAnnotations,
       bridgeId,
       pointCloudId,
@@ -5580,6 +5586,58 @@ router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
   }
 })
 
+function pointCloudSaveError(res, e, logLabel) {
+  console.error(logLabel, e)
+  const status = e.status || (e.type === 'entity.too.large' ? 413 : 500)
+  const code = e.code || (status === 413 ? 'POINT_CLOUD_PAYLOAD_TOO_LARGE' : 'POINT_CLOUD_SAVE_FAILED')
+  const message = status === 500
+    ? 'Failed to save point-cloud changes'
+    : (e.message || 'Failed to save point-cloud changes')
+  res.status(status).json({ success: false, status: 'error', message, code })
+}
+
+async function handlePointCloudPatch(req, res, pointCloudIdFromPath) {
+  try {
+    await ensurePointCloudDataSchema(pool)
+    const bridgeId = Number(req.params.bridgeId || req.body?.bridgeId || 0)
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const pointCloudId = String(
+      pointCloudIdFromPath || body.pointCloudId || body.point_cloud_id || ''
+    ).trim()
+    if (!bridgeId || !pointCloudId || pointCloudId === 'images') {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'bridgeId and pointCloudId are required',
+        code: 'POINT_CLOUD_SAVE_INVALID',
+      })
+    }
+    const result = await applyPointCloudChanges(pool, {
+      bridgeId,
+      pointCloudId,
+      bridgeInspectionId: body.bridgeInspectionId ?? body.bridge_inspection_id ?? body.inspectionId ?? null,
+      upserts: Array.isArray(body.upserts) ? body.upserts : [],
+      deletes: Array.isArray(body.deletes) ? body.deletes : [],
+      projectPatch: body.projectPatch || body.project_json || null,
+      version: body.version,
+    })
+    res.json({
+      success: true,
+      status: 'success',
+      message: 'Point cloud changes saved',
+      data: result,
+      version: result.version,
+    })
+  } catch (e) {
+    pointCloudSaveError(res, e, 'point-cloud-data patch error:')
+  }
+}
+
+router.patch('/bridges/:bridgeId/point-cloud-data', optionalAuth, (req, res) => handlePointCloudPatch(req, res))
+router.patch('/bridges/:bridgeId/point-cloud-data/:pointCloudId', optionalAuth, (req, res) => {
+  handlePointCloudPatch(req, res, req.params.pointCloudId)
+})
+
 /**
  * Dual-store access: load / save MySQL `point_cloud_data` by pointCloudId alone.
  * GET works from standalone viewer; PUT resolves bridge_id from existing rows or body.bridgeId.
@@ -5598,10 +5656,12 @@ router.get('/point-cloud-data', optionalAuth, async (req, res) => {
     const imageCount = includeImages
       ? imageAnnotations.length
       : await countPointCloudImages(pool, { bridgeId, pointCloudId })
+    const loaded = await loadPointCloudView(pool, { bridgeId, pointCloudId, rows })
     res.json({
       status: 'success',
       data: rowsForApiList(rows),
-      project: rowsToPotreeProject(rows),
+      project: loaded.project,
+      version: loaded.version,
       imageAnnotations,
       bridgeId,
       pointCloudId,
