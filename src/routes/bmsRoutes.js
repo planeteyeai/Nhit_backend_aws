@@ -100,6 +100,7 @@ import {
   streamLidarPdf,
 } from '../lib/lidarReports.js'
 import { listUnmatchedShmReports } from '../lib/shmUnmatchedReports.js'
+import { buildInspectionPdf, INSPECTION_PDF_PAGE } from '../lib/inspectionPdf.js'
 import {
   findPotreeModelByChainage,
   invalidatePotreeCatalogCache,
@@ -3031,79 +3032,58 @@ router.get('/inspection/download_pdf/:inspectionId', requireAuth, async (req, re
       }
     }
 
-    const [dRows] = await pool.query(
-      `SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ? ORDER BY id`,
-      [id]
-    )
-
-    let layoutImgs = []
+    let dRows = []
     try {
-      layoutImgs = i.boq_structure_layout_images ? JSON.parse(i.boq_structure_layout_images) : []
+      const [rows] = await pool.query(
+        `SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ? ORDER BY id`,
+        [id]
+      )
+      dRows = rows || []
     } catch {
-      layoutImgs = []
+      try {
+        const [rows] = await pool.query(
+          `SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ? ORDER BY bridge_inspection_distress_id`,
+          [id]
+        )
+        dRows = rows || []
+      } catch {
+        dRows = []
+      }
     }
 
-    return pipePdf(res, `inspection-${id}.pdf`, (doc) => {
-      doc.fontSize(16).text('Inspection Report', { align: 'center' })
-      doc.moveDown()
-      doc.fontSize(10)
-      doc.text(`Inspection ID: ${id}`)
-      doc.text(`Bridge Identity No: ${i.bridge_identity_no || ''}`)
-      doc.text(`Project: ${i.project_name || ''}`)
-      doc.text(`Chainage: ${i.chainage || ''}`)
-      doc.text(`Bridge Name: ${i.popular_name_of_bridge || ''}`)
-      doc.moveDown()
+    let nsRows = []
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM non_structural_distress WHERE bridge_inspection_id = ? ORDER BY id`,
+        [id]
+      )
+      nsRows = rows || []
+    } catch {
+      nsRows = []
+    }
 
-      doc.fontSize(12).text('Draft Report', { underline: true })
-      doc.moveDown(0.25)
-      doc.fontSize(9).text('Conclusion Report:')
-      doc.fontSize(8).text(i.boq_conclusion_report || '')
-      doc.moveDown(0.5)
-      doc.fontSize(9).text('Causes of Distress:')
-      doc.fontSize(8).text(i.boq_causes_of_distress || '')
-      doc.moveDown(0.5)
-      doc.fontSize(9).text('Remedial Measures:')
-      doc.fontSize(8).text(i.boq_remedial_measures || '')
-      doc.moveDown()
-
-      doc.fontSize(12).text('Components (latest)', { underline: true })
-      doc.moveDown(0.25)
-      doc.fontSize(8)
-      for (const [k, v] of Object.entries(components)) {
-        doc.fontSize(10).text(k.replace(/_/g, ' ').toUpperCase())
-        doc.fontSize(8)
-        if (!v) {
-          doc.text('No data.')
-          doc.moveDown(0.25)
-          continue
-        }
-        const keys2 = Object.keys(v).filter((x) => !String(x).endsWith('_images'))
-        for (const kk of keys2) {
-          const val = v[kk]
-          if (val === null || val === undefined || val === '') continue
-          doc.text(`${kk}: ${String(val)}`)
-        }
-        doc.moveDown(0.5)
+    return pipePdf(
+      res,
+      `inspection-${id}.pdf`,
+      (doc) => {
+        buildInspectionPdf(doc, {
+          inspection: i,
+          components,
+          distressRows: dRows,
+          nonStructuralRows: nsRows,
+        })
+      },
+      {
+        size: INSPECTION_PDF_PAGE.size,
+        margin: INSPECTION_PDF_PAGE.margin,
+        bufferPages: true,
+        info: {
+          Title: `Bridge Inspection Report #${id}`,
+          Author: 'NHIT BMS',
+          Creator: 'NHIT BMS',
+        },
       }
-
-      doc.addPage()
-      doc.fontSize(12).text('Distress List', { underline: true })
-      doc.moveDown(0.5)
-      doc.fontSize(8)
-      for (const r of dRows || []) {
-        doc.text(
-          `${r.table_type || ''} | ${r.distress_type || ''} | L:${r.distress_length ?? ''} W:${r.distress_width ?? ''} D:${r.distress_depth ?? ''} | RM:${r.repair_methodology || ''}`
-        )
-      }
-
-      if (layoutImgs.length) {
-        doc.addPage()
-        doc.fontSize(12).text('Structure Layout Images (paths)', { underline: true })
-        doc.moveDown(0.5)
-        doc.fontSize(8)
-        layoutImgs.forEach((p) => doc.text(p))
-      }
-    })
+    )
   } catch (e) {
     res.status(500).json({ message: e.message })
   }
@@ -8625,10 +8605,14 @@ function sendPlaceholderPdf(res, filename = 'report.pdf') {
   res.send(pdf)
 }
 
-function pipePdf(res, filename, build) {
+function pipePdf(res, filename, build, pdfOpts = {}) {
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-  const doc = new PDFDocument({ size: 'A4', margin: 40 })
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 40,
+    ...pdfOpts,
+  })
   doc.pipe(res)
   build(doc)
   doc.end()
