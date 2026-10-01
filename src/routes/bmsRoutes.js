@@ -64,6 +64,7 @@ import {
   ensureBridgeInspectionDistressColumns,
   ensureNonStructuralDistressTable,
   ensureWearingCoatInspectionColumns,
+  listNonStructuralTableTypeVariants,
 } from '../lib/nonStructuralDistressDb.js'
 import {
   fetchBridgeExpansionTemplates,
@@ -2246,9 +2247,9 @@ router.get('/inspection/distress/:inspectionId', async (req, res) => {
         params.push(inspectionId, componentName)
       }
     }
-    const sourceTable = nonStructuralTableTypeMatches(tableType).length ? 'non_structural_distress' : 'bridge_inspection_distress'
+    // All distress (structural + former non-structural) lives in bridge_inspection_distress.
     const [rows] = await pool.query(
-      `SELECT * FROM ${sourceTable} WHERE ${where.join(' AND ')} ORDER BY id`,
+      `SELECT * FROM bridge_inspection_distress WHERE ${where.join(' AND ')} ORDER BY id`,
       params
     )
     res.json(rows)
@@ -2294,7 +2295,16 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     const spansScopeId = Number(req.body?.spansId || req.body?.spans_id || 0)
     const userId = resolveActorUserId(req)
     const isFoundationScope = isFoundationTableType(tableType)
-    const persistTableType = isFoundationScope ? 'Foundation' : tableType
+    const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
+    const persistTableType = nonStructuralTableType
+      ? nonStructuralTableType
+      : isFoundationScope
+        ? 'Foundation'
+        : tableType
+    const tableTypeVariants = nonStructuralTableType
+      ? nonStructuralTableTypeMatches(tableType)
+      : [persistTableType]
+    const tableTypeInClause = `table_type IN (${tableTypeVariants.map(() => '?').join(',')})`
 
     const nextId = async (table, idColumn = 'id') => {
       const [mx] = await conn.query(`SELECT COALESCE(MAX(\`${idColumn}\`), 0) AS mx FROM \`${table}\``)
@@ -2302,189 +2312,6 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     }
 
     await conn.beginTransaction()
-
-    const nonStructuralTableType = canonicalNonStructuralTableType(tableType)
-    if (nonStructuralTableType) {
-      const tableTypeVariants = nonStructuralTableTypeMatches(tableType)
-      const incomingIds = rows.map((r) => Number(r?.id || 0)).filter((n) => n > 0)
-      const spansClause = spansScopeId > 0 ? ' AND spans = ?' : ''
-      const spansParams = spansScopeId > 0 ? [spansScopeId] : []
-      const tableTypeClause = `table_type IN (${tableTypeVariants.map(() => '?').join(',')})`
-      if (incomingIds.length) {
-        await conn.query(
-          `DELETE FROM non_structural_distress
-           WHERE bridge_inspection_id = ? AND ${tableTypeClause}${spansClause} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
-          [inspectionId, ...tableTypeVariants, ...spansParams, ...incomingIds]
-        )
-      } else {
-        await conn.query(
-          `DELETE FROM non_structural_distress WHERE bridge_inspection_id = ? AND ${tableTypeClause}${spansClause}`,
-          [inspectionId, ...tableTypeVariants, ...spansParams]
-        )
-      }
-
-      const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-      const distressNosOrNull = (v) => {
-        if (v === '' || v == null || v === undefined) return null
-        const n = Number(v)
-        if (!Number.isFinite(n) || n < 0) return null
-        return Math.floor(n)
-      }
-
-      const distressRowHasMeasures = (row = {}) =>
-        [row?.distress_length, row?.distress_width, row?.distress_depth, row?.distress_nos, row?.distance_of_distress_x, row?.distance_of_distress_y].some(
-          (v) => v != null && String(v).trim() !== ''
-        )
-
-      for (const row of rows) {
-        const distressType = String(row?.distress_type || '').trim()
-        if (!distressType && !distressRowHasMeasures(row)) continue
-        const persistDistressType = distressType || 'Not specified'
-
-        const id = Number(row?.id || 0)
-        const distressImagesValue = Array.isArray(row?.images)
-          ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
-          : String(row?.images || row?.distress_images || '').trim()
-
-        let distressId = id
-        if (distressId > 0) {
-          await conn.query(
-            `UPDATE non_structural_distress
-             SET table_type = ?, element_type = ?, element_description = ?, distress_type = ?, field_type = ?, name_of_span = ?,
-                 distress_length = ?, distress_width = ?, distress_depth = ?, distress_nos = ?,
-                 distance_of_distress_x = ?, distance_of_distress_y = ?,
-                 abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?, foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?,
-                 condition_rating = ?, material = ?, maintenance_required = ?, priority_level = ?, inspection_notes = ?, images = ?,
-                 repair_methodology = ?, status = 'Active', updated_by = ?, updated_on = NOW()
-             WHERE id = ? AND bridge_inspection_id = ?`,
-            [
-              nonStructuralTableType,
-              String(row?.element_type || row?.element || '').trim() || null,
-              String(row?.element_description || '').trim() || null,
-              persistDistressType,
-              String(row?.field_type || '').trim() || null,
-              String(row?.name_of_span || '').trim() || null,
-              numeric(row?.distress_length),
-              numeric(row?.distress_width),
-              numeric(row?.distress_depth),
-              distressNosOrNull(row?.distress_nos),
-              numeric(row?.distance_of_distress_x),
-              numeric(row?.distance_of_distress_y),
-              numeric(row?.abutment_A1),
-              numeric(row?.abutment_A2),
-              numeric(row?.piers),
-              numeric(row?.spans),
-              numeric(row?.foundation),
-              numeric(row?.expansion),
-              numeric(row?.lhs_distress),
-              numeric(row?.rhs_distress),
-              String(row?.condition_rating || '').trim() || null,
-              String(row?.material || '').trim() || null,
-              String(row?.maintenance_required || '').trim() || null,
-              String(row?.priority_level || '').trim() || null,
-              String(row?.inspection_notes || '').trim() || null,
-              distressImagesValue || null,
-              String(row?.repair_methodology || '').trim() || null,
-              userId,
-              distressId,
-              inspectionId,
-            ]
-          )
-        } else {
-          const [ins] = await conn.query(
-            `INSERT INTO non_structural_distress
-             (bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
-              distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
-              abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
-              condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
-              created_by, created_on, repair_methodology)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Active',?,NOW(),?)`,
-            [
-              inspectionId,
-              nonStructuralTableType,
-              String(row?.element_type || row?.element || '').trim() || null,
-              String(row?.element_description || '').trim() || null,
-              persistDistressType,
-              String(row?.field_type || '').trim() || null,
-              String(row?.name_of_span || '').trim() || null,
-              numeric(row?.distress_length),
-              numeric(row?.distress_width),
-              numeric(row?.distress_depth),
-              distressNosOrNull(row?.distress_nos),
-              numeric(row?.distance_of_distress_x),
-              numeric(row?.distance_of_distress_y),
-              numeric(row?.abutment_A1),
-              numeric(row?.abutment_A2),
-              numeric(row?.piers),
-              numeric(row?.spans),
-              numeric(row?.foundation),
-              numeric(row?.expansion),
-              numeric(row?.lhs_distress),
-              numeric(row?.rhs_distress),
-              String(row?.condition_rating || '').trim() || null,
-              String(row?.material || '').trim() || null,
-              String(row?.maintenance_required || '').trim() || null,
-              String(row?.priority_level || '').trim() || null,
-              String(row?.inspection_notes || '').trim() || null,
-              distressImagesValue || null,
-              userId,
-              String(row?.repair_methodology || '').trim() || null,
-            ]
-          )
-          distressId = Number(ins?.insertId || 0)
-        }
-
-        const ratings = row?.ratings && typeof row.ratings === 'object' ? row.ratings : {}
-        const [existingCR] = await conn.query(
-          'SELECT id FROM inspection_cause_rating WHERE inspection_distress_id = ? LIMIT 1',
-          [distressId]
-        )
-        const causeData = [
-          inspectionId,
-          componentName,
-          numeric(ratings.foundation),
-          numeric(ratings.wearing_coat),
-          numeric(ratings.expansion_joint),
-          numeric(ratings.superstructure),
-          distressType,
-          numeric(ratings.impact),
-          numeric(ratings.abrasion),
-          numeric(ratings.erosion),
-          numeric(ratings.overload),
-          numeric(ratings.fatigue),
-          numeric(ratings.temprature),
-          numeric(ratings.shrinkage),
-          numeric(ratings.settlement),
-          numeric(ratings.carbon_dioxide),
-          numeric(ratings.sulphates),
-          numeric(ratings.carbonation),
-          numeric(ratings.alkali),
-        ]
-        if (existingCR[0]?.id) {
-          await conn.query(
-            `UPDATE inspection_cause_rating
-             SET bridge_inspection_id = ?, component_name = ?, foundation = ?, wearing_coat = ?, expansion_joint = ?, superstructure = ?,
-                 distress_type = ?, impact = ?, abrasion = ?, erosion = ?, overload = ?, fatigue = ?, temprature = ?, shrinkage = ?,
-                 settlement = ?, carbon_dioxide = ?, sulphates = ?, carbonation = ?, alkali = ?, updated_by = ?, updated_on = CURDATE()
-             WHERE id = ?`,
-            [...causeData, userId, existingCR[0].id]
-          )
-        } else {
-          const causeId = await nextId('inspection_cause_rating', 'id')
-          await conn.query(
-            `INSERT INTO inspection_cause_rating
-             (id, inspection_distress_id, bridge_inspection_id, component_name, foundation, wearing_coat, expansion_joint, superstructure,
-              distress_type, impact, abrasion, erosion, overload, fatigue, temprature, shrinkage, settlement, carbon_dioxide, sulphates,
-              carbonation, alkali, updated_by, updated_on)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
-            [causeId, distressId, ...causeData, userId]
-          )
-        }
-      }
-
-      await conn.commit()
-      return res.json({ success: true })
-    }
 
     const [distressCols] = await conn.query(
       `SELECT COLUMN_NAME
@@ -2495,12 +2322,24 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
     const distressImagesCol =
       (['images', 'distress_images', 'distress_image', 'image'].find((c) => distressColSet.has(c)) || null)
     const hasDistressNosCol = distressColSet.has('distress_nos')
+    const hasRepairMethodologyCol = distressColSet.has('repair_methodology')
+    const hasElementTypeCol = distressColSet.has('element_type')
+    const hasStatusCol = distressColSet.has('status')
     const distressNosOrNull = (v) => {
       if (v === '' || v == null || v === undefined) return null
       const n = Number(v)
       if (!Number.isFinite(n) || n < 0) return null
       return Math.min(4294967295, Math.floor(n))
     }
+    const distressRowHasMeasures = (row = {}) =>
+      [
+        row?.distress_length,
+        row?.distress_width,
+        row?.distress_depth,
+        row?.distress_nos,
+        row?.distance_of_distress_x,
+        row?.distance_of_distress_y,
+      ].some((v) => v != null && String(v).trim() !== '')
 
     // Keep only ids submitted for this table_type, scoped to foundation / expansion / span when provided.
     // Scope prevents one component/span save from wiping distresses belonging to another.
@@ -2541,20 +2380,21 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       if (incomingIds.length) {
         await conn.query(
           `DELETE FROM bridge_inspection_distress
-           WHERE bridge_inspection_id = ? AND table_type = ?${scopeSql} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
-          [inspectionId, persistTableType, ...scopeParams, ...incomingIds]
+           WHERE bridge_inspection_id = ? AND ${tableTypeInClause}${scopeSql} AND id NOT IN (${incomingIds.map(() => '?').join(',')})`,
+          [inspectionId, ...tableTypeVariants, ...scopeParams, ...incomingIds]
         )
       } else {
         await conn.query(
-          `DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND table_type = ?${scopeSql}`,
-          [inspectionId, persistTableType, ...scopeParams]
+          `DELETE FROM bridge_inspection_distress WHERE bridge_inspection_id = ? AND ${tableTypeInClause}${scopeSql}`,
+          [inspectionId, ...tableTypeVariants, ...scopeParams]
         )
       }
     }
 
     for (const row of rows) {
       const distressType = String(row?.distress_type || '').trim()
-      if (!distressType) continue
+      if (!distressType && !(nonStructuralTableType && distressRowHasMeasures(row))) continue
+      const persistDistressType = distressType || 'Not specified'
       const numeric = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
       const id = Number(row?.id || 0)
       const distressNosVal = hasDistressNosCol ? distressNosOrNull(row?.distress_nos) : null
@@ -2566,7 +2406,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       const foundationValue = numeric(row?.foundation) || (foundationScopeId > 0 ? foundationScopeId : 0)
       const expansionValue = numeric(row?.expansion) || (expansionScopeId > 0 ? expansionScopeId : 0)
       const baseData = [
-        distressType,
+        persistDistressType,
         String(row?.name_of_span || '').trim() || null,
         String(row?.field_type || '').trim() || null,
         numeric(row?.distress_length),
@@ -2587,17 +2427,19 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
       const distressImagesValue = Array.isArray(row?.images)
         ? row.images.filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(',')
         : String(row?.images || row?.distress_images || '').trim()
+      const repairMethodologyValue = String(row?.repair_methodology || '').trim() || null
+      const elementTypeValue = String(row?.element_type || row?.element || '').trim() || null
 
       let distressId = id > 0 ? id : 0
       if (distressId > 0) {
         const [exists] = await conn.query(
           `SELECT id FROM bridge_inspection_distress
            WHERE id = ? AND bridge_inspection_id = ?${
-             isFoundationScope ? " AND LOWER(table_type) = 'foundation'" : ' AND table_type = ?'
+             isFoundationScope ? " AND LOWER(table_type) = 'foundation'" : ` AND ${tableTypeInClause}`
            } LIMIT 1`,
           isFoundationScope
             ? [distressId, inspectionId]
-            : [distressId, inspectionId, persistTableType]
+            : [distressId, inspectionId, ...tableTypeVariants]
         )
         if (!exists?.[0]?.id) {
           // Stale/wrong id from client — always insert a new row instead of silently no-op update.
@@ -2605,9 +2447,26 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         }
       }
       if (distressId > 0) {
-        const updateSetImages = distressImagesCol ? `, \`${distressImagesCol}\` = ?` : ''
+        const extraSet = []
         const updateParams = [...baseData]
-        if (distressImagesCol) updateParams.push(distressImagesValue || null)
+        if (distressImagesCol) {
+          extraSet.push(`\`${distressImagesCol}\` = ?`)
+          updateParams.push(distressImagesValue || null)
+        }
+        if (hasRepairMethodologyCol) {
+          extraSet.push('repair_methodology = ?')
+          updateParams.push(repairMethodologyValue)
+        }
+        if (hasElementTypeCol) {
+          extraSet.push('element_type = ?')
+          updateParams.push(elementTypeValue)
+        }
+        if (hasStatusCol) {
+          extraSet.push("status = 'Active'")
+        }
+        extraSet.push('table_type = ?')
+        updateParams.push(persistTableType)
+        const updateSetExtra = extraSet.length ? `, ${extraSet.join(', ')}` : ''
         await conn.query(
           `UPDATE bridge_inspection_distress
            SET distress_type = ?, name_of_span = ?, field_type = ?,
@@ -2615,15 +2474,15 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
                ${hasDistressNosCol ? 'distress_nos = ?, ' : ''}
                distance_of_distress_x = ?, distance_of_distress_y = ?,
                abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?,
-               foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?${updateSetImages}
+               foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?${updateSetExtra}
            WHERE id = ? AND bridge_inspection_id = ?${
-             isFoundationScope ? " AND LOWER(table_type) = 'foundation'" : ' AND table_type = ?'
+             isFoundationScope ? " AND LOWER(table_type) = 'foundation'" : ` AND ${tableTypeInClause}`
            }`,
           [
             ...updateParams,
             distressId,
             inspectionId,
-            ...(isFoundationScope ? [] : [persistTableType]),
+            ...(isFoundationScope ? [] : tableTypeVariants),
           ]
         )
       } else {
@@ -2660,6 +2519,18 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
           insertCols.push(distressImagesCol)
           insertVals.push(distressImagesValue || null)
         }
+        if (hasRepairMethodologyCol) {
+          insertCols.push('repair_methodology')
+          insertVals.push(repairMethodologyValue)
+        }
+        if (hasElementTypeCol) {
+          insertCols.push('element_type')
+          insertVals.push(elementTypeValue)
+        }
+        if (hasStatusCol) {
+          insertCols.push('status')
+          insertVals.push('Active')
+        }
         insertCols.push('created_by', 'created_on')
         insertVals.push(userId)
         await conn.query(
@@ -2684,7 +2555,7 @@ router.post('/inspection/distress/upsert', requireAuth, async (req, res) => {
         numeric(ratings.wearing_coat),
         numeric(ratings.expansion_joint),
         numeric(ratings.superstructure),
-        distressType,
+        persistDistressType,
         numeric(ratings.impact),
         numeric(ratings.abrasion),
         numeric(ratings.erosion),
@@ -2779,25 +2650,20 @@ router.get('/boq/distress-data/:inspectionId', async (req, res) => {
     const inspectionId = Number(req.params.inspectionId || 0)
     if (!inspectionId) return res.status(400).json({ message: 'Invalid inspection id' })
 
-    const [structural] = await pool.query(
+    await ensureBridgeInspectionDistressColumns(pool)
+    const [allDistress] = await pool.query(
       `SELECT * FROM bridge_inspection_distress
        WHERE bridge_inspection_id = ?
+         AND (status IS NULL OR status = '' OR LOWER(status) = 'active')
        ORDER BY id ASC`,
       [inspectionId]
     )
-
-    let nonStructural = []
-    try {
-      const [ns] = await pool.query(
-        `SELECT * FROM non_structural_distress
-         WHERE bridge_inspection_id = ?
-         ORDER BY id ASC`,
-        [inspectionId]
-      )
-      nonStructural = ns || []
-    } catch {
-      nonStructural = []
-    }
+    const nonStructural = (allDistress || []).filter((r) =>
+      Boolean(canonicalNonStructuralTableType(r?.table_type))
+    )
+    const structural = (allDistress || []).filter(
+      (r) => !canonicalNonStructuralTableType(r?.table_type)
+    )
 
     let manual = []
     try {
@@ -2869,7 +2735,7 @@ router.get('/boq/distress-data/:inspectionId', async (req, res) => {
     }
 
     res.json({
-      structural: [...(structural || []), ...bearings, ...pedestals],
+      structural: [...structural, ...bearings, ...pedestals],
       nonStructural,
       manual,
       nseTable,
@@ -3051,16 +2917,12 @@ router.get('/inspection/download_pdf/:inspectionId', requireAuth, async (req, re
       }
     }
 
-    let nsRows = []
-    try {
-      const [rows] = await pool.query(
-        `SELECT * FROM non_structural_distress WHERE bridge_inspection_id = ? ORDER BY id`,
-        [id]
-      )
-      nsRows = rows || []
-    } catch {
-      nsRows = []
-    }
+    const nsRows = (dRows || []).filter((r) =>
+      Boolean(canonicalNonStructuralTableType(r?.table_type))
+    )
+    const structuralRows = (dRows || []).filter(
+      (r) => !canonicalNonStructuralTableType(r?.table_type)
+    )
 
     return pipePdf(
       res,
@@ -3069,7 +2931,7 @@ router.get('/inspection/download_pdf/:inspectionId', requireAuth, async (req, re
         buildInspectionPdf(doc, {
           inspection: i,
           components,
-          distressRows: dRows,
+          distressRows: structuralRows,
           nonStructuralRows: nsRows,
         })
       },
@@ -3134,30 +2996,7 @@ router.post('/index.php/bmc/boq/save_repair_methodology', requireAuth, async (re
       const tableType = String(item?.table_type || item?.tableType || '')
       const newRm = normalizeRm(item?.repair_methodology ?? item?.repairMethodology ?? '')
 
-      // 1) non_structural_distress
-      try {
-        const [nsRows] = await pool.query(
-          `SELECT repair_methodology FROM non_structural_distress
-           WHERE id = ? AND bridge_inspection_id = ? LIMIT 1`,
-          [id, bridgeInspectionId]
-        )
-        if (nsRows[0]) {
-          const existing = String(nsRows[0].repair_methodology ?? '').trim()
-          if (existing !== newRm) {
-            await pool.query(
-              `UPDATE non_structural_distress SET repair_methodology = ?, updated_by = ?, updated_on = NOW()
-               WHERE id = ? AND bridge_inspection_id = ?`,
-              [newRm, req.user?.uid || 0, id, bridgeInspectionId]
-            )
-            savedCount++
-          }
-          continue
-        }
-      } catch (e) {
-        // ignore and fall through
-      }
-
-      // 2) bridge_inspection_distress
+      // bridge_inspection_distress (includes former non_structural_distress rows)
       try {
         const [dRows] = await pool.query(
           `SELECT repair_methodology FROM bridge_inspection_distress
@@ -5074,16 +4913,8 @@ for (const sub of [
 
 router.post('/inspection/save_non_structural', requireAuth, async (req, res) => {
   try {
+    await ensureBridgeInspectionDistressColumns(pool)
     const b = req.body || {}
-    const ALLOWED_NON_STRUCTURAL_TABLE_TYPES = new Map([
-      ['approaches', 'approaches'],
-      ['wearing coat', 'WEARING COAT'],
-      ['drainage spouts and vest holes', 'DRAINAGE SPOUTS AND VEST HOLES'],
-      ['handrails, parapets, crash barriers', 'HANDRAILS, PARAPETS, CRASH BARRIERS'],
-      ['footpaths', 'FOOTPATHS'],
-      ['utilities', 'UTILITIES'],
-      ['non-structural elements', 'NON-STRUCTURAL ELEMENTS'],
-    ])
     const rawTableType = String(
       b.table_type ||
       b.tableType ||
@@ -5092,8 +4923,7 @@ router.post('/inspection/save_non_structural', requireAuth, async (req, res) => 
       b.componentName ||
       'NON-STRUCTURAL ELEMENTS'
     ).trim()
-    const tableTypeKey = rawTableType.toLowerCase()
-    const tableType = ALLOWED_NON_STRUCTURAL_TABLE_TYPES.get(tableTypeKey)
+    const tableType = canonicalNonStructuralTableType(rawTableType)
     if (!tableType) {
       return res.status(400).json({
         success: false,
@@ -5111,15 +4941,20 @@ router.post('/inspection/save_non_structural', requireAuth, async (req, res) => 
       if (!Number.isFinite(n) || n < 0) return null
       return Math.floor(n)
     })()
-    const [r] = await pool.query(
-      `INSERT INTO non_structural_distress
-       (bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
+    const [[mx]] = await pool.query(
+      'SELECT COALESCE(MAX(id), 0) AS mx FROM bridge_inspection_distress'
+    )
+    const nextId = Number(mx?.mx || 0) + 1
+    await pool.query(
+      `INSERT INTO bridge_inspection_distress
+       (id, bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
         distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
         abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
         condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
         created_by, created_on, repair_methodology)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURDATE(),?)`,
       [
+        nextId,
         b.bridge_inspection_id || b.inspection_id || null,
         tableType,
         b.element_type || '',
@@ -5152,23 +4987,27 @@ router.post('/inspection/save_non_structural', requireAuth, async (req, res) => 
         b.repair_methodology ?? '',
       ]
     )
-    res.json({ success: true, id: r.insertId })
+    res.json({ success: true, id: nextId })
   } catch (e) {
     res.status(500).json({ message: e.message })
   }
 })
 router.get('/inspection/non_structural/:id', async (req, res) => {
   try {
+    await ensureBridgeInspectionDistressColumns(pool)
+    const variants = listNonStructuralTableTypeVariants()
     const [rows] = await pool.query(
       `SELECT id, bridge_inspection_id, table_type, element_type, element_description, distress_type, field_type, name_of_span,
               distress_length, distress_width, distress_depth, distress_nos, distance_of_distress_x, distance_of_distress_y,
               abutment_A1, abutment_A2, piers, spans, foundation, expansion, lhs_distress, rhs_distress,
               condition_rating, material, maintenance_required, priority_level, inspection_notes, images, status,
               created_by, created_on, updated_by, updated_on, repair_methodology
-       FROM non_structural_distress
-       WHERE bridge_inspection_id = ? AND status = 'Active'
+       FROM bridge_inspection_distress
+       WHERE bridge_inspection_id = ?
+         AND table_type IN (${variants.map(() => '?').join(',')})
+         AND (status IS NULL OR status = '' OR LOWER(status) = 'active')
        ORDER BY id DESC`,
-      [req.params.id]
+      [req.params.id, ...variants]
     )
     res.json(rows)
   } catch (e) {
@@ -5177,21 +5016,12 @@ router.get('/inspection/non_structural/:id', async (req, res) => {
 })
 router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
   try {
+    await ensureBridgeInspectionDistressColumns(pool)
     const b = req.body || {}
-    const ALLOWED_NON_STRUCTURAL_TABLE_TYPES = new Map([
-      ['approaches', 'approaches'],
-      ['wearing coat', 'WEARING COAT'],
-      ['drainage spouts and vest holes', 'DRAINAGE SPOUTS AND VEST HOLES'],
-      ['handrails, parapets, crash barriers', 'HANDRAILS, PARAPETS, CRASH BARRIERS'],
-      ['footpaths', 'FOOTPATHS'],
-      ['utilities', 'UTILITIES'],
-      ['non-structural elements', 'NON-STRUCTURAL ELEMENTS'],
-    ])
     const rawTableType = String(
       b.table_type || b.tableType || b.element_type || b.component_name || b.componentName || 'NON-STRUCTURAL ELEMENTS'
     ).trim()
-    const tableTypeKey = rawTableType.toLowerCase()
-    const tableType = ALLOWED_NON_STRUCTURAL_TABLE_TYPES.get(tableTypeKey)
+    const tableType = canonicalNonStructuralTableType(rawTableType)
     if (!tableType) {
       return res.status(400).json({
         success: false,
@@ -5213,13 +5043,13 @@ router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
       ? b.images.filter(Boolean).map((x) => String(x).trim()).join(',')
       : b.images ?? null
     await pool.query(
-      `UPDATE non_structural_distress
+      `UPDATE bridge_inspection_distress
        SET table_type = ?, element_type = ?, element_description = ?, distress_type = ?, field_type = ?, name_of_span = ?,
            distress_length = ?, distress_width = ?, distress_depth = ?, distress_nos = ?,
            distance_of_distress_x = ?, distance_of_distress_y = ?,
            abutment_A1 = ?, abutment_A2 = ?, piers = ?, spans = ?, foundation = ?, expansion = ?, lhs_distress = ?, rhs_distress = ?,
            condition_rating = ?, material = ?, maintenance_required = ?, priority_level = ?, inspection_notes = ?, images = ?,
-           repair_methodology = ?, updated_by = ?, updated_on = NOW()
+           repair_methodology = ?, status = 'Active', updated_by = ?, updated_on = NOW()
        WHERE id = ?`,
       [
         tableType,
@@ -5260,11 +5090,16 @@ router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
 })
 router.delete('/inspection/non_structural/:id', requireAuth, async (req, res) => {
   try {
-    await pool.query(
-      `UPDATE non_structural_distress SET status = 'Inactive', updated_by = ?, updated_on = NOW()
+    await ensureBridgeInspectionDistressColumns(pool)
+    const [r] = await pool.query(
+      `UPDATE bridge_inspection_distress
+       SET status = 'Inactive', updated_by = ?, updated_on = NOW()
        WHERE id = ?`,
       [req.user?.uid || null, req.params.id]
     )
+    if (!(r.affectedRows || 0)) {
+      await pool.query('DELETE FROM bridge_inspection_distress WHERE id = ? LIMIT 1', [req.params.id])
+    }
     res.json({ success: true })
   } catch (e) {
     res.status(500).json({ message: e.message })
@@ -8369,27 +8204,21 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       'Hollow Pocket': 'HP',
     }
 
-    const [structural] = await pool.query(
+    await ensureBridgeInspectionDistressColumns(pool)
+    const [allDistress] = await pool.query(
       `SELECT *
        FROM bridge_inspection_distress
        WHERE bridge_inspection_id = ?
+         AND (status IS NULL OR status = '' OR LOWER(status) = 'active')
        ORDER BY id ASC`,
       [inspectionId]
     )
-
-    let nonStructural = []
-    try {
-      const [ns] = await pool.query(
-        `SELECT *
-         FROM non_structural_distress
-         WHERE bridge_inspection_id = ?
-         ORDER BY id ASC`,
-        [inspectionId]
-      )
-      nonStructural = ns || []
-    } catch {
-      nonStructural = []
-    }
+    const nonStructural = (allDistress || []).filter((r) =>
+      Boolean(canonicalNonStructuralTableType(r?.table_type))
+    )
+    const structural = (allDistress || []).filter(
+      (r) => !canonicalNonStructuralTableType(r?.table_type)
+    )
 
     let manual = []
     try {

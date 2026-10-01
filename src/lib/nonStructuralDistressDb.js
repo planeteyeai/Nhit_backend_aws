@@ -72,13 +72,51 @@ export async function ensureBridgeInspectionDistressColumns(pool) {
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bridge_inspection_distress'`
   )
   const colSet = new Set((cols || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()))
-  if (!colSet.has('images')) {
-    await pool.query('ALTER TABLE bridge_inspection_distress ADD COLUMN images TEXT NULL')
+  const addIfMissing = async (name, ddl) => {
+    if (colSet.has(name.toLowerCase())) return
+    await pool.query(`ALTER TABLE bridge_inspection_distress ADD COLUMN ${ddl}`)
+    colSet.add(name.toLowerCase())
   }
-  if (!colSet.has('distress_nos')) {
-    await pool.query('ALTER TABLE bridge_inspection_distress ADD COLUMN distress_nos INT DEFAULT NULL')
-  }
+  // Non-structural distress now lives in this table — keep compatible columns.
+  await addIfMissing('images', 'images TEXT NULL')
+  await addIfMissing('distress_nos', 'distress_nos INT DEFAULT NULL')
+  await addIfMissing('repair_methodology', 'repair_methodology TEXT NULL')
+  await addIfMissing('element_type', 'element_type VARCHAR(255) NULL')
+  await addIfMissing('element_description', 'element_description TEXT NULL')
+  await addIfMissing('condition_rating', 'condition_rating VARCHAR(255) NULL')
+  await addIfMissing('material', 'material VARCHAR(255) NULL')
+  await addIfMissing('maintenance_required', 'maintenance_required VARCHAR(255) NULL')
+  await addIfMissing('priority_level', 'priority_level VARCHAR(255) NULL')
+  await addIfMissing('inspection_notes', 'inspection_notes TEXT NULL')
+  await addIfMissing('status', "status VARCHAR(255) NULL DEFAULT 'Active'")
+  await addIfMissing('updated_by', 'updated_by INT NULL')
+  await addIfMissing('updated_on', 'updated_on DATETIME NULL')
   bridgeDistressColumnsReady = true
+}
+
+/** All table_type values historically used for non-structural distress rows. */
+export function listNonStructuralTableTypeVariants() {
+  return [
+    'approaches',
+    'Approaches',
+    'WEARING COAT',
+    'Wearing Coat',
+    'wearing coat',
+    'DRAINAGE SPOUTS AND VEST HOLES',
+    'Drainage Spouts And Vest Holes',
+    'drainage spouts and vest holes',
+    'HANDRAILS, PARAPETS, CRASH BARRIERS',
+    'Handrails Parapets Crash Barriers',
+    'handrails, parapets, crash barriers',
+    'FOOTPATHS',
+    'Footpaths',
+    'footpaths',
+    'UTILITIES',
+    'Utilities',
+    'utilities',
+    'NON-STRUCTURAL ELEMENTS',
+    'non-structural elements',
+  ]
 }
 
 let wearingCoatColumnsReady = false
