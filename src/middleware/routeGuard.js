@@ -45,6 +45,14 @@ function isPublicRoute(req) {
   if (isPublicPointCloudDataWrite(req)) return true
   if (isPublicInsarWorkbook(req)) return true
 
+  // Static BOQ / form dropdown constants (no sensitive data).
+  if (
+    (method === 'GET' || method === 'HEAD') &&
+    (path === '/php/constants' || path.startsWith('/php/constants/'))
+  ) {
+    return true
+  }
+
   return false
 }
 

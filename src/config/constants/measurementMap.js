@@ -41,7 +41,7 @@ export const RM_MEASUREMENT_MAP = {
     title:
       'Providing and fixing temporary double steel scaffolding system with safety features.',
     sub: '(Quarter Coning Areas) Using Select Fill',
-    unit: '',
+    unit: 'Cu.m',
   },
   'Extra Reinforcement with Zinc-Rich Epoxy Coating': {
     item_no: 7,

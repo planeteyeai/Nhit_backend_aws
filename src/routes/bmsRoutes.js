@@ -8185,16 +8185,21 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
     const notationMap = {
       Bulging: 'BG',
       'Map Crack/Crazing': 'CRA',
+      'Map Crack': 'CRA',
+      Crazing: 'CRA',
       'Crack along main reinforcement': 'RC',
       'Crack perpendicular to main Reinforcement': 'RP',
+      'Crack perpendicular to main reinforcement': 'RP',
       'Minor Crack': 'MC',
       'Wide Crack': 'WC',
       Spalling: 'SPL',
       'Delaminated Section': 'DL',
+      Delamination: 'DL',
       Honeycombing: 'HC',
       Tilt: 'TL',
       'Steel Corroded': 'SC',
       'Steel Exposed': 'SE',
+      'Exposed Reinforcement': 'SE',
       'Seepage Evident': 'SPE',
       'Seepage Marks': 'SPM',
       Scaling: 'SL',
@@ -8207,6 +8212,24 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       'Vegetation growth': 'VEG',
       'Pedestal Damage': 'PD',
       'Hollow Pocket': 'HP',
+      'No Distress': 'ND',
+      'No_distress': 'ND',
+      'Good in condition': 'GC',
+      'Good in Condition': 'GC',
+    }
+    const normalizeNotationKey = (value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+    const notationLookup = new Map(
+      Object.entries(notationMap).map(([k, v]) => [normalizeNotationKey(k), v]),
+    )
+    const toNotation = (obs) => {
+      const key = String(obs || '').trim()
+      if (!key) return '-'
+      return notationLookup.get(normalizeNotationKey(key)) || key
     }
 
     await ensureBridgeInspectionDistressColumns(pool)
@@ -8326,7 +8349,7 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       const { unit, area } = unitAndArea(L, B, D, nos)
       addRow([
         tableType,
-        notationMap[obs] || obs,
+        toNotation(obs),
         obs,
         locText(d.distance_of_distress_x, d.distance_of_distress_y),
         '-',
@@ -8354,7 +8377,7 @@ router.get('/boq/export/:bridgeId', async (req, res) => {
       const { unit, area } = unitAndArea(L, B, D, nos)
       addRow([
         element,
-        notationMap[obs] || (obs ? '-' : '-'),
+        toNotation(obs),
         obs,
         locText(n.distance_of_distress_x, n.distance_of_distress_y) || element,
         '-',
