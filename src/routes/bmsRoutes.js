@@ -2247,6 +2247,8 @@ router.get('/inspection/distress/:inspectionId', async (req, res) => {
         params.push(inspectionId, componentName)
       }
     }
+    // Soft-deleted non-structural rows use status=Inactive; treat NULL/empty as active for legacy structural rows.
+    where.push(`(status IS NULL OR status = '' OR LOWER(status) = 'active')`)
     // All distress (structural + former non-structural) lives in bridge_inspection_distress.
     const [rows] = await pool.query(
       `SELECT * FROM bridge_inspection_distress WHERE ${where.join(' AND ')} ORDER BY id`,
@@ -2635,8 +2637,11 @@ router.get('/boq/last_approved/:bridgeId', async (req, res) => {
 
 router.get('/boq/distress/:inspectionId', async (req, res) => {
   try {
+    await ensureBridgeInspectionDistressColumns(pool)
     const [rows] = await pool.query(
-      'SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ?',
+      `SELECT * FROM bridge_inspection_distress
+       WHERE bridge_inspection_id = ?
+         AND (status IS NULL OR status = '' OR LOWER(status) = 'active')`,
       [req.params.inspectionId]
     )
     res.json(rows)
@@ -8475,8 +8480,12 @@ router.post('/index.php/bmc/inspection/generate_boq_pdf', uploadNone, async (req
     [id]
   )
   const i = iRows[0] || {}
+  await ensureBridgeInspectionDistressColumns(pool)
   const [dRows] = await pool.query(
-    `SELECT * FROM bridge_inspection_distress WHERE bridge_inspection_id = ? ORDER BY id`,
+    `SELECT * FROM bridge_inspection_distress
+     WHERE bridge_inspection_id = ?
+       AND (status IS NULL OR status = '' OR LOWER(status) = 'active')
+     ORDER BY id`,
     [id]
   )
 
