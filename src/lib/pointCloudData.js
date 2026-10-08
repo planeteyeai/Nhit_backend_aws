@@ -813,13 +813,13 @@ export async function replacePointCloudData(pool, {
   await ensurePointCloudDataSchema(pool)
 
   const bid = Number(bridgeId)
-  const cloudId = String(pointCloudId || '').trim()
+  const requestedCloudId = String(pointCloudId || '').trim()
   if (!bid) {
     const err = new Error('Invalid bridgeId')
     err.status = 400
     throw err
   }
-  if (!cloudId) {
+  if (!requestedCloudId) {
     const err = new Error('pointCloudId is required')
     err.status = 400
     throw err
@@ -831,6 +831,9 @@ export async function replacePointCloudData(pool, {
     err.status = 404
     throw err
   }
+
+  // Nested S3 paths must resolve to the leaf id already stored in MySQL.
+  const cloudId = await resolveStoredCloudId(pool, requestedCloudId, { bridgeId: bid })
 
   let images = Array.isArray(imageAnnotations) ? imageAnnotations : []
   const shouldPreserve = Boolean(preserveExistingImages) || images.length === 0
@@ -1352,34 +1355,80 @@ function normalizeCloudId(id) {
     .replace(/^-|-$/g, '')
 }
 
+/**
+ * Potree folders are now `project/model`, but `point_cloud_data.point_cloud_id`
+ * was saved as the leaf model id (and some clients sanitize `/` → `-`).
+ * Resolve to the stable leaf used in MySQL.
+ */
+function potreeCloudLeafId(id) {
+  let raw = String(id || '').trim()
+  if (!raw) return ''
+  try {
+    raw = decodeURIComponent(raw)
+  } catch {
+    /* keep raw */
+  }
+  const slashParts = raw.replace(/\\/g, '/').split('/').filter(Boolean)
+  if (slashParts.length >= 2) return slashParts[slashParts.length - 1]
+  // Nested id sanitized in the viewer: "Palanpur-Swaroopganj-1788…-model"
+  const stamped = raw.match(/(\d{10,}[-_].+)$/)
+  if (stamped) return stamped[1]
+  return slashParts[0] || raw
+}
+
+function cloudIdLookupKeys(id) {
+  const raw = String(id || '').trim()
+  const leaf = potreeCloudLeafId(raw)
+  const keys = new Set()
+  for (const v of [raw, leaf, normalizeCloudId(raw), normalizeCloudId(leaf)]) {
+    if (v) keys.add(v)
+  }
+  return [...keys]
+}
+
+function findMatchingCloudId(ids, requested) {
+  const list = Array.isArray(ids) ? ids : []
+  const wantKeys = new Set(cloudIdLookupKeys(requested).map(normalizeCloudId))
+  const wantLeaf = normalizeCloudId(potreeCloudLeafId(requested))
+  for (const row of list) {
+    const stored = String(row?.point_cloud_id || '').trim()
+    if (!stored) continue
+    if (cloudIdLookupKeys(stored).some((k) => wantKeys.has(normalizeCloudId(k)))) return stored
+    if (wantLeaf && normalizeCloudId(potreeCloudLeafId(stored)) === wantLeaf) return stored
+  }
+  // Prefer persisting the leaf id when creating new rows under nested S3 paths.
+  return potreeCloudLeafId(requested) || String(requested || '').trim()
+}
+
 async function resolveStoredCloudId(pool, requested, { bridgeId = null } = {}) {
   const raw = String(requested || '').trim()
   if (!raw) return raw
+  const candidates = cloudIdLookupKeys(raw)
   if (bridgeId) {
-    const [exact] = await pool.query(
-      `SELECT point_cloud_id FROM point_cloud_data
-       WHERE bridge_id = ? AND point_cloud_id = ?
-       LIMIT 1`,
-      [bridgeId, raw]
-    )
-    if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+    for (const cand of candidates) {
+      const [exact] = await pool.query(
+        `SELECT point_cloud_id FROM point_cloud_data
+         WHERE bridge_id = ? AND point_cloud_id = ?
+         LIMIT 1`,
+        [bridgeId, cand],
+      )
+      if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+    }
     const [ids] = await pool.query(
       `SELECT DISTINCT point_cloud_id FROM point_cloud_data WHERE bridge_id = ?`,
-      [bridgeId]
+      [bridgeId],
     )
-    const want = normalizeCloudId(raw)
-    const hit = (ids || []).find((r) => normalizeCloudId(r.point_cloud_id) === want)
-    return hit?.point_cloud_id || raw
+    return findMatchingCloudId(ids, raw)
   }
-  const [exact] = await pool.query(
-    `SELECT point_cloud_id FROM point_cloud_data WHERE point_cloud_id = ? LIMIT 1`,
-    [raw]
-  )
-  if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+  for (const cand of candidates) {
+    const [exact] = await pool.query(
+      `SELECT point_cloud_id FROM point_cloud_data WHERE point_cloud_id = ? LIMIT 1`,
+      [cand],
+    )
+    if (exact[0]?.point_cloud_id) return exact[0].point_cloud_id
+  }
   const [ids] = await pool.query(`SELECT DISTINCT point_cloud_id FROM point_cloud_data`)
-  const want = normalizeCloudId(raw)
-  const hit = (ids || []).find((r) => normalizeCloudId(r.point_cloud_id) === want)
-  return hit?.point_cloud_id || raw
+  return findMatchingCloudId(ids, raw)
 }
 
 export async function listPointCloudData(pool, { bridgeId, pointCloudId = null, includeImages = true } = {}) {
@@ -1435,12 +1484,13 @@ export async function resolveBridgeIdForPointCloud(pool, pointCloudId) {
   await ensurePointCloudDataSchema(pool)
   const cloudId = String(pointCloudId || '').trim()
   if (!cloudId) return null
+  const storedId = await resolveStoredCloudId(pool, cloudId)
   const [rows] = await pool.query(
     `SELECT bridge_id FROM point_cloud_data
      WHERE point_cloud_id = ?
      ORDER BY created_at DESC
      LIMIT 1`,
-    [cloudId]
+    [storedId],
   )
   const bid = Number(rows?.[0]?.bridge_id || 0)
   return bid || null
