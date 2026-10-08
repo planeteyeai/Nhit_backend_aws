@@ -177,12 +177,12 @@ export const DASHBOARD_PROJECT_CATALOG = [
   {
     id: 'abu-swaroopganj',
     shortLabel: 'Abu Road – Swaroopganj',
-    shortNames: ['Abu road to swaroopganj'],
+    shortNames: ['Abu road to swaroopganj', 'Palanpur/Khemana-Abu Road'],
     fullName:
-      'Tolling, Operation, Maintenance & Transfer of Abu Road-Swaroopganj section from km 646+000 to 677+000 of NH-27 in the state of Rajasthan',
+      'Tolling, Operation, Maintenance & Transfer of Abu Road-Swaroopganj / Palanpur-Khemana section from km 601+000 to 677+000 of NH-27',
     highway: 'NH-27',
-    state: 'Rajasthan',
-    chainageMin: 646,
+    state: 'Gujarat / Rajasthan',
+    chainageMin: 601,
     chainageMax: 677,
   },
   {
@@ -261,17 +261,6 @@ export const DASHBOARD_PROJECT_CATALOG = [
     state: 'Assam',
     chainageMin: 961.5,
     chainageMax: 1013,
-  },
-  {
-    id: 'palanpur-abu',
-    shortLabel: 'Palanpur – Abu Road',
-    shortNames: [],
-    fullName:
-      'Tolling, Operation, Maintenance & Transfer of Palanpur/Khemana-Abu Road section from km 601+000 to 646+000 of NH-27 in the state of Gujarat and Rajasthan',
-    highway: 'NH-27',
-    state: 'Gujarat / Rajasthan',
-    chainageMin: 601,
-    chainageMax: 646,
   },
   {
     id: 'shivpuri-jhansi',
