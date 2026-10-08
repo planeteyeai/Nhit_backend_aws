@@ -1,5 +1,7 @@
 /**
- * Potree 2.x point clouds in S3: upload/potree/{folder}/metadata.json + hierarchy.bin + octree.bin
+ * Potree 2.x point clouds in S3:
+ *   upload/potree/{model}/metadata.json                    (legacy flat)
+ *   upload/potree/{project}/{model}/metadata.json          (project-wise)
  */
 import path from 'path'
 import {
@@ -23,18 +25,49 @@ export function extractChainageKey(text) {
   return `${Number(m[1])}+${Number(m[2])}`
 }
 
-function chainageFromFolder(folder) {
-  const mnb = String(folder || '').match(/(?:^|-)mnb-(\d+)-(\d+)/i)
-  if (mnb) return `${Number(mnb[1])}+${Number(mnb[2])}`
-  const undersc = String(folder || '').match(/(\d+)[_-](\d+)/)
-  if (undersc) return `${Number(undersc[1])}+${Number(undersc[2])}`
-  return extractChainageKey(folder)
+/** Leaf folder name (model id), ignoring project prefix. */
+export function potreeModelLeaf(folder) {
+  const parts = String(folder || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  return parts[parts.length - 1] || ''
 }
 
-function sanitizeFolder(folder) {
-  const raw = String(folder || '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-  if (!raw || raw.includes('..') || raw.includes('/')) return null
-  return raw
+export function potreeProjectName(folder) {
+  const parts = String(folder || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  if (parts.length >= 2) return parts[0]
+  return ''
+}
+
+function chainageFromFolder(folder) {
+  const leaf = potreeModelLeaf(folder)
+  const typed = String(leaf || '').match(
+    /(?:mnb|mjb|vup|pup|rob|bxc|fo|flyover|box-?culvert|slab-?culvert|chainage|re-wall-ch)[_-]?(\d+)[_-](\d+)/i,
+  )
+  if (typed) return `${Number(typed[1])}+${Number(typed[2])}`
+  const mnbStuck = String(leaf || '').match(/mnb(\d+)[_-](\d+)/i)
+  if (mnbStuck) return `${Number(mnbStuck[1])}+${Number(mnbStuck[2])}`
+  const undersc = String(leaf || '').match(/(\d+)[_-](\d+)/)
+  if (undersc) return `${Number(undersc[1])}+${Number(undersc[2])}`
+  return extractChainageKey(leaf) || extractChainageKey(folder)
+}
+
+/** Allow nested project/model paths; block traversal. */
+export function sanitizeFolder(folder) {
+  const raw = String(folder || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+  if (!raw || raw.includes('..')) return null
+  const parts = raw.split('/').filter(Boolean)
+  if (!parts.length || parts.some((p) => p === '.' || p === '..')) return null
+  return parts.join('/')
 }
 
 export function sanitizePotreeFile(file) {
@@ -61,15 +94,18 @@ export async function listPotreeModels() {
 
   for (const obj of objects) {
     const rel = String(obj.key || '').slice(POTREE_BUCKET_PREFIX.length)
-    const parts = rel.split('/')
-    const folder = parts[0]
-    const file = parts.slice(1).join('/')
-    if (!folder || !file) continue
+    const parts = rel.split('/').filter(Boolean)
+    if (parts.length < 2) continue
+    const file = parts[parts.length - 1]
+    if (!ALLOWED_FILES.has(file)) continue
+    const folder = parts.slice(0, -1).join('/')
+    if (!folder) continue
     if (!byFolder.has(folder)) {
       byFolder.set(folder, {
         folder,
+        project: potreeProjectName(folder),
         chainageKey: chainageFromFolder(folder),
-        name: folder,
+        name: potreeModelLeaf(folder) || folder,
         files: {},
       })
     }
@@ -91,7 +127,7 @@ export async function listPotreeModels() {
         const metaText = await readObjectText(`${POTREE_BUCKET_PREFIX}${entry.folder}/metadata.json`)
         if (metaText) {
           const meta = JSON.parse(metaText)
-          entry.name = String(meta.name || entry.folder).trim()
+          entry.name = String(meta.name || entry.name || entry.folder).trim()
           entry.points = Number(meta.points) || null
           const metaChainage = extractChainageKey(meta.name)
           if (metaChainage) entry.chainageKey = metaChainage
@@ -101,15 +137,18 @@ export async function listPotreeModels() {
       }
       models.push({
         folder: entry.folder,
+        project: entry.project || potreeProjectName(entry.folder),
         name: entry.name,
         chainageKey: entry.chainageKey,
         points: entry.points ?? null,
         sizeBytes: Object.values(entry.files).reduce((a, b) => a + b, 0),
       })
-    })
+    }),
   )
 
   models.sort((a, b) => {
+    const proj = String(a.project || '').localeCompare(String(b.project || ''))
+    if (proj !== 0) return proj
     const parse = (k) => {
       const m = String(k || '').match(/(\d+)\+(\d+)/)
       return m ? [Number(m[1]), Number(m[2])] : [0, 0]

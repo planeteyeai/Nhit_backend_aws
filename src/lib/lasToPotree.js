@@ -20,6 +20,7 @@ import {
   listPotreeModels,
   POTREE_BUCKET_PREFIX,
 } from './potreeModels.js'
+import { chainageKeyToKm, resolvePotreeProject } from './potreeProjects.js'
 
 const MODEL_3D_PREFIX = 'upload/model_3d/'
 const LAS_EXT = /\.(las|laz)$/i
@@ -135,7 +136,10 @@ export async function convertLasFileFromS3(s3Key, options = {}) {
   }
 
   const fileName = path.basename(s3Key)
-  const folderName = lasFileToPotreeFolderName(fileName)
+  const modelFolder = lasFileToPotreeFolderName(fileName)
+  const chainageKey = extractChainageKey(fileName)
+  const project = resolvePotreeProject(chainageKeyToKm(chainageKey))
+  const folderName = project ? `${project}/${modelFolder}` : modelFolder
   const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bms-potree-'))
   const localLas = path.join(workRoot, fileName)
   const outputDir = path.join(workRoot, 'output')
@@ -157,7 +161,8 @@ export async function convertLasFileFromS3(s3Key, options = {}) {
     return {
       folder: folderName,
       fileName,
-      chainageKey: extractChainageKey(fileName),
+      chainageKey,
+      project: project || '',
       s3Prefix: `${POTREE_BUCKET_PREFIX}${folderName}/`,
     }
   } finally {

@@ -103,6 +103,16 @@ import {
 import { listUnmatchedShmReports } from '../lib/shmUnmatchedReports.js'
 import { buildInspectionPdf, INSPECTION_PDF_PAGE } from '../lib/inspectionPdf.js'
 import {
+  INSPECTION_SECTION_FLAGS,
+  INSPECTION_COMPONENT_FLAGS,
+  resetInspectionSectionFlags,
+  markInspectionSectionYes,
+  markBridgeStepYes,
+  refreshBridgeFormFilled,
+  applyBridgeBmcDecision,
+  closeBridgeInventory,
+} from '../lib/statusFlags.js'
+import {
   findPotreeModelByChainage,
   invalidatePotreeCatalogCache,
   listPotreeModels,
@@ -1515,6 +1525,9 @@ router.post('/bridges', optionalAuth, async (req, res) => {
     for (const key of stepFlags) {
       if (normalized[key] == null || normalized[key] === '') normalized[key] = 'No'
     }
+    if (normalized.form_filled == null || normalized.form_filled === '') {
+      normalized.form_filled = 'No'
+    }
 
     const use = Object.keys(normalized).filter((k) => normalized[k] !== undefined)
     const placeholders = use.map(() => '?').join(', ')
@@ -1560,6 +1573,13 @@ router.put('/bridges/:bridgeId', optionalAuth, async (req, res) => {
     if (!fields.length) return res.json({ success: true })
     vals.push(req.params.bridgeId)
     await pool.query(`UPDATE bridge SET ${fields.join(', ')}, updated_on = NOW() WHERE bridge_id = ?`, vals)
+    // Submit-to-BMC (status=Completed) or any step-flag update → refresh form_filled.
+    if (
+      Object.prototype.hasOwnProperty.call(b, 'status') ||
+      Object.keys(b).some((k) => String(k).endsWith('_bridge'))
+    ) {
+      await refreshBridgeFormFilled(pool, req.params.bridgeId, req.user?.uid || 0)
+    }
     res.json({ success: true })
   } catch (e) {
     console.error(e)
@@ -1579,10 +1599,7 @@ router.delete('/bridges/:bridgeId', requireAuth, async (req, res) => {
 
 router.post('/bridges/:bridgeId/approve', requireAuth, async (req, res) => {
   try {
-    await pool.query(
-      `UPDATE bridge SET bmc_status = 'Approved', bmc_status_updated_on = NOW() WHERE bridge_id = ?`,
-      [req.params.bridgeId]
-    )
+    await applyBridgeBmcDecision(pool, req.params.bridgeId, 'approved', req.user?.uid || 0)
     res.json({ success: true })
   } catch (e) {
     console.error(e)
@@ -1594,12 +1611,7 @@ router.post('/bridges/:bridgeId/reject', requireAuth, async (req, res) => {
   try {
     const bridgeId = req.params.bridgeId
     const comment = String(req.body?.comment || '').trim()
-    await pool.query(
-      `UPDATE bridge
-       SET status = 'Pending', bmc_status = 'Rejected', bmc_status_updated_on = NOW()
-       WHERE bridge_id = ?`,
-      [bridgeId]
-    )
+    await applyBridgeBmcDecision(pool, bridgeId, 'rejected', req.user?.uid || 0)
     if (comment) {
       try {
         // Ensure table has AUTO_INCREMENT on rejection_id before INSERT
@@ -1616,6 +1628,17 @@ router.post('/bridges/:bridgeId/reject', requireAuth, async (req, res) => {
         console.error('Could not save rejection comment:', insertErr.message)
       }
     }
+    res.json({ success: true })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ message: e.message })
+  }
+})
+
+/** Explicit archive — sets bridge.status = Closed (leaves active inventory queues). */
+router.post('/bridges/:bridgeId/close', requireAuth, async (req, res) => {
+  try {
+    await closeBridgeInventory(pool, req.params.bridgeId, req.user?.uid || 0)
     res.json({ success: true })
   } catch (e) {
     console.error(e)
@@ -1730,6 +1753,9 @@ router.get('/bridge/options/:key', async (req, res) => {
         // Store rating code (not row id) in bridge.rating_for_vertical_clearance
         code: 'vertical_clearance_rating_code',
         label: 'vertical_clearance_rating',
+        idColumn: 'vertical_clearance_id',
+        // EX vs MA/SA/CS/LS share the same codes — need road_type to filter in UI
+        extraColumns: ['road_type'],
       },
       rating_of_waterway_adequacy: {
         table: 'rating_of_waterway_adequacy',
@@ -1765,9 +1791,13 @@ router.get('/bridge/options/:key', async (req, res) => {
     const cfg = map[key]
     if (!cfg) return res.status(400).json({ message: 'Invalid options key' })
     const orderBy = cfg.orderBy || cfg.code
+    const extras = Array.isArray(cfg.extraColumns)
+      ? cfg.extraColumns.map((col) => `\`${col}\``).join(', ')
+      : ''
+    const extraSql = extras ? `, ${extras}` : ''
     const sql = cfg.idColumn
-      ? `SELECT \`${cfg.idColumn}\` AS id, \`${cfg.code}\` AS code, \`${cfg.label}\` AS label FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
-      : `SELECT \`${cfg.code}\` AS code, \`${cfg.label}\` AS label FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
+      ? `SELECT \`${cfg.idColumn}\` AS id, \`${cfg.code}\` AS code, \`${cfg.label}\` AS label${extraSql} FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
+      : `SELECT \`${cfg.code}\` AS code, \`${cfg.label}\` AS label${extraSql} FROM \`${cfg.table}\` ORDER BY \`${orderBy}\``
     const [rows] = await pool.query(sql)
     res.json(rows)
   } catch (e) {
@@ -2108,6 +2138,7 @@ router.post('/inspection/foundation/:inspectionId', requireAuth, async (req, res
         Number(req.user?.uid || 0),
       ]
     )
+    await markInspectionSectionYes(pool, inspectionId, 'foundation', req.user?.uid || 0)
     const [rows] = await pool.query('SELECT * FROM foundation WHERE foundation_id = ? LIMIT 1', [result.insertId])
     res.json({ success: true, data: rows[0] || null })
   } catch (e) {
@@ -2152,6 +2183,7 @@ router.put('/inspection/foundation/:inspectionId/:foundationId', requireAuth, as
         inspectionId,
       ]
     )
+    await markInspectionSectionYes(pool, inspectionId, 'foundation', req.user?.uid || 0)
     const [rows] = await pool.query('SELECT * FROM foundation WHERE foundation_id = ? LIMIT 1', [foundationId])
     res.json({ success: true, data: rows[0] || null })
   } catch (e) {
@@ -3595,6 +3627,7 @@ router.post('/inspection/superstructure_span/upsert', requireAuth, async (req, r
         `UPDATE \`${cfg.table}\` SET ${setClause} WHERE \`${resolvedPk}\` = ? AND bridge_inspection_id = ?`,
         [...setKeys.map((k) => patch[k]), superstructureId, inspectionId]
       )
+      await markInspectionSectionYes(pool, inspectionId, cfg.flag, req.user?.uid || 0)
       return res.json({ success: true, data: { superstructure_id: superstructureId } })
     }
 
@@ -3604,10 +3637,7 @@ router.post('/inspection/superstructure_span/upsert', requireAuth, async (req, r
     )
     const insertedId = Number(ins?.insertId || 0)
 
-    await pool.query(
-      `UPDATE bridge_inspection SET \`${cfg.flag}\` = 'Yes', updated_by = ?, upadted_on = CURDATE() WHERE bridge_inspection_id = ?`,
-      [req.user?.uid || 0, inspectionId]
-    )
+    await markInspectionSectionYes(pool, inspectionId, cfg.flag, req.user?.uid || 0)
 
     return res.json({ success: true, data: { superstructure_id: insertedId } })
   } catch (e) {
@@ -3861,6 +3891,7 @@ router.post('/inspection/expansion_joint/upsert', optionalAuth, async (req, res)
         `UPDATE \`${table}\` SET ${setSql} WHERE expansion_joint_id = ? AND bridge_inspection_id = ?`,
         [...vals, expansionJointId, inspectionId]
       )
+      await markInspectionSectionYes(pool, inspectionId, 'expansion_joint', req.user?.uid || 0)
       return res.json({
         success: true,
         data: { expansion_joint_id: expansionJointId },
@@ -3875,21 +3906,7 @@ router.post('/inspection/expansion_joint/upsert', optionalAuth, async (req, res)
       vals
     )
     const newId = Number(ins?.insertId || 0)
-    const [bridgeInspectionFlagRows] = await pool.query(
-      `SELECT COLUMN_NAME
-       FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'bridge_inspection'
-         AND COLUMN_NAME = 'expansion_joint'`
-    )
-    if (bridgeInspectionFlagRows.length) {
-      await pool.query(
-        `UPDATE bridge_inspection
-         SET expansion_joint = 'Yes', updated_by = ?, upadted_on = CURDATE()
-         WHERE bridge_inspection_id = ?`,
-        [req.user?.uid || 0, inspectionId]
-      )
-    }
+    await markInspectionSectionYes(pool, inspectionId, 'expansion_joint', req.user?.uid || 0)
     return res.json({ success: true, data: { expansion_joint_id: newId } })
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message })
@@ -4469,7 +4486,16 @@ router.get('/dashboard/location_data', optionalAuth, async (req, res) => {
 router.get('/inspection/:inspectionId/ratings', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM inspection_component_rating WHERE bridge_inspection_id = ?',
+      `SELECT icr.*,
+              brd.bearing_condition AS bearing_condition,
+              brd.bearing_name AS bearing_detail_name
+       FROM inspection_component_rating icr
+       LEFT JOIN bearing_rating_details brd
+         ON brd.bridge_inspection_id = icr.bridge_inspection_id
+        AND LOWER(brd.component_type) = LOWER(icr.component_type)
+        AND brd.form_no = icr.form_no
+       WHERE icr.bridge_inspection_id = ?
+       ORDER BY icr.id ASC`,
       [req.params.inspectionId]
     )
     res.json(rows)
@@ -6130,7 +6156,13 @@ router.get('/potree-models', optionalAuth, async (req, res) => {
 
 router.get('/potree-models/:folder/:file', optionalAuth, async (req, res) => {
   try {
-    const folder = String(req.params.folder || '').trim()
+    // Nested project/model paths arrive as one segment with %2F (encodeURIComponent).
+    let folder = String(req.params.folder || '').trim()
+    try {
+      folder = decodeURIComponent(folder)
+    } catch {
+      /* keep raw */
+    }
     const file = sanitizePotreeFile(req.params.file)
     if (!folder || !file) return res.status(400).json({ message: 'Invalid Potree path' })
     const ok = await streamPotreeFile(res, folder, file, req.headers.range)
@@ -6349,29 +6381,82 @@ router.post(
 )
 
 const INSPECTION_COMPONENTS = {
-  general: { table: 'general', pk: 'general_id', flag: 'general' },
-  approaches: { table: 'approaches', pk: 'approaches_id', flag: 'approaches' },
-  protection_works: { table: 'protection_works', pk: 'protection_works_id', flag: 'protection_works' },
-  waterway: { table: 'waterway', pk: 'waterway_id', flag: 'waterway' },
-  subways: { table: 'subways', pk: 'subway_id', flag: 'subways' },
-  wearing_coat: { table: 'wearing_coat', pk: 'wearing_coat_id', flag: 'wearing_coat' },
+  general: { table: 'general', pk: 'general_id', flag: INSPECTION_COMPONENT_FLAGS.general },
+  approaches: { table: 'approaches', pk: 'approaches_id', flag: INSPECTION_COMPONENT_FLAGS.approaches },
+  protection_works: {
+    table: 'protection_works',
+    pk: 'protection_works_id',
+    flag: INSPECTION_COMPONENT_FLAGS.protection_works,
+  },
+  waterway: { table: 'waterway', pk: 'waterway_id', flag: INSPECTION_COMPONENT_FLAGS.waterway },
+  // Schema column is for_subways (not "subways")
+  subways: { table: 'subways', pk: 'subway_id', flag: INSPECTION_COMPONENT_FLAGS.subways },
+  wearing_coat: { table: 'wearing_coat', pk: 'wearing_coat_id', flag: INSPECTION_COMPONENT_FLAGS.wearing_coat },
   drainage_spouts_and_vest_holes: {
     table: 'drainage_spouts_and_vest_holes',
     pk: 'drainage_spouts_and_vest_holes_id',
-    flag: 'drainage_spouts_and_vest_holes',
+    flag: INSPECTION_COMPONENT_FLAGS.drainage_spouts_and_vest_holes,
   },
   handrails: {
     table: 'handrails_parapets_crash_barriers',
     pk: 'handrails_parapets_crash_barriers_id',
-    flag: 'hand_rails_&_parapets_walls',
+    flag: INSPECTION_COMPONENT_FLAGS.handrails,
   },
-  footpaths: { table: 'footpaths', pk: 'footpath_id', flag: 'footpaths' },
-  utilities: { table: 'utilities', pk: 'utilities_id', flag: 'utilities' },
-  foundation: { table: 'foundation', pk: 'foundation_id', flag: 'foundation' },
-  substructure: { table: 'substructure', pk: 'substructure_id', flag: 'substructure' },
-  bearing_and_pedestal: { table: 'bearing_and_pedistal', pk: 'bearing_and_pedistal_id', flag: 'bearing_and_pedestal' },
-  superstructure: { table: 'superstructure', pk: 'superstructure_id', flag: 'superstructure' },
-  expansion_joint: { table: 'expansion_joint', pk: 'expansion_joint_id', flag: 'expansion_joint' },
+  footpaths: { table: 'footpaths', pk: 'footpath_id', flag: INSPECTION_COMPONENT_FLAGS.footpaths },
+  utilities: { table: 'utilities', pk: 'utilities_id', flag: INSPECTION_COMPONENT_FLAGS.utilities },
+  foundation: { table: 'foundation', pk: 'foundation_id', flag: INSPECTION_COMPONENT_FLAGS.foundation },
+  substructure: { table: 'substructure', pk: 'substructure_id', flag: INSPECTION_COMPONENT_FLAGS.substructure },
+  bearing_and_pedestal: {
+    table: 'bearing_and_pedistal',
+    pk: 'bearing_and_pedistal_id',
+    flag: INSPECTION_COMPONENT_FLAGS.bearing_and_pedestal,
+  },
+  superstructure: {
+    table: 'superstructure',
+    pk: 'superstructure_id',
+    flag: INSPECTION_COMPONENT_FLAGS.superstructure,
+  },
+  expansion_joint: {
+    table: 'expansion_joint',
+    pk: 'expansion_joint_id',
+    flag: INSPECTION_COMPONENT_FLAGS.expansion_joint,
+  },
+}
+
+/** Structure-data field names (AddStructureDataInspection) — saving these marks bridge_inspection=Yes. */
+const STRUCTURE_DATA_FIELDS = new Set([
+  'design_discharge_in_cumecs',
+  'design_hfl_and_lwl',
+  'design_scour_level_at_pier',
+  'design_scour_level_at_abutment',
+  'founding_strata',
+  'water_body_lowest_level',
+  'whether_the_bridge_is_in_grade',
+  'road_formation_level',
+  'ground_level',
+  'deck_soft_level_of_superstructure',
+  'clear_carriageway_width',
+  'overall_deck_width',
+  'roadway_width_for_approaches',
+  'safety_kerb_width',
+  'footpath_width',
+  'bridge_railing_type',
+  'bridge_railing_material',
+  'bridge_railing_width',
+  'whether_median_if_yes_its_width',
+  'shoulder_width',
+  'shoulder_material',
+  'height_of_approach_embankment',
+  'average_skew',
+  'whether_navigable',
+  'horizontal_clearance',
+  'vertical_clearence',
+  'hign_level_submersible_causeway',
+])
+
+function payloadHasStructureDataFields(obj) {
+  if (!obj || typeof obj !== 'object') return false
+  return Object.keys(obj).some((k) => STRUCTURE_DATA_FIELDS.has(k))
 }
 
 const INSPECTION_COMPONENT_PK_CACHE = new Map()
@@ -6897,23 +6982,7 @@ router.post('/inspection/component/:key/:inspectionId', requireAuth, async (req,
       )
     }
 
-    // Mark component flag on bridge_inspection only if the column exists in current DB schema.
-    const [bridgeInspectionFlagRows] = await pool.query(
-      `SELECT COLUMN_NAME
-       FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'bridge_inspection'
-         AND COLUMN_NAME = ?`,
-      [cfg.flag]
-    )
-    if (bridgeInspectionFlagRows.length) {
-      await pool.query(
-        `UPDATE bridge_inspection
-         SET \`${cfg.flag}\` = 'Yes', updated_by = ?, upadted_on = CURDATE()
-         WHERE bridge_inspection_id = ?`,
-        [req.user?.uid || 0, inspectionId]
-      )
-    }
+    await markInspectionSectionYes(pool, inspectionId, cfg.flag, req.user?.uid || 0)
 
     res.json({ success: true })
   } catch (e) {
@@ -6948,9 +7017,10 @@ router.post('/inspections', requireAuth, async (req, res) => {
     const tpl = tplRows[0] || {}
     delete tpl.bridge_inspection_id
 
+    const fromClient = Object.fromEntries(Object.entries(raw).filter(([k]) => allowedCols.has(k)))
     const payload = {
       ...tpl,
-      ...Object.fromEntries(Object.entries(raw).filter(([k]) => allowedCols.has(k))),
+      ...fromClient,
       bridge_id: bridgeId,
       bmc_inspection_status: raw.bmc_inspection_status || raw.bmcInspectionStatus || tpl.bmc_inspection_status || 'No',
       bmc_user: Number(raw.bmc_user ?? raw.bmcUser ?? tpl.bmc_user ?? 0),
@@ -6960,6 +7030,13 @@ router.post('/inspections', requireAuth, async (req, res) => {
       updated_by: Number(req.user?.uid || tpl.updated_by || 0),
       created_on: new Date(),
       upadted_on: new Date(),
+    }
+    // Do not inherit Yes flags from template row; keep only flags the client explicitly sent.
+    const keepFlags = INSPECTION_SECTION_FLAGS.filter((f) => fromClient[f] != null && String(fromClient[f]).trim() !== '')
+    resetInspectionSectionFlags(payload, { keep: keepFlags })
+    // Structure Data create → mark bridge_inspection complete for future checklist use.
+    if (payloadHasStructureDataFields(fromClient) || String(fromClient.bridge_inspection || '').toLowerCase() === 'yes') {
+      payload.bridge_inspection = 'Yes'
     }
 
     // Resolve numeric state_id / zone_id required by dump schema if not provided.
@@ -7060,6 +7137,14 @@ router.put('/inspections/:id', requireAuth, async (req, res) => {
     }
     patch.updated_by = Number(req.user?.uid || 0)
     patch.upadted_on = new Date()
+    // Structure Data update → mark bridge_inspection = Yes (section complete).
+    if (
+      allowed.has('bridge_inspection') &&
+      (payloadHasStructureDataFields(patch) ||
+        String(patch.bridge_inspection || '').toLowerCase() === 'yes')
+    ) {
+      patch.bridge_inspection = 'Yes'
+    }
 
     const keys = Object.keys(patch)
     if (!keys.length) return res.json({ success: true })
@@ -7240,6 +7325,11 @@ async function insertBridgeInspectionFromBridge(req, bridge, extraFields = {}) {
     upadted_on: new Date(),
     ...extraFields,
   }
+  // Fresh inspection: all section flags No (structure data save will set bridge_inspection=Yes later).
+  const keepFlags = INSPECTION_SECTION_FLAGS.filter(
+    (f) => extraFields[f] != null && String(extraFields[f]).trim() !== '',
+  )
+  resetInspectionSectionFlags(payload, { keep: keepFlags })
 
   const [metaRows] = await pool.query(
     `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
@@ -7366,6 +7456,7 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
       created_on: new Date(),
       upadted_on: new Date(),
     }
+    resetInspectionSectionFlags(payload)
 
     // Fill any remaining NOT NULL columns without defaults (dump schema is strict).
     const [metaRows] = await pool.query(
@@ -7466,6 +7557,7 @@ router.post('/schedule-adhoc-inspecion/:adhocId/start', requireAuth, async (req,
       created_on: new Date(),
       upadted_on: new Date(),
     }
+    resetInspectionSectionFlags(payload)
 
     const [metaRows] = await pool.query(
       `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
@@ -7816,12 +7908,7 @@ for (const step of [
             )
           }
 
-          try {
-            await pool.query(
-              `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-              [req.user?.uid || 0, bridgeId]
-            )
-          } catch {}
+          await markBridgeStepYes(pool, bridgeId, bridgeFlagCol, req.user?.uid || 0)
 
           await replaceExpansionJointBridgeItems(pool, bridgeId, [], req.user?.uid || 0)
 
@@ -7921,12 +8008,7 @@ for (const step of [
           )
         }
 
-        try {
-          await pool.query(
-            `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-            [req.user?.uid || 0, bridgeId]
-          )
-        } catch {}
+        await markBridgeStepYes(pool, bridgeId, bridgeFlagCol, req.user?.uid || 0)
 
         await replaceExpansionJointBridgeItems(
           pool,
@@ -7952,15 +8034,7 @@ for (const step of [
             stepId,
           ])
         }
-        // PHP parity: mark step as completed in bridge table via Yes/No flag.
-        try {
-          await pool.query(
-            `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-            [req.user?.uid || 0, bridgeId]
-          )
-        } catch {
-          // ignore if column differs in some deployments
-        }
+        await markBridgeStepYes(pool, bridgeId, bridgeFlagCol, req.user?.uid || 0)
         return res.json({ success: true, id: stepId, updated: true })
       }
 
@@ -8009,15 +8083,8 @@ for (const step of [
         `INSERT INTO ${cfg.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
         vals
       )
-      // PHP parity: mark step as completed in bridge table via Yes/No flag.
-      try {
-        await pool.query(
-          `UPDATE bridge SET \`${bridgeFlagCol}\` = 'Yes', updated_by = ?, updated_on = CURDATE() WHERE bridge_id = ?`,
-          [req.user?.uid || 0, bridgeId]
-        )
-      } catch {
-        // ignore if column differs in some deployments
-      }
+      // Mark inventory step Yes + recompute form_filled.
+      await markBridgeStepYes(pool, bridgeId, bridgeFlagCol, req.user?.uid || 0)
       res.json({ success: true, id: ins.insertId, created: true })
     } catch (e) {
       res.status(500).json({ message: e.message })

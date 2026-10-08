@@ -18,6 +18,7 @@ function isPublicShmPdfRead(req) {
 function isPublicPotreeRead(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
+  // folder may contain %2F for nested project/model paths
   return path === '/potree-models' || /^\/potree-models\/[^/]+\/[^/]+$/.test(path)
 }
 
