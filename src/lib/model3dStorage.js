@@ -95,8 +95,17 @@ export async function listModel3dBucketFileNames() {
   return [...names]
 }
 
-/** Upload valid local GLB binaries to Railway bucket (skips LFS pointers). */
+/**
+ * Upload valid local GLB binaries to the bucket (skips LFS pointers).
+ * Opt-in only — auto-mirror on boot was re-creating deleted root GLBs on S3.
+ * Set MODEL3D_MIRROR_TO_BUCKET=1 to enable.
+ */
 export async function mirrorModel3dGlbsToBucket(model3dRoot) {
+  const flag = String(process.env.MODEL3D_MIRROR_TO_BUCKET || '').trim().toLowerCase()
+  const enabled = flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on'
+  if (!enabled) {
+    return { ok: 0, skipped: 0, failed: 0, disabled: true }
+  }
   if (!isStorageEnabled() || !model3dRoot || !fs.existsSync(model3dRoot)) {
     return { ok: 0, skipped: 0, failed: 0 }
   }

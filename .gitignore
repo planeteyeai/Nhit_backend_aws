@@ -25,7 +25,7 @@ upload/**/*
 !upload/model_3d/models.json
 !upload/model_3d/lfs-manifest.json
 !upload/model_3d/README.md
-!upload/model_3d/*.glb
+# Do not track/sync root GLBs — they were re-uploaded to S3 via warmModel3dStorage on boot.
 # InSAR workbook cache for Railway (SharePoint often needs login)
 !upload/insar/
 !upload/insar/.gitkeep

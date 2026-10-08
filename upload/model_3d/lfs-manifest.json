@@ -1,56 +1,5 @@
 {
   "repo": "planeteyeai/nhit-backend1",
   "branch": "main",
-  "files": [
-    {
-      "file": "46+813 MJB .glb",
-      "oid": "sha256:9002727ac1628deff54d68134a6e53f818d7466a7393d9963735369954b7c5c1",
-      "size": 58221748
-    },
-    {
-      "file": "Box culvert 34+860 GLB.glb",
-      "oid": "sha256:d8b24ad5fd63421774f497ea36652d78f5afeaf48b3f22f1a55d5efbaed11244",
-      "size": 59749812
-    },
-    {
-      "file": "Box culvert 52+780 GLB.glb",
-      "oid": "sha256:28cf2cf46c6b64030910984c8282ddeec2340c63657cec949f859e072f0f200d",
-      "size": 104919272
-    },
-    {
-      "file": "Box culvert 53+065 GLB.glb",
-      "oid": "sha256:c5b8e1e46e8cf0011121ebcf1d3a6f3a48d76c22b0d4d6bf41828e05ffea7c03",
-      "size": 83440388
-    },
-    {
-      "file": "Box culvert 54+020 GLB.glb",
-      "oid": "sha256:d4bd6435ea66bd2cbacb7371b88f94e25ac5384a2bd138aab2d1803f0db8822a",
-      "size": 56622160
-    },
-    {
-      "file": "Box culvert 60+470 GLB.glb",
-      "oid": "sha256:b33479d13e6fd8fb4b6dcaf77904019d6b83ce4bd45d0ebd50f05692b7848e6b",
-      "size": 90007728
-    },
-    {
-      "file": "Box culvert 61+820 glb.glb",
-      "oid": "sha256:987c448edb651e2260402f392e16f561a63a102d3feb0b77406787a3e6380a04",
-      "size": 71694140
-    },
-    {
-      "file": "MNB 60+610 GLB.glb",
-      "oid": "sha256:bc286eb9827b97e4ca32a213350423c143d6e672fc9e0f90a24452f3c2ee2878",
-      "size": 165591620
-    },
-    {
-      "file": "PUP 40+160 glb.glb",
-      "oid": "sha256:67e2f7fd313d309001bd348c0b3a9edc5180c2ad6d749371db40f45ceab5fd5c",
-      "size": 110367368
-    },
-    {
-      "file": "Slab culvert 33+165 glb.glb",
-      "oid": "sha256:91b3b30c9846400b065c531d70b52d4c166aeb1476218daf0c7220104941c508",
-      "size": 52553072
-    }
-  ]
+  "files": []
 }
