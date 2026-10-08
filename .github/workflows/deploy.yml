@@ -8,7 +8,7 @@ env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: nhit-backend
   ECS_CLUSTER: nhit-cluster
-  ECS_SERVICE: nhit-service
+  ECS_SERVICE: nhit-task-service-ep26xwo
   CONTAINER_NAME: nhit-backend
 
 jobs:
