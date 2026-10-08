@@ -15,17 +15,14 @@ dist/
 build/
 coverage/
 
-# uploads / generated files (GLB/images stay local; track folder markers + catalog only)
+# uploads / generated files stay local; track folder markers + README only
 upload/*
 !upload/**/
 !upload/**/.gitkeep
 upload/**/*
 !upload/**/.gitkeep
 !upload/README.md
-!upload/model_3d/models.json
-!upload/model_3d/lfs-manifest.json
 !upload/model_3d/README.md
-# Do not track/sync root GLBs — they were re-uploaded to S3 via warmModel3dStorage on boot.
 # InSAR workbook cache for Railway (SharePoint often needs login)
 !upload/insar/
 !upload/insar/.gitkeep

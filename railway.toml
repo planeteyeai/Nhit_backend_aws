@@ -1,4 +1,3 @@
-# Railway — Dockerfile runs git lfs pull so GLB binaries are baked into the image.
 [build]
 builder = "DOCKERFILE"
 

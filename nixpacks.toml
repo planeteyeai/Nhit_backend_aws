@@ -1,12 +1,9 @@
-# Railway uses Nixpacks — install git-lfs and pull GLB binaries before npm ci.
 [phases.setup]
-nixPkgs = ["nodejs", "git", "git-lfs"]
+nixPkgs = ["nodejs"]
 
 [phases.install]
 dependsOn = ["setup"]
 cmds = [
-  "git lfs install || true",
-  "git lfs pull --include=\"upload/model_3d/*.glb\" || true",
   "npm ci",
 ]
 

@@ -1,17 +1,12 @@
-# Railway / Docker — GLB files via git-lfs (clone fallback when .git is missing from context).
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
-  && git lfs install \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY . .
-
-RUN git lfs install \
-  && (git lfs pull --include="upload/model_3d/*.glb" 2>/dev/null || true)
 
 RUN npm ci --omit=dev
 

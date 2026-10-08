@@ -5,7 +5,6 @@ import fs from 'fs'
 import helmet from 'helmet'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { warmModel3dStorage } from './lib/model3dStorage.js'
 import { getPresignedUrl, isStorageEnabled, objectExists, pipeBucketObjectToResponse, storageStatus } from './lib/storage.js'
 import { pool } from './config/db.js'
 import { ensureBridgeInspectionDistressColumns, ensureNonStructuralDistressTable } from './lib/nonStructuralDistressDb.js'
@@ -39,7 +38,6 @@ function resolveUploadFile(urlPath) {
 
 /**
  * express.static + Range on 0-byte files (e.g. .gitkeep) throws RangeNotSatisfiableError.
- * GLB loaders also probe with Range — skip empty placeholder files before send().
  */
 /**
  * If file is not on local disk, serve it from Amazon S3 through this API.
@@ -226,10 +224,9 @@ app.get('/', (_req, res) => {
   res.json({
     ok: true,
     service: 'bms-backend',
-    message: 'API is running. Use the paths below (not this page alone for 3D models).',
+    message: 'API is running.',
     health: '/health',
-    model3dCatalog: '/model-3d/catalog',
-    model3dStatus: '/model-3d/status',
+    potreeModels: '/potree-models',
     apiPrefix: '/api',
   })
 })
@@ -305,11 +302,6 @@ app.use((err, _req, res, _next) => {
   }
 })
 
-function startModel3dWarmup() {
-  const model3dRoot = path.join(uploadDir, 'model_3d')
-  warmModel3dStorage(model3dRoot).catch((e) => console.error('[server] model-3d warmup:', e.message))
-}
-
 const server = app.listen(PORT, HOST, () => {
   const mode = isProduction() ? 'production' : 'development'
   console.log(`BMS backend bind http://${HOST}:${PORT} (${mode})`)
@@ -329,7 +321,6 @@ const server = app.listen(PORT, HOST, () => {
   ensureBridgeInspectionDistressColumns(pool).catch((e) =>
     console.error('[db] bridge_inspection_distress columns ensure:', e.message)
   )
-  startModel3dWarmup()
 })
 
 server.on('error', (err) => {
