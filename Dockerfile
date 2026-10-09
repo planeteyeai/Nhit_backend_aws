@@ -6,11 +6,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY . .
-
+COPY package*.json ./
 RUN npm ci --omit=dev
 
-ENV NODE_ENV=production
+COPY . .
+
+# Don't hardcode NODE_ENV here - let it come from Secrets Manager
+# ENV NODE_ENV=production
+
 EXPOSE 8080
 
 CMD ["npm", "start"]
