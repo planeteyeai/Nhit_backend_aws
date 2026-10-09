@@ -56,10 +56,14 @@ jobs:
             task-def-raw.json > task-def.json
           
           # Verify secrets are preserved
-          echo "=== Checking if secrets are preserved ==="
+          echo "=== BEFORE image injection - secrets count ==="
           jq '.containerDefinitions[0].secrets // [] | length' task-def.json
-          echo "=== Checking if environment vars are preserved ==="
+          echo "=== Full secrets array ==="
+          jq '.containerDefinitions[0].secrets // []' task-def.json
+          echo "=== Environment vars count ==="
           jq '.containerDefinitions[0].environment // [] | length' task-def.json
+          echo "=== Full environment array ==="
+          jq '.containerDefinitions[0].environment // []' task-def.json
 
       - name: Inject new image into task definition
         id: task-def
@@ -68,6 +72,15 @@ jobs:
           task-definition: task-def.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build.outputs.image }}
+
+      - name: Verify secrets after image injection
+        run: |
+          echo "=== AFTER image injection - checking secrets ==="
+          jq '.containerDefinitions[0].secrets // [] | length' ${{ steps.task-def.outputs.task-definition }}
+          echo "=== Full secrets array ==="
+          jq '.containerDefinitions[0].secrets // []' ${{ steps.task-def.outputs.task-definition }}
+          echo "=== Environment vars ==="
+          jq '.containerDefinitions[0].environment // []' ${{ steps.task-def.outputs.task-definition }}
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
