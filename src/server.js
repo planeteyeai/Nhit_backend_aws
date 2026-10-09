@@ -305,6 +305,7 @@ app.use((err, _req, res, _next) => {
 const server = app.listen(PORT, HOST, () => {
   const mode = isProduction() ? 'production' : 'development'
   console.log(`BMS backend bind http://${HOST}:${PORT} (${mode})`)
+  console.log(`[DEPLOYMENT TEST] CI/CD deployment working - ${new Date().toISOString()}`)
   const publicBase = resolvePublicApiBase()
   if (publicBase) {
     console.log(`BMS backend live API ${publicBase}`)
