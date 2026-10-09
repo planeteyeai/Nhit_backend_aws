@@ -51,9 +51,15 @@ jobs:
             --task-definition nhit-task \
             --query taskDefinition > task-def-raw.json
           
-          # Remove unsupported fields
-          jq 'del(.compatibilities, .taskDefinitionArn, .requiresAttributes, .revision, .status, .registeredAt, .registeredBy, .enableFaultInjection)' \
+          # Remove ONLY AWS-managed fields, keep secrets and environment
+          jq 'del(.compatibilities, .taskDefinitionArn, .requiresAttributes, .revision, .status, .registeredAt, .registeredBy, .enableFaultInjection, .deregisteredAt)' \
             task-def-raw.json > task-def.json
+          
+          # Verify secrets are preserved
+          echo "=== Checking if secrets are preserved ==="
+          jq '.containerDefinitions[0].secrets // [] | length' task-def.json
+          echo "=== Checking if environment vars are preserved ==="
+          jq '.containerDefinitions[0].environment // [] | length' task-def.json
 
       - name: Inject new image into task definition
         id: task-def
