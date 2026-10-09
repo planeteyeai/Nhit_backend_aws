@@ -52,49 +52,65 @@ jobs:
             --task-definition nhit-task \
             --query taskDefinition > task-def-raw.json
           
-          # Remove ONLY AWS-managed fields, keep secrets, environment, and executionRoleArn
+          # Remove ONLY AWS-managed fields, keep everything else
           jq 'del(.compatibilities, .taskDefinitionArn, .requiresAttributes, .revision, .status, .registeredAt, .registeredBy, .enableFaultInjection, .deregisteredAt)' \
             task-def-raw.json > task-def.json
           
-          # Verify critical fields are preserved
-          echo "=== Execution Role ARN ==="
-          jq -r '.executionRoleArn' task-def.json
-          echo ""
-          echo "=== Task Role ARN ==="
-          jq -r '.taskRoleArn' task-def.json
-          echo ""
-          echo "=== BEFORE image injection - secrets count ==="
-          jq '.containerDefinitions[0].secrets // [] | length' task-def.json
-          echo "=== Full secrets array ==="
-          jq '.containerDefinitions[0].secrets // []' task-def.json
-          echo "=== Environment vars count ==="
-          jq '.containerDefinitions[0].environment // [] | length' task-def.json
+          echo "=== Current task definition summary ==="
+          echo "Execution Role: $(jq -r '.executionRoleArn' task-def.json)"
+          echo "Task Role: $(jq -r '.taskRoleArn' task-def.json)"
+          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def.json)"
+          echo "Container image (before): $(jq -r '.containerDefinitions[0].image' task-def.json)"
 
-      - name: Inject new image into task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-def.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build.outputs.image }}
-
-      - name: Verify secrets after image injection
+      - name: Update image in task definition
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "=== AFTER image injection - checking critical fields ==="
-          echo "Execution Role: $(jq -r '.executionRoleArn' ${{ steps.task-def.outputs.task-definition }})"
-          echo "Task Role: $(jq -r '.taskRoleArn' ${{ steps.task-def.outputs.task-definition }})"
-          echo ""
-          echo "=== Secrets count ==="
-          jq '.containerDefinitions[0].secrets // [] | length' ${{ steps.task-def.outputs.task-definition }}
-          echo "=== Full secrets array ==="
-          jq '.containerDefinitions[0].secrets // []' ${{ steps.task-def.outputs.task-definition }}
-          echo "=== Environment vars ==="
-          jq '.containerDefinitions[0].environment // []' ${{ steps.task-def.outputs.task-definition }}
+          # Manually update ONLY the image using jq
+          NEW_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-def.json > task-def-updated.json
+          
+          echo "=== Updated task definition summary ==="
+          echo "Execution Role: $(jq -r '.executionRoleArn' task-def-updated.json)"
+          echo "Task Role: $(jq -r '.taskRoleArn' task-def-updated.json)"
+          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-updated.json)"
+          echo "Container image (after): $(jq -r '.containerDefinitions[0].image' task-def-updated.json)"
+          
+          # Save for deployment
+          mv task-def-updated.json task-def-final.json
 
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+      - name: Register new task definition
+        run: |
+          aws ecs register-task-definition \
+            --cli-input-json file://task-def-final.json \
+            --region ${{ env.AWS_REGION }} > new-task-def.json
+          
+          NEW_TASK_DEF_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' new-task-def.json)
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+          echo "task-definition-arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+        id: register-task-def
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.register-task-def.outputs.task-definition-arn }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "Service update initiated"
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for service to become stable..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "✅ Service deployment completed successfully!"
