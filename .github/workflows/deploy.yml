@@ -52,19 +52,23 @@ jobs:
             --task-definition nhit-task \
             --query taskDefinition > task-def-raw.json
           
-          # Remove ONLY AWS-managed fields, keep secrets and environment
+          # Remove ONLY AWS-managed fields, keep secrets, environment, and executionRoleArn
           jq 'del(.compatibilities, .taskDefinitionArn, .requiresAttributes, .revision, .status, .registeredAt, .registeredBy, .enableFaultInjection, .deregisteredAt)' \
             task-def-raw.json > task-def.json
           
-          # Verify secrets are preserved
+          # Verify critical fields are preserved
+          echo "=== Execution Role ARN ==="
+          jq -r '.executionRoleArn' task-def.json
+          echo ""
+          echo "=== Task Role ARN ==="
+          jq -r '.taskRoleArn' task-def.json
+          echo ""
           echo "=== BEFORE image injection - secrets count ==="
           jq '.containerDefinitions[0].secrets // [] | length' task-def.json
           echo "=== Full secrets array ==="
           jq '.containerDefinitions[0].secrets // []' task-def.json
           echo "=== Environment vars count ==="
           jq '.containerDefinitions[0].environment // [] | length' task-def.json
-          echo "=== Full environment array ==="
-          jq '.containerDefinitions[0].environment // []' task-def.json
 
       - name: Inject new image into task definition
         id: task-def
@@ -76,7 +80,11 @@ jobs:
 
       - name: Verify secrets after image injection
         run: |
-          echo "=== AFTER image injection - checking secrets ==="
+          echo "=== AFTER image injection - checking critical fields ==="
+          echo "Execution Role: $(jq -r '.executionRoleArn' ${{ steps.task-def.outputs.task-definition }})"
+          echo "Task Role: $(jq -r '.taskRoleArn' ${{ steps.task-def.outputs.task-definition }})"
+          echo ""
+          echo "=== Secrets count ==="
           jq '.containerDefinitions[0].secrets // [] | length' ${{ steps.task-def.outputs.task-definition }}
           echo "=== Full secrets array ==="
           jq '.containerDefinitions[0].secrets // []' ${{ steps.task-def.outputs.task-definition }}
