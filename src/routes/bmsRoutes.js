@@ -1747,7 +1747,8 @@ router.get('/bridge/options/:key', async (req, res) => {
         code: 'vertical_clearance_rating_code',
         label: 'vertical_clearance_rating',
         idColumn: 'vertical_clearance_id',
-        // EX vs MA/SA/CS/LS share the same codes — need road_type to filter in UI
+        orderBy: 'vertical_clearance_id',
+        // EX (15–10) / MA… (9–4) / shared EX+MA… (3–0) — UI filters by bridge road_type
         extraColumns: ['road_type'],
       },
       rating_of_waterway_adequacy: {

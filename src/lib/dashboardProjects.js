@@ -4,18 +4,19 @@
 
 export function normalizeDashboardProjectRow(row = {}) {
   const structures = String(row.structures || '').trim()
-  const start = Number(row.actual_start_chainage)
-  const end = Number(row.actual_end_chainage)
+  const start = Number(row.actual_start_chainage ?? row.kilometer)
+  const end = Number(row.actual_end_chainage ?? start)
   return {
     id: row.id,
     project_name: row.project_name || '',
+    actual_chainage: row.actual_chainage || '',
     chainage_start: Number.isFinite(start) ? start : null,
     chainage_end: Number.isFinite(end) ? end : null,
     actual_start_chainage: Number.isFinite(start) ? start : null,
     actual_end_chainage: Number.isFinite(end) ? end : null,
     latitude: Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
     longitude: Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
-    kilometer: row.kilometer != null ? Number(row.kilometer) : null,
+    kilometer: row.kilometer != null ? Number(row.kilometer) : Number.isFinite(start) ? start : null,
     length: row.length != null ? Number(row.length) : null,
     toll_plaza_location: row.toll_plaza_location || '',
     originating: row.originating || '',
@@ -33,6 +34,8 @@ export function normalizeDashboardProjectRow(row = {}) {
     pup: Number(row.pup || 0),
     vup: Number(row.vup || 0),
     rob: Number(row.rob || 0),
+    slab_culvert: Number(row.slab_culvert || 0),
+    box_culvert: Number(row.box_culvert || 0),
     direction: row.direction || '',
     lane: row.lane || '',
     carriage_type: row.carriage_type || '',
@@ -49,11 +52,7 @@ export function buildDashboardProjectFilters(query = {}) {
     params.push(projectName)
   }
 
-  const direction = String(query.direction || '').trim()
-  if (direction && direction.toLowerCase() !== 'all') {
-    where.push('direction = ?')
-    params.push(direction)
-  }
+  // Direction column removed from latest Excel schema — ignore filter if sent.
 
   const structure = String(
     query.structure || query.type_of_structure || query.structure_type || '',
@@ -88,23 +87,18 @@ export async function fetchDashboardProjectsMeta(pool) {
        COUNT(*) AS row_count,
        MIN(actual_start_chainage) AS chainage_min,
        MAX(actual_end_chainage) AS chainage_max,
-       MIN(length) AS length_km,
-       MAX(originating) AS originating,
-       MAX(terminating) AS terminating,
-       MAX(toll_plaza_location) AS toll_plaza_location,
-       MAX(carriage_width) AS carriage_width,
-       MAX(aadt) AS aadt
+       SUM(COALESCE(mjb, 0)) AS mjb,
+       SUM(COALESCE(mnb, 0)) AS mnb,
+       SUM(COALESCE(flyover, 0)) AS flyover,
+       SUM(COALESCE(pup, 0)) AS pup,
+       SUM(COALESCE(vup, 0)) AS vup,
+       SUM(COALESCE(rob, 0)) AS rob,
+       SUM(COALESCE(slab_culvert, 0)) AS slab_culvert,
+       SUM(COALESCE(box_culvert, 0)) AS box_culvert
      FROM Dashboard_projects
      WHERE project_name IS NOT NULL AND TRIM(project_name) <> ''
      GROUP BY project_name
      ORDER BY project_name ASC`,
-  )
-
-  const [directionRows] = await pool.query(
-    `SELECT DISTINCT direction AS value
-     FROM Dashboard_projects
-     WHERE direction IS NOT NULL AND TRIM(direction) <> ''
-     ORDER BY direction ASC`,
   )
 
   const [structureRows] = await pool.query(
@@ -121,14 +115,22 @@ export async function fetchDashboardProjectsMeta(pool) {
       row_count: Number(r.row_count || 0),
       chainage_min: r.chainage_min != null ? Number(r.chainage_min) : null,
       chainage_max: r.chainage_max != null ? Number(r.chainage_max) : null,
-      length_km: r.length_km != null ? Number(r.length_km) : null,
-      originating: r.originating || '',
-      terminating: r.terminating || '',
-      toll_plaza_location: r.toll_plaza_location || '',
-      carriage_width: r.carriage_width || '',
-      aadt: r.aadt != null ? Number(r.aadt) : null,
+      length_km: null,
+      originating: '',
+      terminating: '',
+      toll_plaza_location: '',
+      carriage_width: '',
+      aadt: null,
+      mjb: Number(r.mjb || 0),
+      mnb: Number(r.mnb || 0),
+      flyover: Number(r.flyover || 0),
+      pup: Number(r.pup || 0),
+      vup: Number(r.vup || 0),
+      rob: Number(r.rob || 0),
+      slab_culvert: Number(r.slab_culvert || 0),
+      box_culvert: Number(r.box_culvert || 0),
     })),
-    directions: (directionRows || []).map((r) => r.value).filter(Boolean),
+    directions: [],
     structures: (structureRows || []).map((r) => r.value).filter(Boolean),
   }
 }
@@ -169,6 +171,8 @@ export function summarizeDashboardProjectRows(rows = []) {
     pup: rows.reduce((a, r) => a + Number(r.pup || 0), 0),
     vup: rows.reduce((a, r) => a + Number(r.vup || 0), 0),
     rob: rows.reduce((a, r) => a + Number(r.rob || 0), 0),
+    slab_culvert: rows.reduce((a, r) => a + Number(r.slab_culvert || 0), 0),
+    box_culvert: rows.reduce((a, r) => a + Number(r.box_culvert || 0), 0),
   }
 }
 
