@@ -107,10 +107,35 @@ jobs:
 
       - name: Wait for service stability
         run: |
-          echo "Waiting for service to become stable..."
-          aws ecs wait services-stable \
+          echo "Waiting for service to become stable (this may take up to 10 minutes)..."
+          
+          # Wait with longer timeout (default is 10 minutes, we'll use 15)
+          if aws ecs wait services-stable \
             --cluster ${{ env.ECS_CLUSTER }} \
             --services ${{ env.ECS_SERVICE }} \
-            --region ${{ env.AWS_REGION }}
-          
-          echo "✅ Service deployment completed successfully!"
+            --region ${{ env.AWS_REGION }} \
+            --cli-read-timeout 900 \
+            --cli-connect-timeout 900; then
+            echo "✅ Service deployment completed successfully!"
+          else
+            echo "⚠️ Wait timed out, checking deployment status..."
+            
+            # Check if deployment actually succeeded
+            DEPLOYMENT_STATUS=$(aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+              --output text)
+            
+            echo "Deployment rollout state: $DEPLOYMENT_STATUS"
+            
+            if [[ "$DEPLOYMENT_STATUS" == "COMPLETED" ]]; then
+              echo "✅ Deployment completed successfully despite wait timeout!"
+              exit 0
+            else
+              echo "❌ Deployment is not complete. Check AWS Console for details."
+              echo "https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/events"
+              exit 1
+            fi
+          fi
