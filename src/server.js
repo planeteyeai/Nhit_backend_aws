@@ -19,17 +19,6 @@ import {
 } from './routes/pointcloudViewerRoutes.js'
 
 dotenv.config()
-
-// Debug: Print environment variables status
-console.log('=== Environment Variables Debug ===')
-console.log('NODE_ENV:', process.env.NODE_ENV)
-console.log('MYSQL_HOST:', process.env.MYSQL_HOST ? 'SET' : 'MISSING')
-console.log('MYSQL_USER:', process.env.MYSQL_USER ? 'SET' : 'MISSING')
-console.log('MYSQL_DATABASE:', process.env.MYSQL_DATABASE ? 'SET' : 'MISSING')
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'SET (length: ' + process.env.JWT_SECRET.length + ')' : 'MISSING')
-console.log('CORS_ORIGIN:', process.env.CORS_ORIGIN ? 'SET' : 'MISSING')
-console.log('===================================')
-
 assertProductionConfig()
 
 const app = express()
@@ -316,7 +305,6 @@ app.use((err, _req, res, _next) => {
 const server = app.listen(PORT, HOST, () => {
   const mode = isProduction() ? 'production' : 'development'
   console.log(`BMS backend bind http://${HOST}:${PORT} (${mode})`)
-  console.log(`[DEPLOYMENT TEST] CI/CD deployment working - ${new Date().toISOString()}`)
   const publicBase = resolvePublicApiBase()
   if (publicBase) {
     console.log(`BMS backend live API ${publicBase}`)

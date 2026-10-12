@@ -6,13 +6,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+# Copy the rest of the application
 COPY . .
-
-# Don't hardcode NODE_ENV here - let it come from Secrets Manager
-# ENV NODE_ENV=production
 
 EXPOSE 8080
 
