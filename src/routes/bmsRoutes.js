@@ -1283,32 +1283,95 @@ router.get('/bridges/:bridgeId', async (req, res) => {
   }
 })
 
-async function ensureSpanArrangementSchema() {
-  try {
-    await pool.query(
-      `CREATE TABLE IF NOT EXISTS sapn_arrangment (
-        sp_id INT NOT NULL AUTO_INCREMENT,
-        bridge_id INT NOT NULL,
-        span_material VARCHAR(250) NOT NULL,
-        span_type VARCHAR(256) NOT NULL,
-        span_length FLOAT(10,4) NOT NULL,
-        created_by INT NOT NULL DEFAULT 0,
-        created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_by INT NULL,
-        updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (sp_id),
-        KEY idx_sapn_arrangment_bridge_id (bridge_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`
-    )
-  } catch (_) {
-    // If CREATE TABLE has compatibility issues on legacy DB, proceed with ALTER attempts below.
-  }
+let spanSchemaReady = false
+let spanSchemaPromise = null
 
-  try { await pool.query('ALTER TABLE sapn_arrangment MODIFY sp_id INT NOT NULL AUTO_INCREMENT') } catch (_) {}
-  try { await pool.query('ALTER TABLE sapn_arrangment ADD PRIMARY KEY (sp_id)') } catch (_) {}
-  try { await pool.query('ALTER TABLE sapn_arrangment ADD INDEX idx_sapn_arrangment_bridge_id (bridge_id)') } catch (_) {}
-  try { await pool.query('ALTER TABLE sapn_arrangment ADD COLUMN updated_by INT NULL') } catch (_) {}
-  try { await pool.query('ALTER TABLE sapn_arrangment ADD COLUMN updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP') } catch (_) {}
+/** One-shot schema check — never stack ALTER/CREATE under metadata locks (causes global API timeouts). */
+async function ensureSpanArrangementSchema() {
+  if (spanSchemaReady) return
+  if (spanSchemaPromise) return spanSchemaPromise
+
+  spanSchemaPromise = (async () => {
+    const conn = await pool.getConnection()
+    try {
+      try {
+        await conn.query('SET SESSION lock_wait_timeout = 5')
+      } catch {
+        /* ignore */
+      }
+
+      const [tables] = await conn.query(
+        `SELECT TABLE_NAME AS name FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sapn_arrangment'`
+      )
+      if (!tables?.length) {
+        await conn.query(
+          `CREATE TABLE IF NOT EXISTS sapn_arrangment (
+            sp_id INT NOT NULL AUTO_INCREMENT,
+            bridge_id INT NOT NULL,
+            span_material VARCHAR(250) NOT NULL,
+            span_type VARCHAR(256) NOT NULL,
+            span_length FLOAT(10,4) NOT NULL,
+            created_by INT NOT NULL DEFAULT 0,
+            created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INT NULL,
+            updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (sp_id),
+            KEY idx_sapn_arrangment_bridge_id (bridge_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`
+        )
+        spanSchemaReady = true
+        return
+      }
+
+      const [cols] = await conn.query(
+        `SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sapn_arrangment'`
+      )
+      const colSet = new Set((cols || []).map((c) => String(c.name)))
+      const [idxRows] = await conn.query(
+        `SELECT INDEX_NAME AS name FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sapn_arrangment'`
+      )
+      const indexes = new Set((idxRows || []).map((r) => String(r.name)))
+
+      const softAlter = async (sql) => {
+        try {
+          await conn.query(sql)
+        } catch (e) {
+          const msg = String(e?.message || '')
+          if (/Lock wait timeout|metadata lock/i.test(msg)) {
+            console.warn('[sapn_arrangment] alter deferred:', msg)
+          }
+        }
+      }
+
+      if (!colSet.has('updated_by')) {
+        await softAlter('ALTER TABLE sapn_arrangment ADD COLUMN updated_by INT NULL')
+      }
+      if (!colSet.has('updated_on')) {
+        await softAlter(
+          'ALTER TABLE sapn_arrangment ADD COLUMN updated_on DATETIME NULL ON UPDATE CURRENT_TIMESTAMP'
+        )
+      }
+      if (!indexes.has('idx_sapn_arrangment_bridge_id')) {
+        await softAlter('ALTER TABLE sapn_arrangment ADD INDEX idx_sapn_arrangment_bridge_id (bridge_id)')
+      }
+      // Skip MODIFY/ADD PRIMARY KEY on every request — those are the lock storms.
+      spanSchemaReady = true
+    } finally {
+      conn.release()
+    }
+  })()
+    .catch((e) => {
+      console.warn('[sapn_arrangment] schema ensure failed:', e?.message || e)
+      spanSchemaReady = true
+    })
+    .finally(() => {
+      spanSchemaPromise = null
+    })
+
+  return spanSchemaPromise
 }
 
 router.get('/bridges/:bridgeId/span-arrangement', async (req, res) => {
@@ -4479,10 +4542,12 @@ router.get('/dashboard/location_data', optionalAuth, async (req, res) => {
 
 router.get('/inspection/:inspectionId/ratings', async (req, res) => {
   try {
+    await ensureBearingRatingDetailsNameOfSpanColumn()
     const [rows] = await pool.query(
       `SELECT icr.*,
               brd.bearing_condition AS bearing_condition,
-              brd.bearing_name AS bearing_detail_name
+              brd.bearing_name AS bearing_detail_name,
+              brd.name_of_span AS name_of_span
        FROM inspection_component_rating icr
        LEFT JOIN bearing_rating_details brd
          ON brd.bridge_inspection_id = icr.bridge_inspection_id
@@ -4597,6 +4662,29 @@ const upsertBearingPedestalComponentRating = async ({
   return { id: r.insertId, created: true }
 }
 
+let bearingRatingDetailsSpanColumnReady = false
+async function ensureBearingRatingDetailsNameOfSpanColumn() {
+  if (bearingRatingDetailsSpanColumnReady) return
+  try {
+    const [cols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'bearing_rating_details'
+         AND COLUMN_NAME = 'name_of_span'
+       LIMIT 1`,
+    )
+    if (!cols?.length) {
+      await pool.query(
+        `ALTER TABLE bearing_rating_details
+         ADD COLUMN name_of_span VARCHAR(255) NULL AFTER form_no`,
+      )
+    }
+    bearingRatingDetailsSpanColumnReady = true
+  } catch (e) {
+    console.error('[db] bearing_rating_details.name_of_span ensure:', e.message)
+  }
+}
+
 const upsertBearingRatingDetails = async ({
   bridgeInspectionId,
   componentType,
@@ -4604,8 +4692,11 @@ const upsertBearingRatingDetails = async ({
   bearingName,
   bearingType,
   bearingCondition,
+  nameOfSpan = '',
   userId = 0,
 }) => {
+  await ensureBearingRatingDetailsNameOfSpanColumn()
+  const span = String(nameOfSpan || '').trim() || null
   const [existing] = await pool.query(
     `SELECT id FROM bearing_rating_details
      WHERE bridge_inspection_id = ? AND component_type = ? AND form_no = ?
@@ -4616,18 +4707,28 @@ const upsertBearingRatingDetails = async ({
   if (existing[0]) {
     await pool.query(
       `UPDATE bearing_rating_details
-       SET bearing_name = ?, bearing_type = ?, bearing_condition = ?, updated_by = ?, updated_on = NOW()
+       SET bearing_name = ?, bearing_type = ?, bearing_condition = ?, name_of_span = ?, updated_by = ?, updated_on = NOW()
        WHERE id = ?`,
-      [bearingName, bearingType, bearingCondition, userId, existing[0].id]
+      [bearingName, bearingType, bearingCondition, span, userId, existing[0].id]
     )
     return existing[0].id
   }
 
   const [r] = await pool.query(
     `INSERT INTO bearing_rating_details
-     (bridge_inspection_id, component_type, form_no, bearing_name, bearing_type, bearing_condition, created_by, created_on, updated_by, updated_on)
-     VALUES (?,?,?,?,?,?,?,NOW(),?,NOW())`,
-    [bridgeInspectionId, componentType, formNo, bearingName, bearingType, bearingCondition, Number(userId || 0), Number(userId || 0)]
+     (bridge_inspection_id, component_type, form_no, name_of_span, bearing_name, bearing_type, bearing_condition, created_by, created_on, updated_by, updated_on)
+     VALUES (?,?,?,?,?,?,?,?,NOW(),?,NOW())`,
+    [
+      bridgeInspectionId,
+      componentType,
+      formNo,
+      span,
+      bearingName,
+      bearingType,
+      bearingCondition,
+      Number(userId || 0),
+      Number(userId || 0),
+    ]
   )
   return r.insertId
 }
@@ -4681,6 +4782,7 @@ router.post('/inspection/save_bearing_rating', optionalAuth, async (req, res) =>
     const bearingAndPedestalName = String(body.bearing_and_pedestal_name || '').trim()
     const bearingType = String(body.bearing_type || '').trim()
     const bearingCondition = String(body.bearing_condition || '').trim()
+    const nameOfSpan = String(body.name_of_span || '').trim()
     if (!bridgeInspectionId || !formNo || !ratingId || !bearingAndPedestalName || !bearingType) {
       return res.status(400).json({
         success: false,
@@ -4706,6 +4808,7 @@ router.post('/inspection/save_bearing_rating', optionalAuth, async (req, res) =>
       bearingName: bearingAndPedestalName,
       bearingType,
       bearingCondition,
+      nameOfSpan,
       userId: req.user?.uid || 0,
     })
 
@@ -4717,6 +4820,7 @@ router.post('/inspection/save_bearing_rating', optionalAuth, async (req, res) =>
       updated: Boolean(result.updated),
       created: Boolean(result.created),
       bearing_condition: bearingCondition,
+      name_of_span: nameOfSpan,
     })
   } catch (e) {
     console.error(e)
@@ -5327,7 +5431,8 @@ router.get('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res)
     await ensurePointCloudDataSchema(pool)
     const bridgeId = Number(req.params.bridgeId || 0)
     const pointCloudId = String(req.query.pointCloudId || req.query.point_cloud_id || '').trim() || null
-    const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    // Default OFF — base64 images + schema ALTERs under load cause 25s API timeouts.
+    const includeImages = String(req.query.includeImages || req.query.include_images || '0') === '1'
     const rows = await listPointCloudData(pool, { bridgeId, pointCloudId, includeImages })
     const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
     const imageCount = includeImages
@@ -5495,7 +5600,8 @@ router.get('/point-cloud-data', optionalAuth, async (req, res) => {
     if (!pointCloudId) {
       return res.status(400).json({ status: 'error', message: 'pointCloudId is required' })
     }
-    const includeImages = String(req.query.includeImages || req.query.include_images || '1') !== '0'
+    // Default OFF — base64 images + schema ALTERs under load cause 25s API timeouts.
+    const includeImages = String(req.query.includeImages || req.query.include_images || '0') === '1'
     const rows = await listPointCloudDataByCloudId(pool, pointCloudId, { includeImages })
     const bridgeId = rows.length ? Number(rows[0].bridge_id) || null : null
     const imageAnnotations = includeImages ? rowsToImageAnnotations(rows) : []
@@ -5674,7 +5780,16 @@ ensureDir(path.join(uploadRoot, 'model_3d'))
 router.get('/sar-reports', optionalAuth, async (req, res) => {
   try {
     const chainage = String(req.query.chainage || '').trim()
+    const keysOnly = ['1', 'true', 'yes'].includes(String(req.query.keys || '').trim().toLowerCase())
+    const fileOnly = ['1', 'true', 'yes'].includes(
+      String(req.query.fileOnly || req.query.meta || '').trim().toLowerCase()
+    )
     if (chainage) {
+      // Skip PDF text extract for download / presence lookups.
+      if (fileOnly) {
+        const file = await findSarReportByChainage(chainage)
+        return res.json({ status: 'success', data: file ? { ...file, points: [] } : null })
+      }
       const report = await extractSarReportByChainage(chainage)
       if (!report) {
         const file = await findSarReportByChainage(chainage)
@@ -5683,6 +5798,10 @@ router.get('/sar-reports', optionalAuth, async (req, res) => {
       return res.json({ status: 'success', data: report })
     }
     const files = await listSarReportFiles()
+    if (keysOnly) {
+      const keys = [...new Set(files.map((f) => f.chainageKey).filter(Boolean))]
+      return res.json({ status: 'success', keys, count: keys.length })
+    }
     res.json({ status: 'success', data: files, count: files.length })
   } catch (e) {
     console.error('sar-reports list error:', e)
@@ -5706,11 +5825,16 @@ router.get('/sar-reports/file', optionalAuth, async (req, res) => {
 router.get('/lidar-reports', optionalAuth, async (req, res) => {
   try {
     const chainage = String(req.query.chainage || '').trim()
+    const keysOnly = ['1', 'true', 'yes'].includes(String(req.query.keys || '').trim().toLowerCase())
     if (chainage) {
       const file = await findLidarReportByChainage(chainage)
       return res.json({ status: 'success', data: file, count: file ? 1 : 0 })
     }
     const files = await listLidarReportFiles()
+    if (keysOnly) {
+      const keys = [...new Set(files.map((f) => f.chainageKey).filter(Boolean))]
+      return res.json({ status: 'success', keys, count: keys.length })
+    }
     res.json({ status: 'success', data: files, count: files.length })
   } catch (e) {
     console.error('lidar-reports list error:', e)
@@ -5864,7 +5988,19 @@ router.get('/shm-reports/unmatched', optionalAuth, async (req, res) => {
     const scope = String(req.query.scope || 'bmc').toLowerCase()
     const projectName = String(req.query.project_name || req.query.projectName || '').trim()
     const structureType = String(req.query.structure_type || req.query.structureType || '').trim()
-    const data = await listUnmatchedShmReports({ scope, projectName, structureType })
+    const listsQ = String(req.query.lists || req.query.include_lists || '').trim().toLowerCase()
+    const includeLists =
+      listsQ === '1' || listsQ === 'true' || listsQ === 'yes'
+        ? true
+        : listsQ === '0' || listsQ === 'false' || listsQ === 'no'
+          ? false
+          : undefined
+    const data = await listUnmatchedShmReports({
+      scope,
+      projectName,
+      structureType,
+      includeLists,
+    })
     res.json({ status: 'success', ...data })
   } catch (e) {
     console.error('shm-reports unmatched error:', e)

@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { pipeline } = require("stream/promises");
-const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectsCommand, ListObjectsV2Command, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectsCommand, ListObjectsV2Command, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
@@ -30,10 +30,26 @@ function getClient() {
 		err.status = 500;
 		throw err;
 	}
+	let requestHandler;
+	try {
+		const { NodeHttpHandler } = require("@smithy/node-http-handler");
+		const https = require("https");
+		const http = require("http");
+		const maxSockets = Math.max(50, Number(process.env.AWS_S3_MAX_SOCKETS || 250) || 250);
+		requestHandler = new NodeHttpHandler({
+			httpsAgent: new https.Agent({ keepAlive: true, maxSockets }),
+			httpAgent: new http.Agent({ keepAlive: true, maxSockets }),
+			connectionTimeout: 10_000,
+			requestTimeout: 120_000,
+		});
+	} catch {
+		requestHandler = undefined;
+	}
 	return {
 		client: new S3Client({
 			region,
-			credentials: { accessKeyId, secretAccessKey }
+			credentials: { accessKeyId, secretAccessKey },
+			...(requestHandler ? { requestHandler } : {}),
 		}),
 		bucket,
 		region
@@ -45,12 +61,90 @@ function publicUrl(bucket, region, key) {
 }
 
 function slugify(name) {
-	const base = String(name || "cloud")
-		.toLowerCase()
+	const raw = String(name || "cloud").toLowerCase();
+	const plus = raw.match(/(\d+)\s*\+\s*(\d+)/);
+	const typeMatch = raw.match(
+		/\b(mnb|mjb|vup|pup|rob|bxc|fo|flyover|box[\s-]?culvert|slab[\s-]?culvert)\b/i
+	);
+	// Prefer type-before-chainage so catalog parsers match (e.g. box-culvert-1328-500)
+	if (plus && typeMatch) {
+		const type = String(typeMatch[1])
+			.replace(/\s+/g, "-")
+			.replace(/box-?culvert/i, "box-culvert")
+			.replace(/slab-?culvert/i, "slab-culvert");
+		const km = Number(plus[1]);
+		const m = String(Number(plus[2])).padStart(3, "0");
+		return `${Date.now()}-${type}-${km}-${m}-clean`;
+	}
+	const base = raw
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-|-$/g, "")
 		.slice(0, 40) || "cloud";
 	return `${Date.now()}-${base}`;
+}
+
+/** Project folder under upload/potree/ for a LAS name / chainage (matches model_3d layout). */
+function resolvePotreeProjectFolder(nameOrKey) {
+	const text = String(nameOrKey || "");
+	const plus = text.match(/(\d+)\s*\+\s*(\d+)/);
+	let km = null;
+	if (plus) km = Number(plus[1]) + Number(plus[2]) / 1000;
+	else {
+		const undersc = text.replace(/^\d{10,}-/, "").match(/(\d{1,4})[_-](\d{1,3})(?:-|$|[a-z])/i);
+		if (undersc) km = Number(undersc[1]) + Number(undersc[2]) / 1000;
+	}
+	if (km == null || !Number.isFinite(km)) return "";
+	const projects = [
+		{ name: "Shivpuri jhansi", ranges: [[1305.087, 1380.387]] },
+		{ name: "Palanpur+Swaroopganj", ranges: [[601, 677]] },
+		{ name: "Kalijhar to Patacharkuchi", ranges: [[1013, 1040.3]] },
+		{ name: "Kochugaon to Kalijhar", ranges: [[961.5, 1012.999], [30, 92.671]] },
+		{ name: "Chithorgarh+to+Kota", ranges: [[891.929, 1052.429]] },
+		{ name: "Agra Bypass", ranges: [[0, 32.8]] },
+		{ name: "BKRP", ranges: [[36.6, 175]] },
+		{ name: "Chichra+-+Kharagpur", ranges: [[129, 185.15], [16.13, 72.25]] }
+	];
+	for (const project of projects) {
+		for (const [lo, hi] of project.ranges) {
+			const min = Math.min(lo, hi);
+			const max = Math.max(lo, hi);
+			if (km >= min && km <= max) return project.name;
+		}
+	}
+	return "";
+}
+
+async function headObjectExists(key) {
+	const { client, bucket } = getClient();
+	try {
+		await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+		return true;
+	} catch (err) {
+		const code = err?.name || err?.Code || "";
+		const status = err?.$metadata?.httpStatusCode;
+		if (code === "NotFound" || code === "NoSuchKey" || status === 404) return false;
+		if (status === 403 || status === 401) return false;
+		return false;
+	}
+}
+
+function metadataKeyForCatalogItem(item) {
+	if (!item) return null;
+	if (item.prefix) {
+		const p = String(item.prefix).replace(/^\/*/, "").replace(/\/+$/, "");
+		return `${p}/metadata.json`;
+	}
+	const s3Url = String(item.s3 || "");
+	const m = s3Url.match(/upload\/potree\/(.+?)\/metadata\.json/i);
+	if (m) {
+		try {
+			return `upload/potree/${decodeURIComponent(m[1])}/metadata.json`;
+		} catch {
+			return `upload/potree/${m[1]}/metadata.json`;
+		}
+	}
+	if (item.id) return `${getPotreeOutputRoot().replace(/\/$/, "")}/${item.id}/metadata.json`;
+	return null;
 }
 
 const CATALOG_KEY = "catalog/clouds.json";
@@ -78,10 +172,11 @@ function getPotreeOutputRoot() {
 	return normalizePrefix(configured, DEFAULT_POTREE_OUTPUT_PREFIX);
 }
 
-/** Full S3 prefix for one cloud, e.g. upload/potree/{id} */
-function potreePrefixForId(id) {
+/** Full S3 prefix for one cloud, e.g. upload/potree/{project}/{id} or upload/potree/{id} */
+function potreePrefixForId(id, projectFolder = "") {
 	const root = getPotreeOutputRoot().replace(/\/$/, "");
-	return `${root}/${id}`;
+	const project = String(projectFolder || "").replace(/^\/+|\/+$/g, "");
+	return project ? `${root}/${project}/${id}` : `${root}/${id}`;
 }
 
 function isLasFilename(filename) {
@@ -631,10 +726,64 @@ function getOrigin(req) {
 	return `${proto}://${host}`;
 }
 
+function extractChainageKeyLoose(text) {
+	const s = String(text || "");
+	const plus = s.match(/(\d+)\s*\+\s*(\d+)/);
+	if (plus) return `${Number(plus[1])}+${Number(plus[2])}`;
+	const stripped = s.replace(/^\d{10,}-/, "");
+	const typed = stripped.match(
+		/(?:mnb|mjb|vup|pup|rob|bxc|fo|flyover|box-?culvert|slab-?culvert)[_-]?(\d+)[_-](\d+)/i
+	);
+	if (typed) return `${Number(typed[1])}+${Number(typed[2])}`;
+	const plain = stripped.match(/(\d{1,4})[_-](\d{1,3})(?:-|$|[a-z])/i);
+	if (plain) return `${Number(plain[1])}+${Number(plain[2])}`;
+	return null;
+}
+
+/** Live Potree folders that have metadata.json (folder relative to upload/potree/). */
+async function listLivePotreeFolders() {
+	const { client, bucket, region } = getClient();
+	const root = getPotreeOutputRoot();
+	const byChainage = new Map();
+	const folders = new Set();
+	let token;
+	do {
+		const out = await client.send(new ListObjectsV2Command({
+			Bucket: bucket,
+			Prefix: root,
+			ContinuationToken: token
+		}));
+		for (const obj of out.Contents || []) {
+			const key = String(obj.Key || "");
+			if (!/\/metadata\.json$/i.test(key)) continue;
+			const folder = key.slice(root.length).replace(/\/metadata\.json$/i, "");
+			if (!folder) continue;
+			folders.add(folder);
+			const leaf = folder.split("/").pop() || folder;
+			const ck = extractChainageKeyLoose(leaf) || extractChainageKeyLoose(folder);
+			if (ck && !byChainage.has(ck)) {
+				byChainage.set(ck, {
+					folder,
+					s3: publicUrl(bucket, region, key),
+					id: leaf
+				});
+			}
+		}
+		token = out.IsTruncated ? out.NextContinuationToken : undefined;
+	} while (token);
+	return { folders, byChainage };
+}
+
 async function listLasObjects(prefix) {
 	const { client, bucket, region } = getClient();
 	const normalized = normalizePrefix(prefix, getSourceLasPrefix());
-	const catalog = await readCatalog();
+	const [catalog, livePotree] = await Promise.all([
+		readCatalog(),
+		listLivePotreeFolders().catch((err) => {
+			console.warn("[potree] live potree scan failed:", err.message);
+			return { folders: new Set(), byChainage: new Map() };
+		})
+	]);
 	const catalogBySource = new Map(
 		catalog.filter((item) => item.sourceKey).map((item) => [item.sourceKey, item])
 	);
@@ -660,11 +809,58 @@ async function listLasObjects(prefix) {
 				published: Boolean(catalogItem),
 				viewerUrl: catalogItem
 					? viewerUrl(viewerOrigin, catalogItem.s3, catalogItem.name, catalogItem.id)
-					: null
+					: null,
+				_catalogItem: catalogItem || null
 			});
 		}
 		token = out.IsTruncated ? out.NextContinuationToken : undefined;
 	} while (token);
+
+	// Verify catalog "published" against live S3 — stale rows lie after potree deletes.
+	const staleIds = new Set();
+	for (const item of items) {
+		const catalogItem = item._catalogItem;
+		if (!catalogItem) continue;
+		const metaKey = metadataKeyForCatalogItem(catalogItem);
+		const folderFromMeta = metaKey
+			? metaKey.replace(/^upload\/potree\//i, "").replace(/\/metadata\.json$/i, "")
+			: "";
+		const ok =
+			(folderFromMeta && livePotree.folders.has(folderFromMeta)) ||
+			(catalogItem.id && [...livePotree.folders].some((f) => f === catalogItem.id || f.endsWith(`/${catalogItem.id}`)));
+		if (!ok) {
+			item.published = false;
+			item.viewerUrl = null;
+			if (catalogItem.id) staleIds.add(catalogItem.id);
+		}
+	}
+
+	// Also mark published when Potree exists for same chainage (lasToPotree path may skip clouds.json).
+	for (const item of items) {
+		if (item.published) continue;
+		const ck = extractChainageKeyLoose(item.name) || extractChainageKeyLoose(item.key);
+		const live = ck ? livePotree.byChainage.get(ck) : null;
+		if (!live) continue;
+		item.published = true;
+		item.viewerUrl = viewerUrl(viewerOrigin, live.s3, item.name, live.id);
+	}
+
+	for (const item of items) delete item._catalogItem;
+
+	if (staleIds.size) {
+		try {
+			const next = catalog.filter((c) => !staleIds.has(c.id));
+			if (next.length !== catalog.length) {
+				await writeCatalog(next);
+				console.warn(
+					`[potree] pruned ${catalog.length - next.length} stale catalog entries (missing metadata.json)`
+				);
+			}
+		} catch (err) {
+			console.warn("[potree] failed to prune stale catalog:", err.message);
+		}
+	}
+
 	items.sort((a, b) => a.key.localeCompare(b.key));
 	return { prefix: normalized, items };
 }
@@ -707,6 +903,7 @@ module.exports = {
 	getSourceLasPrefix,
 	getPotreeOutputRoot,
 	potreePrefixForId,
+	resolvePotreeProjectFolder,
 	deleteObjectsUnderPrefix,
 	getClient,
 	slugify,

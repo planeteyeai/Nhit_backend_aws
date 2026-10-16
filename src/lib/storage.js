@@ -7,6 +7,9 @@
  */
 import fs from 'fs'
 import path from 'path'
+import http from 'http'
+import https from 'https'
+import { createRequire } from 'module'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import {
@@ -19,6 +22,8 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+
+const require = createRequire(import.meta.url)
 
 const PRESIGN_DEFAULT_SEC = Number(process.env.PRESIGNED_URL_EXPIRY_SEC || 3600)
 
@@ -68,6 +73,20 @@ let _client = null
 function getClient() {
   if (!isStorageEnabled()) return null
   if (!_client) {
+    // Default AWS SDK maxSockets=50; Potree + SAR/LIDAR listing easily queues 1000+ and starves API.
+    let requestHandler
+    try {
+      const { NodeHttpHandler } = require('@smithy/node-http-handler')
+      const maxSockets = Math.max(50, Number(process.env.AWS_S3_MAX_SOCKETS || 250) || 250)
+      requestHandler = new NodeHttpHandler({
+        httpsAgent: new https.Agent({ keepAlive: true, maxSockets }),
+        httpAgent: new http.Agent({ keepAlive: true, maxSockets }),
+        connectionTimeout: 10_000,
+        requestTimeout: 120_000,
+      })
+    } catch {
+      requestHandler = undefined
+    }
     const cfg = {
       region: region(),
       credentials: {
@@ -75,6 +94,7 @@ function getClient() {
         secretAccessKey: secretAccessKey(),
       },
       forcePathStyle: false,
+      ...(requestHandler ? { requestHandler } : {}),
     }
     const ep = endpoint()
     if (ep) cfg.endpoint = ep

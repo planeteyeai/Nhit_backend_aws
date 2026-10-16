@@ -279,7 +279,8 @@ async function runBatch() {
 		const basename = path.basename(item.key);
 		const name = item.name;
 		const id = s3.slugify(name);
-		const outputPrefix = s3.potreePrefixForId(id);
+		const projectFolder = s3.resolvePotreeProjectFolder(name) || s3.resolvePotreeProjectFolder(item.key);
+		const outputPrefix = s3.potreePrefixForId(id, projectFolder);
 		item.outputPrefix = outputPrefix;
 		batch.currentJobId = id;
 
