@@ -4772,6 +4772,75 @@ router.post('/inspection/save_pedestal_rating', optionalAuth, async (req, res) =
   }
 })
 
+router.get('/inspection/:inspectionId/bearing_rating_details', optionalAuth, async (req, res) => {
+  try {
+    await ensureBearingRatingDetailsNameOfSpanColumn()
+    const inspectionId = Number(req.params.inspectionId || 0)
+    if (!inspectionId) {
+      return res.status(400).json({ success: false, message: 'inspectionId is required' })
+    }
+    const [rows] = await pool.query(
+      `SELECT id, bridge_inspection_id, component_type, form_no, name_of_span,
+              bearing_name, bearing_type, bearing_condition, created_on, updated_on
+       FROM bearing_rating_details
+       WHERE bridge_inspection_id = ?
+         AND LOWER(component_type) = 'bearing'
+       ORDER BY form_no ASC, id ASC`,
+      [inspectionId],
+    )
+    return res.json({ success: true, data: rows })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, message: e.message })
+  }
+})
+
+/** Observation Table: save span/name/type/condition without rating. */
+router.post('/inspection/save_bearing_details', optionalAuth, async (req, res) => {
+  try {
+    const body = req.body || {}
+    const bridgeInspectionId = Number(body.bridge_inspection_id || body.inspection_id || 0)
+    const componentType = String(body.component_type || 'bearing').trim() || 'bearing'
+    const formNo = Number(body.form_no || 0)
+    const bearingAndPedestalName = String(
+      body.bearing_and_pedestal_name || body.bearing_name || '',
+    ).trim()
+    const bearingType = String(body.bearing_type || '').trim()
+    const bearingCondition = String(body.bearing_condition || '').trim()
+    const nameOfSpan = String(body.name_of_span || '').trim()
+    if (!bridgeInspectionId || !formNo || !bearingAndPedestalName || !bearingType) {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'bridge_inspection_id, form_no, bearing_and_pedestal_name, and bearing_type are required',
+      })
+    }
+
+    const id = await upsertBearingRatingDetails({
+      bridgeInspectionId,
+      componentType,
+      formNo,
+      bearingName: bearingAndPedestalName,
+      bearingType,
+      bearingCondition,
+      nameOfSpan,
+      userId: req.user?.uid || 0,
+    })
+
+    return res.json({
+      success: true,
+      status: 'success',
+      message: 'Bearing details saved successfully',
+      id,
+      name_of_span: nameOfSpan,
+      bearing_condition: bearingCondition,
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success: false, status: 'error', message: e.message })
+  }
+})
+
 router.post('/inspection/save_bearing_rating', optionalAuth, async (req, res) => {
   try {
     const body = req.body || {}
