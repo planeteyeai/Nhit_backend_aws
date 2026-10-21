@@ -33,7 +33,7 @@ export const INSPECTION_DROPDOWNS = {
     check_excessive_deflections_at_central_hinge: sel('Select', 'Not applicable because it is not a cantilever bridge', 'Observed excessive deflection at central hinge', 'No excessive deflection is observed'),
     in_box_girders: sel('Select Box Girders', 'Not applicable because it is not a box girder', 'No sign of cracks and accumulation of water or debris', 'Cracks and accumulation of water or debris is observed'),
     check_accumulation_of_slit: sel('Select', 'Not applicable because it is not a submersible bridge', 'Others'),
-    check_peeling_off: sel('Select Peeling Off', 'Protective coat is in good condition', 'Observed peeling off of protective coat', 'Others'),
+    check_peeling_off: sel('Select Peeling Off', 'NA', 'Protective coat is in good condition', 'Observed peeling off of protective coat', 'Others'),
     check_steel_members: sel('Select Steel Members', 'Others', 'Not Applicable'),
     check_condition_of_protective_system: sel('Select', 'Girder', 'Beam', 'Bearing Area', 'Others', 'Not Applicable'),
     check_corrosion_if_any: sel('Select', 'Girder', 'Beam', 'Deck', 'Bearing Area', 'Others', 'Not Applicable'),
