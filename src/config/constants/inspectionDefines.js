@@ -412,12 +412,15 @@ export const STRUCTURAL_SYSTEM = {
   'Balance Cantilever': 'Balance Cantilever',
 };
 
-/** Note: PHP source mistakenly used structural system labels here; preserved as-is */
 export const TYPE_OF_MATERIAL = {
-  'Simply Supported': 'Simply Supported',
-  Continuous: 'Continuous',
-  'Over Hanging': 'Over Hanging',
-  'Balance Cantilever': 'Balance Cantilever',
+  RCC: 'RCC',
+  PSC: 'PSC',
+  Steel: 'Steel',
+  Timber: 'Timber',
+  Masonry: 'Masonry',
+  'Brick Stone Masonry': 'Brick Stone Masonry',
+  'CRS Stone Masonry': 'CRS Stone Masonry',
+  'Stone Masonry': 'Stone Masonry',
 };
 
 export const EXPANSION_TYPE_A1 = {
@@ -782,6 +785,14 @@ export const CHECK_FUNCTIONING_PEDESTAL = _m(FUNCTIONING_PEDESTAL);
 export const CHECK_TYPE_OF_SPAN = _m(TYPE_OF_SPAN);
 export const CHECK_STRUCTURAL_SYSTEM = _m(STRUCTURAL_SYSTEM);
 export const CHECK_TYPE_OF_MATERIAL = _m(TYPE_OF_MATERIAL);
+
+export const PEELING_OFF = {
+  NA: 'NA',
+  'Protective coat is in good condition': 'Protective coat is in good condition',
+  'Observed peeling off of protective coat': 'Observed peeling off of protective coat',
+  Others: 'Others',
+};
+export const CHECK_PEELING_OFF = _m(PEELING_OFF);
 
 export const CHECK_EXPANSION_TYPE_A1 = _m(EXPANSION_TYPE_A1);
 export const CHECK_EXPANSION_TYPE_A2 = _m(EXPANSION_TYPE_A2);

@@ -439,6 +439,7 @@ export const bridgeDropdowns = {
   },
   check_peeling_off: {
     '': 'Select Peeling Off',
+    NA: 'NA',
     'Protective coat is in good condition':
       'Protective coat is in good condition',
     'Observed peeling off of protective coat':
