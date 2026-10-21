@@ -1,5 +1,7 @@
 /**
- * LIDAR reports in Amazon S3: upload/download/LIDAR/{chainage}_Lidar.pdf
+ * LIDAR reports in Amazon S3:
+ *   upload/download/LIDAR/{chainage}_Lidar.pdf              (legacy flat)
+ *   upload/download/LIDAR/{project}/{chainage}_Lidar.pdf    (project-wise)
  */
 import path from 'path'
 import {
@@ -12,6 +14,7 @@ import {
 export const LIDAR_BUCKET_PREFIX = 'upload/download/LIDAR/'
 
 let catalogCache = { at: 0, files: [] }
+let catalogInflight = null
 const CATALOG_TTL_MS = 5 * 60 * 1000
 
 export function extractChainageKey(text) {
@@ -20,25 +23,33 @@ export function extractChainageKey(text) {
   return `${Number(m[1])}+${Number(m[2])}`
 }
 
-function parseFileName(fileName) {
-  const name = String(fileName || '').trim()
+function parseObjectEntry(objectEntry) {
+  const fullKey = String(objectEntry?.key || '').replace(/\\/g, '/')
+  if (!/\.pdf$/i.test(fullKey)) return null
+  const rel = fullKey.startsWith(LIDAR_BUCKET_PREFIX)
+    ? fullKey.slice(LIDAR_BUCKET_PREFIX.length)
+    : fullKey
+  const parts = rel.split('/').filter(Boolean)
+  if (!parts.length) return null
+  const name = parts[parts.length - 1]
+  if (!/\.pdf$/i.test(name)) return null
+  const project = parts.length >= 2 ? parts.slice(0, -1).join('/') : ''
   const chainageKey = extractChainageKey(name)
+  if (!chainageKey) return null
   const typeMatch = name.match(/(?:Lidar|LIDAR)(?:_\d+)?_([A-Za-z]+)\.pdf$/i)
   return {
     file: name,
-    key: `${LIDAR_BUCKET_PREFIX}${name}`,
+    relativePath: rel,
+    key: fullKey,
+    project,
     chainageKey,
     structureType: typeMatch ? typeMatch[1].toUpperCase() : '',
-    sizeBytes: 0,
+    sizeBytes: Number(objectEntry?.sizeBytes || 0),
   }
 }
 
-function parseObjectEntry(objectEntry) {
-  const name = path.basename(String(objectEntry?.key || ''))
-  if (!/\.pdf$/i.test(name)) return null
-  const parsed = parseFileName(name)
-  if (!parsed.chainageKey) return null
-  return { ...parsed, sizeBytes: Number(objectEntry?.sizeBytes || 0) }
+export function invalidateLidarCatalogCache() {
+  catalogCache = { at: 0, files: [] }
 }
 
 export async function listLidarReportFiles() {
@@ -46,12 +57,23 @@ export async function listLidarReportFiles() {
   if (catalogCache.files.length && Date.now() - catalogCache.at < CATALOG_TTL_MS) {
     return catalogCache.files
   }
-  const objects = await listBucketObjectsUnderPrefix(LIDAR_BUCKET_PREFIX)
-  const files = objects
-    .map(parseObjectEntry)
-    .filter(Boolean)
-  catalogCache = { at: Date.now(), files }
-  return files
+  if (catalogInflight) return catalogInflight
+  catalogInflight = (async () => {
+    const objects = await listBucketObjectsUnderPrefix(LIDAR_BUCKET_PREFIX)
+    const files = objects.map(parseObjectEntry).filter(Boolean)
+    files.sort((a, b) => {
+      const p = String(a.project || '').localeCompare(String(b.project || ''))
+      if (p !== 0) return p
+      return String(a.chainageKey || '').localeCompare(String(b.chainageKey || ''), undefined, {
+        numeric: true,
+      })
+    })
+    catalogCache = { at: Date.now(), files }
+    return files
+  })().finally(() => {
+    catalogInflight = null
+  })
+  return catalogInflight
 }
 
 export async function findLidarReportByChainage(chainage) {
@@ -62,9 +84,19 @@ export async function findLidarReportByChainage(chainage) {
 }
 
 export async function streamLidarPdf(res, fileName) {
-  const safe = path.basename(String(fileName || ''))
-  if (!/\.pdf$/i.test(safe)) return false
-  const key = `${LIDAR_BUCKET_PREFIX}${safe}`
+  const raw = String(fileName || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+  if (!raw || raw.includes('..') || !/\.pdf$/i.test(raw)) return false
+
+  const files = await listLidarReportFiles()
+  const hit =
+    files.find((f) => f.relativePath === raw) ||
+    files.find((f) => f.key === `${LIDAR_BUCKET_PREFIX}${raw}`) ||
+    files.find((f) => f.file === path.basename(raw))
+
+  const key = hit?.key || `${LIDAR_BUCKET_PREFIX}${path.basename(raw)}`
   if (!(await objectExists(key))) return false
   return pipeBucketObjectToResponse(res, key)
 }

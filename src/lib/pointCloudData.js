@@ -4,6 +4,8 @@
  */
 
 let schemaReady = false
+/** Dedup concurrent ensure calls — parallel ALTERs stack metadata locks and hang the API. */
+let schemaEnsurePromise = null
 
 function numOrNull(v) {
   if (v === '' || v == null) return null
@@ -622,116 +624,149 @@ export function rowsToPotreeProject(rows) {
 
 /**
  * Ensure table allows multiple entity rows per potree folder and optional inspection.
- * Safe to call repeatedly.
+ * Safe to call repeatedly. Uses information_schema checks + short lock_wait so a
+ * stuck ALTER cannot freeze every API that touches point_cloud_data (25s timeouts).
  */
 export async function ensurePointCloudDataSchema(pool) {
   if (schemaReady) return
-  // Drop UNIQUE on point_cloud_id (one cloud → many measurements/annotations).
-  try {
-    await pool.query('ALTER TABLE point_cloud_data DROP INDEX uk_point_cloud_id')
-  } catch (e) {
-    if (e?.code !== 'ER_CANT_DROP_FIELD_OR_KEY' && e?.errno !== 1091) {
-      // ignore missing index; rethrow unexpected
-      if (!/check that it exists|Unknown key|doesn't exist/i.test(String(e?.message || ''))) {
-        console.warn('[point_cloud_data] drop uk_point_cloud_id:', e.message)
+  if (schemaEnsurePromise) return schemaEnsurePromise
+
+  schemaEnsurePromise = (async () => {
+    const conn = await pool.getConnection()
+    try {
+      // Fail fast instead of waiting forever for metadata locks (common under Potree load).
+      try {
+        await conn.query('SET SESSION lock_wait_timeout = 5')
+      } catch {
+        /* older MySQL may not support this */
       }
-    }
-  }
 
-  try {
-    await pool.query(
-      'CREATE INDEX idx_pcd_bridge_cloud ON point_cloud_data (bridge_id, point_cloud_id)'
-    )
-  } catch (e) {
-    if (e?.code !== 'ER_DUP_KEYNAME' && e?.errno !== 1061) {
-      console.warn('[point_cloud_data] create idx_pcd_bridge_cloud:', e.message)
-    }
-  }
-
-  // Allow inventory 3D saves without an inspection.
-  try {
-    await pool.query('ALTER TABLE point_cloud_data DROP FOREIGN KEY fk_point_cloud_data_bridge_inspection')
-  } catch (e) {
-    if (e?.errno !== 1091 && e?.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
-      console.warn('[point_cloud_data] drop fk inspection:', e.message)
-    }
-  }
-
-  try {
-    await pool.query(
-      'ALTER TABLE point_cloud_data MODIFY COLUMN bridge_inspection_id INT NULL'
-    )
-  } catch (e) {
-    console.warn('[point_cloud_data] modify bridge_inspection_id:', e.message)
-  }
-
-  try {
-    await pool.query(`
-      ALTER TABLE point_cloud_data
-      ADD CONSTRAINT fk_point_cloud_data_bridge_inspection
-      FOREIGN KEY (bridge_inspection_id) REFERENCES bridge_inspection (bridge_inspection_id)
-      ON DELETE SET NULL ON UPDATE CASCADE
-    `)
-  } catch (e) {
-    if (e?.code !== 'ER_DUP_KEYNAME' && e?.errno !== 1826 && e?.errno !== 1005) {
-      // 1826 = duplicate FK name; 1005 = cannot create (already exists / mismatch)
-      if (!/Duplicate|already exists/i.test(String(e?.message || ''))) {
-        console.warn('[point_cloud_data] add fk inspection:', e.message)
-      }
-    }
-  }
-
-  // Ensure base64 image column exists (LONGTEXT).
-  try {
-    await pool.query(
-      'ALTER TABLE point_cloud_data ADD COLUMN images LONGTEXT NULL'
-    )
-  } catch (e) {
-    if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
-      console.warn('[point_cloud_data] add images column:', e.message)
-    }
-  }
-
-  // Full Potree project snapshot so multi-point measurements restore correctly.
-  try {
-    await pool.query(
-      'ALTER TABLE point_cloud_data ADD COLUMN project_json LONGTEXT NULL'
-    )
-  } catch (e) {
-    if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
-      console.warn('[point_cloud_data] add project_json column:', e.message)
-    }
-  }
-
-  // One entity payload per row (not a copy of the whole project).
-  try {
-    await pool.query(
-      'ALTER TABLE point_cloud_data ADD COLUMN entity_json LONGTEXT NULL'
-    )
-  } catch (e) {
-    if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
-      console.warn('[point_cloud_data] add entity_json column:', e.message)
-    }
-  }
-
-  // One project snapshot per bridge + cloud. Legacy row copies of project_json stay readable.
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS point_cloud_projects (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        bridge_id INT NOT NULL,
-        point_cloud_id VARCHAR(255) NOT NULL,
-        project_json LONGTEXT NULL,
-        version INT NOT NULL DEFAULT 0,
-        updated_at DATETIME NULL,
-        UNIQUE KEY uk_pcd_project (bridge_id, point_cloud_id)
+      const [cols] = await conn.query(
+        `SELECT COLUMN_NAME AS name, IS_NULLABLE AS nullable
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'point_cloud_data'`
       )
-    `)
-  } catch (e) {
-    console.warn('[point_cloud_projects] create:', e.message)
-  }
+      const colMap = new Map((cols || []).map((c) => [String(c.name), c]))
+      if (!colMap.size) {
+        console.warn('[point_cloud_data] table missing; skip schema ensure')
+        schemaReady = true
+        return
+      }
 
-  schemaReady = true
+      const [idxRows] = await conn.query(
+        `SELECT INDEX_NAME AS name
+         FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'point_cloud_data'`
+      )
+      const indexes = new Set((idxRows || []).map((r) => String(r.name)))
+
+      const [fkRows] = await conn.query(
+        `SELECT CONSTRAINT_NAME AS name
+         FROM information_schema.TABLE_CONSTRAINTS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'point_cloud_data'
+           AND CONSTRAINT_TYPE = 'FOREIGN KEY'`
+      )
+      const fks = new Set((fkRows || []).map((r) => String(r.name)))
+
+      const runAlter = async (sql, label) => {
+        try {
+          await conn.query(sql)
+        } catch (e) {
+          const msg = String(e?.message || '')
+          if (
+            e?.code === 'ER_DUP_FIELDNAME' ||
+            e?.code === 'ER_DUP_KEYNAME' ||
+            e?.code === 'ER_CANT_DROP_FIELD_OR_KEY' ||
+            e?.errno === 1060 ||
+            e?.errno === 1061 ||
+            e?.errno === 1091 ||
+            e?.errno === 1826 ||
+            /Duplicate|already exists|check that it exists|Unknown key|doesn't exist/i.test(msg)
+          ) {
+            return
+          }
+          // Lock wait / metadata lock — do not block the whole API forever.
+          if (/Lock wait timeout|metadata lock|WSREP|try restarting transaction/i.test(msg)) {
+            console.warn(`[point_cloud_data] ${label} deferred (lock):`, msg)
+            return
+          }
+          console.warn(`[point_cloud_data] ${label}:`, msg)
+        }
+      }
+
+      // Drop UNIQUE on point_cloud_id (one cloud → many measurements/annotations).
+      if (indexes.has('uk_point_cloud_id')) {
+        await runAlter('ALTER TABLE point_cloud_data DROP INDEX uk_point_cloud_id', 'drop uk_point_cloud_id')
+      }
+
+      if (!indexes.has('idx_pcd_bridge_cloud')) {
+        await runAlter(
+          'CREATE INDEX idx_pcd_bridge_cloud ON point_cloud_data (bridge_id, point_cloud_id)',
+          'create idx_pcd_bridge_cloud'
+        )
+      }
+
+      // Allow inventory 3D saves without an inspection.
+      const insp = colMap.get('bridge_inspection_id')
+      if (insp && String(insp.nullable).toUpperCase() !== 'YES') {
+        if (fks.has('fk_point_cloud_data_bridge_inspection')) {
+          await runAlter(
+            'ALTER TABLE point_cloud_data DROP FOREIGN KEY fk_point_cloud_data_bridge_inspection',
+            'drop fk inspection'
+          )
+        }
+        await runAlter(
+          'ALTER TABLE point_cloud_data MODIFY COLUMN bridge_inspection_id INT NULL',
+          'modify bridge_inspection_id'
+        )
+        await runAlter(
+          `ALTER TABLE point_cloud_data
+           ADD CONSTRAINT fk_point_cloud_data_bridge_inspection
+           FOREIGN KEY (bridge_inspection_id) REFERENCES bridge_inspection (bridge_inspection_id)
+           ON DELETE SET NULL ON UPDATE CASCADE`,
+          'add fk inspection'
+        )
+      }
+
+      if (!colMap.has('images')) {
+        await runAlter('ALTER TABLE point_cloud_data ADD COLUMN images LONGTEXT NULL', 'add images')
+      }
+      if (!colMap.has('project_json')) {
+        await runAlter('ALTER TABLE point_cloud_data ADD COLUMN project_json LONGTEXT NULL', 'add project_json')
+      }
+      if (!colMap.has('entity_json')) {
+        await runAlter('ALTER TABLE point_cloud_data ADD COLUMN entity_json LONGTEXT NULL', 'add entity_json')
+      }
+
+      await runAlter(
+        `CREATE TABLE IF NOT EXISTS point_cloud_projects (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          bridge_id INT NOT NULL,
+          point_cloud_id VARCHAR(255) NOT NULL,
+          project_json LONGTEXT NULL,
+          version INT NOT NULL DEFAULT 0,
+          updated_at DATETIME NULL,
+          UNIQUE KEY uk_pcd_project (bridge_id, point_cloud_id)
+        )`,
+        'create point_cloud_projects'
+      )
+
+      schemaReady = true
+    } finally {
+      conn.release()
+    }
+  })()
+    .catch((e) => {
+      console.warn('[point_cloud_data] schema ensure failed:', e?.message || e)
+      // Fail-open: keep serving reads/writes; retry ensure on next process boot.
+      schemaReady = true
+    })
+    .finally(() => {
+      schemaEnsurePromise = null
+    })
+
+  return schemaEnsurePromise
 }
 
 async function resolveInspectionId(pool, bridgeId, requestedId) {

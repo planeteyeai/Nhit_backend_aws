@@ -45,17 +45,27 @@ export function potreeProjectName(folder) {
   return ''
 }
 
-function chainageFromFolder(folder) {
-  const leaf = potreeModelLeaf(folder)
-  const typed = String(leaf || '').match(
+/**
+ * Parse chainage from potree leaf folder / display name.
+ * Handles timestamp-first ids: 1789715605697-1328-500-box-culvert-clean-file
+ * and typed ids: 1789792454111-box-culvert-1306-000-tdx-cleaned
+ */
+export function chainageFromFolder(folder) {
+  const leaf = potreeModelLeaf(folder) || String(folder || '')
+  // Strip leading upload timestamp so it is not mistaken for km
+  const stripped = String(leaf || '').replace(/^\d{10,}-/, '')
+  const typed = stripped.match(
     /(?:mnb|mjb|vup|pup|rob|bxc|fo|flyover|box-?culvert|slab-?culvert|chainage|re-wall-ch)[_-]?(\d+)[_-](\d+)/i,
   )
   if (typed) return `${Number(typed[1])}+${Number(typed[2])}`
-  const mnbStuck = String(leaf || '').match(/mnb(\d+)[_-](\d+)/i)
+  const mnbStuck = stripped.match(/mnb(\d+)[_-](\d+)/i)
   if (mnbStuck) return `${Number(mnbStuck[1])}+${Number(mnbStuck[2])}`
-  const undersc = String(leaf || '').match(/(\d+)[_-](\d+)/)
-  if (undersc) return `${Number(undersc[1])}+${Number(undersc[2])}`
-  return extractChainageKey(leaf) || extractChainageKey(folder)
+  // Prefer first km-m pair: 1328-500-box… / 637-700-cleaned / 651-68cleaned
+  const plain = stripped.match(/^(\d{1,4})[_-](\d{1,3})(?:-|$|[a-z])/i)
+  if (plain) return `${Number(plain[1])}+${Number(plain[2])}`
+  const mid = stripped.match(/(?:^|-)(\d{1,4})[_-](\d{1,3})(?:-|$|[a-z])/i)
+  if (mid) return `${Number(mid[1])}+${Number(mid[2])}`
+  return extractChainageKey(stripped) || extractChainageKey(leaf) || extractChainageKey(folder)
 }
 
 /** Allow nested project/model paths; block traversal. */

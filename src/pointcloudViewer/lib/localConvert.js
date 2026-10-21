@@ -214,7 +214,17 @@ function runConverter(converterPath, inputFile, outDir, onTick, job) {
 				return;
 			}
 			if (code === 0) resolve();
-			else reject(new Error(`PotreeConverter exited with code ${code}${stderr ? ": " + stderr.slice(-400) : ""}`));
+			else {
+				const hint =
+					/invalid bounding box/i.test(stderr)
+						? "LAS has invalid/empty bounds (#points may be 0) — re-export the clean LAS"
+						: /#points:\s*0/i.test(stderr)
+							? "LAS contains 0 points"
+							: stderr
+								? stderr.replace(/\s+/g, " ").trim().slice(-400)
+								: "";
+				reject(new Error(hint || `PotreeConverter exited with code ${code}`));
+			}
 		});
 	});
 }
@@ -249,7 +259,9 @@ async function processLocalJob({ id, name, inputPath, origin, sourceKey, shouldA
 	const workDir = path.join(TMP_ROOT, id);
 	const outDir = path.join(workDir, "out");
 	fs.mkdirSync(outDir, { recursive: true });
-	const prefix = s3.potreePrefixForId(id);
+	const projectFolder =
+		s3.resolvePotreeProjectFolder(name) || s3.resolvePotreeProjectFolder(sourceKey || "");
+	const prefix = s3.potreePrefixForId(id, projectFolder);
 	const abortIfNeeded = () => checkAbort(job, shouldAbort);
 	let uploadedToS3 = false;
 
