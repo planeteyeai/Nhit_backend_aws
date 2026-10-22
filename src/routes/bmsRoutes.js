@@ -3703,6 +3703,31 @@ router.post('/inspection/superstructure_span/upsert', requireAuth, async (req, r
   }
 })
 
+let girderNameOfSpanColumnReady = false
+async function ensureGirderNameOfSpanColumn() {
+  if (girderNameOfSpanColumnReady) return true
+  try {
+    const [cols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'superstructure_no_of_girders'
+         AND COLUMN_NAME = 'name_of_span'
+       LIMIT 1`,
+    )
+    if (!cols?.length) {
+      await pool.query(
+        `ALTER TABLE superstructure_no_of_girders
+         ADD COLUMN name_of_span VARCHAR(255) NULL AFTER superstructure_id`,
+      )
+    }
+    girderNameOfSpanColumnReady = true
+    return true
+  } catch (e) {
+    console.error('[db] superstructure_no_of_girders.name_of_span ensure:', e.message)
+    return false
+  }
+}
+
 // Superstructure girders per span (best-effort)
 router.get('/inspection/superstructure_girders/:inspectionId/:superstructureId', async (req, res) => {
   try {
@@ -3728,6 +3753,8 @@ router.post('/inspection/superstructure_girders/upsert', requireAuth, async (req
       return res.status(400).json({ success: false, message: 'Invalid inspectionId or superstructureId' })
     }
 
+    const hasSpanCol = await ensureGirderNameOfSpanColumn()
+
     await pool.query(
       'DELETE FROM superstructure_no_of_girders WHERE bridge_inspection_id = ? AND superstructure_id = ?',
       [inspectionId, superstructureId]
@@ -3743,26 +3770,50 @@ router.post('/inspection/superstructure_girders/upsert', requireAuth, async (req
     for (const g of girders) {
       const girderName = String(g.girder_name || g.name || '').trim()
       const condition = String(g.condition_of_girder || g.condition || '').trim()
-      if (!girderName && !condition) continue
-      await pool.query(
-        `INSERT INTO superstructure_no_of_girders
-         (bridge_inspection_id, superstructure_id, girder_name, condition_of_girder,
-          girder_length, girder_width, girder_depth, girder_distance_x, girder_distance_y, created_by, created_on)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        [
-          inspectionId,
-          superstructureId,
-          girderName || 'Girder',
-          condition || '',
-          numeric(g.girder_length),
-          numeric(g.girder_width),
-          numeric(g.girder_depth),
-          numeric(g.girder_distance_x),
-          numeric(g.girder_distance_y),
-          uid,
-          today,
-        ]
-      )
+      const nameOfSpan = String(g.name_of_span || g.span_name || '').trim()
+      if (!girderName && !condition && !nameOfSpan) continue
+      if (hasSpanCol) {
+        await pool.query(
+          `INSERT INTO superstructure_no_of_girders
+           (bridge_inspection_id, superstructure_id, name_of_span, girder_name, condition_of_girder,
+            girder_length, girder_width, girder_depth, girder_distance_x, girder_distance_y, created_by, created_on)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            inspectionId,
+            superstructureId,
+            nameOfSpan || null,
+            girderName || 'Girder',
+            condition || '',
+            numeric(g.girder_length),
+            numeric(g.girder_width),
+            numeric(g.girder_depth),
+            numeric(g.girder_distance_x),
+            numeric(g.girder_distance_y),
+            uid,
+            today,
+          ]
+        )
+      } else {
+        await pool.query(
+          `INSERT INTO superstructure_no_of_girders
+           (bridge_inspection_id, superstructure_id, girder_name, condition_of_girder,
+            girder_length, girder_width, girder_depth, girder_distance_x, girder_distance_y, created_by, created_on)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            inspectionId,
+            superstructureId,
+            girderName || 'Girder',
+            condition || '',
+            numeric(g.girder_length),
+            numeric(g.girder_width),
+            numeric(g.girder_depth),
+            numeric(g.girder_distance_x),
+            numeric(g.girder_distance_y),
+            uid,
+            today,
+          ]
+        )
+      }
     }
 
     return res.json({ success: true })
