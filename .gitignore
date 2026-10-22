@@ -111,3 +111,9 @@ desktop.ini
 # ── Logs ──────────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Runtime uploads (S3 is source of truth; do not commit photos/JSON) ──
+upload/**
+!upload/**/
+!upload/**/.gitkeep
+!upload/**/README.md

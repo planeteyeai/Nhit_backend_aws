@@ -7,7 +7,10 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import dotenv from 'dotenv'
 import { isStorageEnabled, mirrorUploadDirectory, storageStatus } from '../src/lib/storage.js'
+
+dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadRoot = path.resolve(__dirname, '../upload')
