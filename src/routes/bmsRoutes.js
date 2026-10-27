@@ -889,7 +889,10 @@ router.post('/login', optionalAuth, async (req, res) => {
     await handleLogin(req, res)
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: 'Login failed' })
+    res.status(500).json({
+      message: 'Login failed',
+      code: e.code || 'UNKNOWN',
+    })
   }
 })
 
@@ -899,7 +902,10 @@ router.post('/login_con/check_login', uploadNone, optionalAuth, async (req, res)
     await handleLogin(req, res)
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: 'Login failed' })
+    res.status(500).json({
+      message: 'Login failed',
+      code: e.code || 'UNKNOWN',
+    })
   }
 })
 

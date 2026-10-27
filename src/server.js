@@ -198,6 +198,9 @@ app.get(['/health', '/api/health'], (_req, res) => {
       // Fields the embedded Potree manager expects from the former viewer /api/health.
       configured: Boolean(pointcloud?.configured),
       localConvert: Boolean(pointcloud?.localConvert),
+      mysqlConfigured: Boolean(
+        process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE
+      ),
       pointcloud,
     })
   }
