@@ -498,6 +498,13 @@ function normalizeStepBody(body = {}) {
   return out
 }
 
+function isNaChoice(v) {
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase()
+  return s === 'na' || s === 'n/a' || s === 'not applicable'
+}
+
 /** ENUM('No','Yes') rejects '' — avoids MySQL "Data truncated" on structure_data_bridge. */
 function coerceYesNoEnum(v) {
   const s = String(v ?? '')
@@ -508,9 +515,15 @@ function coerceYesNoEnum(v) {
   return 'No'
 }
 
-const STRUCTURE_HIGH_LEVEL = new Set(['High-Level', 'Submersible', 'Causeway'])
+function coerceYesNoOrNaEnum(v) {
+  if (isNaChoice(v)) return 'NA'
+  return coerceYesNoEnum(v)
+}
+
+const STRUCTURE_HIGH_LEVEL = new Set(['High-Level', 'Submersible', 'Causeway', 'NA'])
 
 function coerceStructureHighLevelEnum(v) {
+  if (isNaChoice(v)) return 'NA'
   let s = String(v ?? '').trim()
   if (s === 'High Level') s = 'High-Level'
   if (STRUCTURE_HIGH_LEVEL.has(s)) return s
@@ -521,7 +534,7 @@ function coerceStructureHighLevelEnum(v) {
 function coerceStructureDataBridgePatch(patch, allowed) {
   if (!patch || typeof patch !== 'object') return
   if (allowed.has('average_skew') && Object.prototype.hasOwnProperty.call(patch, 'average_skew')) {
-    patch.average_skew = coerceYesNoEnum(patch.average_skew)
+    patch.average_skew = coerceYesNoOrNaEnum(patch.average_skew)
   }
   if (allowed.has('whether_navigable') && Object.prototype.hasOwnProperty.call(patch, 'whether_navigable')) {
     patch.whether_navigable = coerceYesNoEnum(patch.whether_navigable)
@@ -531,6 +544,66 @@ function coerceStructureDataBridgePatch(patch, allowed) {
     Object.prototype.hasOwnProperty.call(patch, 'hign_level_submersible_causeway')
   ) {
     patch.hign_level_submersible_causeway = coerceStructureHighLevelEnum(patch.hign_level_submersible_causeway)
+  }
+}
+
+let structureNaColumnsReady = false
+
+async function ensureEnumIncludes(table, column, extraValues) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [table, column],
+  )
+  if (!rows?.length) return
+  const type = String(rows[0].COLUMN_TYPE || '')
+  if (!/^enum\(/i.test(type)) return
+  const current = enumValuesFromColumnType(type)
+  const missing = extraValues.filter((v) => !current.includes(v))
+  if (!missing.length) return
+  const next = [...current, ...missing]
+  const enumSql = next.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(',')
+  const nullable = rows[0].IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
+  const def = rows[0].COLUMN_DEFAULT
+  const defaultSql =
+    def != null && next.includes(String(def)) ? ` DEFAULT '${String(def).replace(/'/g, "''")}'` : ''
+  await pool.query(
+    `ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ENUM(${enumSql}) ${nullable}${defaultSql}`,
+  )
+}
+
+async function ensureGroundLevelAcceptsNa(table) {
+  const [rows] = await pool.query(
+    `SELECT DATA_TYPE, IS_NULLABLE
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'ground_level'
+     LIMIT 1`,
+    [table],
+  )
+  if (!rows?.length) return
+  const t = String(rows[0].DATA_TYPE || '').toLowerCase()
+  if (!['float', 'double', 'decimal'].includes(t)) return
+  const nullable = rows[0].IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
+  await pool.query(
+    `ALTER TABLE \`${table}\` MODIFY COLUMN \`ground_level\` VARCHAR(64) ${nullable}`,
+  )
+}
+
+async function ensureStructureNaColumns() {
+  if (structureNaColumnsReady) return true
+  try {
+    for (const table of ['structure_data_bridge', 'bridge_inspection']) {
+      await ensureEnumIncludes(table, 'average_skew', ['NA'])
+      await ensureEnumIncludes(table, 'hign_level_submersible_causeway', ['NA'])
+      await ensureGroundLevelAcceptsNa(table)
+    }
+    structureNaColumnsReady = true
+    return true
+  } catch (e) {
+    console.error('[db] structure NA columns ensure:', e.message)
+    return false
   }
 }
 
@@ -7065,6 +7138,7 @@ router.put('/inspections/:id', requireAuth, async (req, res) => {
     if (!inspectionId) return res.status(400).json({ success: false, message: 'Invalid inspection id' })
     const raw = req.body || {}
 
+    await ensureStructureNaColumns()
     const [metaRows] = await pool.query(
       `SELECT COLUMN_NAME, DATA_TYPE
        FROM information_schema.COLUMNS
@@ -7074,6 +7148,7 @@ router.put('/inspections/:id', requireAuth, async (req, res) => {
     const typeByCol = new Map(metaRows.map((r) => [r.COLUMN_NAME, String(r.DATA_TYPE || '').toLowerCase()]))
 
     const patch = Object.fromEntries(Object.entries(raw).filter(([k]) => allowed.has(k)))
+    coerceStructureDataBridgePatch(patch, allowed)
     for (const [k, v] of Object.entries(patch)) {
       if (v === '') {
         const t = typeByCol.get(k)
@@ -7799,6 +7874,7 @@ for (const step of [
 
       const cfg = STEP_TABLE_MAP[step]
       const dataObj = normalizeStepBody(req.body || {})
+      if (step === 'structure_data') await ensureStructureNaColumns()
       const [metaRows] = await pool.query(
         `SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, EXTRA
          FROM information_schema.COLUMNS
