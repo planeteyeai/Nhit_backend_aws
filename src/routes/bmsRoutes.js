@@ -129,7 +129,6 @@ import {
   mirrorUploadRelPath,
   mirrorUploadRelPaths,
   mirrorPanoramaUploadResult,
-  listBucketObjectsUnderPrefix,
   objectExists,
   pipeBucketObjectToResponse,
   redirectToBucketObject,
@@ -6090,27 +6089,16 @@ router.get('/potree-models', optionalAuth, async (req, res) => {
   }
 })
 
-router.get('/potree-models/*', optionalAuth, async (req, res) => {
+router.get('/potree-models/:folder/:file', optionalAuth, async (req, res) => {
   try {
-    // project/model/metadata.json  OR  one segment with %2F (encodeURIComponent).
-    const rest = String(req.params[0] || '').replace(/^\/+|\/+$/g, '')
-    const slash = rest.lastIndexOf('/')
-    if (slash <= 0) return res.status(400).json({ message: 'Invalid Potree path' })
-    let folder = rest.slice(0, slash)
-    const fileRaw = rest.slice(slash + 1)
+    // Nested project/model paths arrive as one segment with %2F (encodeURIComponent).
+    let folder = String(req.params.folder || '').trim()
     try {
       folder = decodeURIComponent(folder)
     } catch {
       /* keep raw */
     }
-    if (/%2f/i.test(folder)) {
-      try {
-        folder = decodeURIComponent(folder)
-      } catch {
-        /* keep raw */
-      }
-    }
-    const file = sanitizePotreeFile(fileRaw)
+    const file = sanitizePotreeFile(req.params.file)
     if (!folder || !file) return res.status(400).json({ message: 'Invalid Potree path' })
     const ok = await streamPotreeFile(res, folder, file, req.headers.range)
     if (!ok) return res.status(404).json({ message: 'Potree file not found' })
@@ -6162,39 +6150,24 @@ router.get('/bridges/:bridgeId/panoramas', optionalAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
-    const ids = await relatedBridgeIds(bridgeId)
-    const seen = new Set()
-    const data = []
+    let dbStations = []
     try {
       await ensurePanoramaMarkerTables(pool)
-    } catch {
-      /* tables optional */
+      dbStations = await listPanoramaStationsForBridge(pool, bridgeId)
+    } catch (dbErr) {
+      console.warn('bridge panoramas DB skipped:', dbErr.code || dbErr.message)
     }
-    for (const id of ids) {
-      let dbStations = []
-      try {
-        dbStations = await listPanoramaStationsForBridge(pool, id)
-      } catch (dbErr) {
-        console.warn('bridge panoramas DB skipped:', dbErr.code || dbErr.message)
-      }
-      const stations = await listBridgePanoramas(uploadRoot, id, req, dbStations)
-      try {
-        await syncPanoramaStations(pool, id, stations)
-      } catch {
-        /* non-fatal when DB is flaky */
-      }
-      let withMarkers = stations
-      try {
-        withMarkers = await attachMarkersToStations(pool, id, stations)
-      } catch {
-        withMarkers = stations
-      }
-      for (const station of withMarkers || []) {
-        const key = String(station?.id || station?.stationId || station?.folder || '')
-        if (key && seen.has(key)) continue
-        if (key) seen.add(key)
-        data.push(station)
-      }
+    const stations = await listBridgePanoramas(uploadRoot, bridgeId, req, dbStations)
+    try {
+      await syncPanoramaStations(pool, bridgeId, stations)
+    } catch {
+      /* non-fatal when DB is flaky */
+    }
+    let data = stations
+    try {
+      data = await attachMarkersToStations(pool, bridgeId, stations)
+    } catch {
+      data = stations
     }
     res.setHeader('Cache-Control', 'no-store')
     res.json({ status: 'success', data })
@@ -6240,18 +6213,7 @@ router.get('/bridges/:bridgeId/pono-photos', optionalAuth, async (req, res) => {
   try {
     const bridgeId = Number(req.params.bridgeId || 0)
     if (!bridgeId) return res.status(400).json({ message: 'Invalid bridgeId' })
-    const ids = await relatedBridgeIds(bridgeId)
-    const seen = new Set()
-    const photos = []
-    for (const id of ids) {
-      const rows = await listBridgePonoPhotos(uploadRoot, id)
-      for (const photo of rows || []) {
-        const key = String(photo?.id || photo?.url || '')
-        if (key && seen.has(key)) continue
-        if (key) seen.add(key)
-        photos.push(photo)
-      }
-    }
+    const photos = await listBridgePonoPhotos(uploadRoot, bridgeId)
     res.setHeader('Cache-Control', 'no-store')
     res.json({ status: 'success', data: photos })
   } catch (e) {
@@ -7607,75 +7569,26 @@ function parseBridgeImagesList(raw) {
   }
 }
 
-/** Same identity_no = same bridge (duplicate list rows like 316/317). */
-async function relatedBridgeIds(bridgeId) {
-  const id = Number(bridgeId)
-  if (!Number.isInteger(id) || id <= 0) return []
+async function bridgeImageFileExists(bridgeId, imageName) {
+  const base = bridgeImageBasename(imageName)
+  if (!base || base === '.gitkeep') return false
+  const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), base)
   try {
-    const [rows] = await pool.query(
-      'SELECT bridge_identity_no FROM bridge WHERE bridge_id = ? LIMIT 1',
-      [id],
-    )
-    const ident = String(rows[0]?.bridge_identity_no || '').trim()
-    if (!ident) return [id]
-    const [sibs] = await pool.query(
-      'SELECT bridge_id FROM bridge WHERE bridge_identity_no = ? ORDER BY bridge_id ASC',
-      [ident],
-    )
-    const ids = [...new Set(sibs.map((row) => Number(row.bridge_id)).filter((n) => Number.isInteger(n) && n > 0))]
-    return ids.length ? ids : [id]
+    const stat = fs.statSync(filePath)
+    if (stat.isFile() && stat.size > 0) return true
   } catch {
-    return [id]
+    /* try bucket */
   }
+  if (!isStorageEnabled()) return false
+  return objectExists(`upload/bridge_images/${bridgeId}/${base}`)
 }
 
-async function listSiteImageNamesForBridge(bridgeId) {
-  const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
-  const dbNames = parseBridgeImagesList(rows[0]?.bridge_images).map((item) => bridgeImageBasename(item))
-  const bucketNames = await listBucketBridgeImageNames(bridgeId)
-  const localNames = listLocalBridgeImageNames(bridgeId)
-  const seen = new Set()
-  const merged = []
-  for (const name of [...bucketNames, ...localNames, ...dbNames]) {
-    const base = bridgeImageBasename(name)
-    if (!base || base === '.gitkeep' || seen.has(base)) continue
-    seen.add(base)
-    merged.push(base)
+async function filterExistingBridgeImages(bridgeId, list) {
+  const out = []
+  for (const item of list) {
+    if (await bridgeImageFileExists(bridgeId, item)) out.push(item)
   }
-  return merged
-}
-
-const BRIDGE_IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i
-
-function listLocalBridgeImageNames(bridgeId) {
-  const dir = path.join(uploadRoot, 'bridge_images', String(bridgeId))
-  if (!fs.existsSync(dir)) return []
-  try {
-    return fs.readdirSync(dir).filter((name) => BRIDGE_IMAGE_EXT.test(name))
-  } catch {
-    return []
-  }
-}
-
-/** Photos live in s3://bucket/upload/bridge_images/{bridgeId}/ even when bridge.bridge_images is empty. */
-async function listBucketBridgeImageNames(bridgeId) {
-  if (!isStorageEnabled()) return []
-  const prefix = `upload/bridge_images/${bridgeId}/`
-  try {
-    const objects = await listBucketObjectsUnderPrefix(prefix)
-    const names = []
-    for (const obj of objects) {
-      const rel = String(obj.key || '').slice(prefix.length)
-      if (!rel || rel.includes('/')) continue
-      const base = bridgeImageBasename(rel)
-      if (!base || base === '.gitkeep' || !BRIDGE_IMAGE_EXT.test(base)) continue
-      names.push(base)
-    }
-    return names
-  } catch (e) {
-    console.error('[bridge_images] list bucket failed', bridgeId, e.message)
-    return []
-  }
+  return out
 }
 
 router.post('/bridge/update_images/:bridgeId', optionalAuth, upload.any(), async (req, res) => {
@@ -7724,16 +7637,13 @@ router.get('/upload/bridge_images/:bridgeId/:filename', async (req, res) => {
     if (!Number.isInteger(bridgeId) || bridgeId <= 0 || !filename) {
       return res.status(400).json({ message: 'Invalid image path' })
     }
-    const ids = await relatedBridgeIds(bridgeId)
-    for (const id of ids) {
-      const filePath = path.join(uploadRoot, 'bridge_images', String(id), filename)
-      if (fs.existsSync(filePath)) {
-        return res.sendFile(filePath)
-      }
-      const s3Key = `upload/bridge_images/${id}/${filename}`
-      if (await redirectToBucketObject(res, s3Key)) return
-      if (await pipeBucketObjectToResponse(res, s3Key)) return
+    const filePath = path.join(uploadRoot, 'bridge_images', String(bridgeId), filename)
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath)
     }
+    const s3Key = `upload/bridge_images/${bridgeId}/${filename}`
+    if (await redirectToBucketObject(res, s3Key)) return
+    if (await pipeBucketObjectToResponse(res, s3Key)) return
     return res.status(404).json({ message: 'Image not found' })
   } catch (e) {
     res.status(500).json({ message: e.message })
@@ -7746,18 +7656,17 @@ router.get('/upload/bridge_images/:bridgeId', async (req, res) => {
     if (!Number.isInteger(bridgeId) || bridgeId <= 0) {
       return res.status(400).json({ message: 'Invalid bridgeId' })
     }
-    const ids = await relatedBridgeIds(bridgeId)
-    const seen = new Set()
-    const merged = []
-    for (const id of ids) {
-      const names = await listSiteImageNamesForBridge(id)
-      for (const name of names) {
-        if (seen.has(name)) continue
-        seen.add(name)
-        merged.push(name)
-      }
+    const [rows] = await pool.query('SELECT bridge_images FROM bridge WHERE bridge_id = ? LIMIT 1', [bridgeId])
+    const list = parseBridgeImagesList(rows[0]?.bridge_images)
+    const existing = await filterExistingBridgeImages(bridgeId, list)
+    if (existing.length !== list.length) {
+      const cleaned = existing.map((item) => bridgeImageBasename(item)).filter(Boolean).join(',')
+      await pool.query(
+        'UPDATE bridge SET bridge_images = ?, updated_on = CURDATE() WHERE bridge_id = ?',
+        [cleaned, bridgeId]
+      )
     }
-    res.json(merged)
+    res.json(existing)
   } catch (e) {
     res.status(500).json({ message: e.message })
   }

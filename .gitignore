@@ -117,3 +117,6 @@ upload/**
 !upload/**/
 !upload/**/.gitkeep
 !upload/**/README.md
+
+# Local fallback store for viewer Object Removal / Distress records (S3 is used when AWS is configured)
+data/pointcloud-inspection/

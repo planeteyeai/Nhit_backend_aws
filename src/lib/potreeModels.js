@@ -14,7 +14,16 @@ import {
 
 export const POTREE_BUCKET_PREFIX = 'upload/potree/'
 
-const ALLOWED_FILES = new Set(['metadata.json', 'hierarchy.bin', 'octree.bin', 'log.txt'])
+const ALLOWED_FILES = new Set([
+  'metadata.json',
+  'hierarchy.bin',
+  'octree.bin',
+  'log.txt',
+  // Bridge Inspection sidecars (optional; served only if present beside metadata.json).
+  'inspection.json',
+  'classification.json',
+  'classification.vol.z',
+])
 
 let catalogCache = { at: 0, models: [] }
 const CATALOG_TTL_MS = 5 * 60 * 1000

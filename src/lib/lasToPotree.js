@@ -1,11 +1,12 @@
 /**
- * LAS/LAZ in upload/model_3d/ → Potree 2.x in upload/potree/ via PotreeConverter.
+ * LAS/LAZ in upload/model_3d/ â†’ Potree 2.x in upload/potree/ via PotreeConverter.
  * Run manually: npm run potree:convert (uses Desktop PotreeConverter path on Windows by default).
  */
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { spawn } from 'child_process'
+import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import {
   downloadObjectToFile,
@@ -25,6 +26,10 @@ import { chainageKeyToKm, resolvePotreeProject } from './potreeProjects.js'
 const MODEL_3D_PREFIX = 'upload/model_3d/'
 const LAS_EXT = /\.(las|laz)$/i
 const POTREE_OUTPUT_FILES = ['metadata.json', 'hierarchy.bin', 'octree.bin']
+/** Written by the bridge classifier (src/pointcloudViewer/bridge); uploaded only when present. */
+const POTREE_OPTIONAL_FILES = ['classification.json', 'classification.vol.z']
+
+const require = createRequire(import.meta.url)
 
 let convertStatus = {
   running: false,
@@ -61,7 +66,7 @@ function defaultConverterPath() {
 
 function runPotreeConverter(exePath, inputLas, outputDir) {
   return new Promise((resolve, reject) => {
-    // Do not use shell:true — paths with spaces (e.g. "las to poctree converter") break on Windows.
+    // Do not use shell:true â€” paths with spaces (e.g. "las to poctree converter") break on Windows.
     const proc = spawn(exePath, [inputLas, '-o', outputDir], {
       stdio: 'inherit',
       shell: false,
@@ -91,6 +96,15 @@ async function uploadPotreeOutput(localDir, folderName) {
     if (!fs.existsSync(localPath)) {
       throw new Error(`Missing ${file} in PotreeConverter output`)
     }
+    await uploadFromFile(
+      localPath,
+      `${POTREE_BUCKET_PREFIX}${folderName}/${file}`,
+      guessContentType(file)
+    )
+  }
+  for (const file of POTREE_OPTIONAL_FILES) {
+    const localPath = path.join(localDir, file)
+    if (!fs.existsSync(localPath)) continue
     await uploadFromFile(
       localPath,
       `${POTREE_BUCKET_PREFIX}${folderName}/${file}`,
@@ -151,10 +165,16 @@ export async function convertLasFileFromS3(s3Key, options = {}) {
       throw new Error(`Failed to download ${s3Key}`)
     }
 
-    console.log(`[potree] converting ${fileName} → upload/potree/${folderName}/`)
+    console.log(`[potree] converting ${fileName} â†’ upload/potree/${folderName}/`)
     await runPotreeConverter(converterPath, localLas, outputDir)
 
     const potreeDir = resolvePotreeOutputDir(outputDir)
+    // Bridge component classification of this NEW octree; never fails the conversion.
+    try {
+      await require('../pointcloudViewer/lib/classifyRunner.js').runClassifier(potreeDir)
+    } catch (e) {
+      console.warn('[potree] classifier error (ignored):', e?.message || e)
+    }
     await uploadPotreeOutput(potreeDir, folderName)
     invalidatePotreeCatalogCache()
 

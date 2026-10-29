@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 require("dotenv").config({ path: path.join(__dirname, "..", "..", "..", ".env") });
 
 const s3 = require("../lib/s3");
+const classifyRunner = require("../lib/classifyRunner");
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS) || 5000;
 const TMP_ROOT = path.join(__dirname, "..", "..", "..", "tmp", "convert");
@@ -102,6 +103,12 @@ async function processJob(job) {
 		await runConverter(converterPath, inputFile, outDir);
 
 		const potreeDir = findOutputDir(outDir);
+		// Bridge component classification of this NEW octree (never fails the job).
+		try {
+			await classifyRunner.runClassifier(potreeDir, { log: (m) => console.log(`[worker] ${m}`) });
+		} catch (err) {
+			console.warn("[worker] classifier error (ignored):", err && err.message ? err.message : err);
+		}
 		console.log(`[worker] uploading ${potreeDir} → ${job.prefix}`);
 		const uploaded = await s3.uploadDirectoryToPrefix(potreeDir, job.prefix);
 

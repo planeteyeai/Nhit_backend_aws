@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const s3 = require("./s3");
+const classifyRunner = require("./classifyRunner");
 
 const PACKAGE_ROOT = path.join(__dirname, "..", "..", "..");
 const ROOT = PACKAGE_ROOT;
@@ -296,6 +297,22 @@ async function processLocalJob({ id, name, inputPath, origin, sourceKey, shouldA
 			phaseRatio: 1,
 			message: "Conversion finished"
 		});
+
+		// Bridge component classification (writes class bytes into this NEW octree + sidecar files).
+		// Never fails the job; the cloud is simply uploaded unclassified if it cannot run.
+		if (classifyRunner.isEnabled()) {
+			abortIfNeeded();
+			setJobProgress(job, {
+				phase: "converting",
+				phaseRatio: 1,
+				message: "Classifying bridge components..."
+			});
+			try {
+				await classifyRunner.runClassifier(potreeDir);
+			} catch (err) {
+				console.warn("[localConvert] classifier error (ignored):", err && err.message ? err.message : err);
+			}
+		}
 
 		abortIfNeeded();
 		setJobProgress(job, {

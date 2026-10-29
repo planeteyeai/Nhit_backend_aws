@@ -18,8 +18,26 @@ function isPublicShmPdfRead(req) {
 function isPublicPotreeRead(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false
   const path = String(req.path || '').replace(/\/+$/, '') || '/'
-  // folder may contain %2F for nested project/model paths
-  return path === '/potree-models' || /^\/potree-models\/[^/]+\/[^/]+$/.test(path)
+  if (path === '/potree-models') return true
+  // Nested project/model paths use real slashes. A single %2F segment is also valid.
+  if (!path.startsWith('/potree-models/') || path.includes('..')) return false
+  const file = path.slice(path.lastIndexOf('/') + 1)
+  let decoded = file
+  try {
+    decoded = decodeURIComponent(file)
+  } catch {
+    /* keep raw */
+  }
+  // inspection.json / classification.* are the Bridge Inspection sidecars that sit beside metadata.json.
+  return [
+    'metadata.json',
+    'hierarchy.bin',
+    'octree.bin',
+    'log.txt',
+    'inspection.json',
+    'classification.json',
+    'classification.vol.z',
+  ].includes(decoded)
 }
 
 /** InSAR workbook bytes for dashboard iframe (no JWT — same pattern as Potree reads). */
