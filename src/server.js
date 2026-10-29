@@ -17,6 +17,7 @@ import {
   createPointcloudViewerRouter,
   getPointcloudViewerHealthSnapshot,
 } from './routes/pointcloudViewerRoutes.js'
+import { createPointcloudInspectionRouter } from './routes/pointcloudInspectionRoutes.js'
 
 dotenv.config()
 assertProductionConfig()
@@ -219,6 +220,7 @@ app.get(['/health', '/api/health'], (_req, res) => {
 
 /** Former pointcloud-viewer APIs (clouds, upload, LAS, bulk, local convert, viewer state). */
 app.use(createPointcloudViewerRouter())
+app.use('/api/pointcloud-inspection', createPointcloudInspectionRouter())
 
 app.get('/', (_req, res) => {
   if (isProduction()) {
@@ -274,6 +276,17 @@ app.use((err, _req, res, _next) => {
   if (aborted) {
     if (!res.headersSent) {
       res.status(400).json({ ok: false, error: 'Request aborted', code: 'REQUEST_ABORTED' })
+    }
+    return
+  }
+
+  if (err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413) {
+    if (!res.headersSent) {
+      res.status(413).json({
+        ok: false,
+        error: 'Save too large. Reload the viewer and save again.',
+        code: 'PAYLOAD_TOO_LARGE',
+      })
     }
     return
   }
