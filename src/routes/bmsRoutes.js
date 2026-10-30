@@ -2359,6 +2359,7 @@ router.get('/inspections/:inspectionId', async (req, res) => {
     const [rows] = await pool.query(
       `SELECT i.*, i.\`${inspectionIdCol}\` AS bridge_inspection_id,
               b.bridge_identity_no, b.bridge_no, b.chainage, b.highway_no, b.popular_name_of_bridge, b.bridge_side, b.project_name,
+              b.type_of_bridge, b.bridge_crossing_feature,
               COALESCE(s_i.state_name, s_b.state_name) AS state_name,
               COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name
        FROM bridge_inspection i
