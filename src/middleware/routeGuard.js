@@ -54,6 +54,14 @@ function isPublicRoute(req) {
 
   if (method === 'OPTIONS') return true
 
+  // ECS/ALB probes — never require JWT (also registered on app before this guard).
+  if (
+    (method === 'GET' || method === 'HEAD') &&
+    (path === '/health' || path === '/api/health' || path === '/' || path === '/api')
+  ) {
+    return true
+  }
+
   if (method === 'POST' && (path === '/login' || path === '/login_con/check_login' || path === '/logout')) {
     return true
   }

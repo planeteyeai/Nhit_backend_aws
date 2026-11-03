@@ -51,44 +51,70 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition nhit-task \
             --query taskDefinition > task-def-raw.json
-          
+
           # Remove ONLY AWS-managed fields, keep everything else
           jq 'del(.compatibilities, .taskDefinitionArn, .requiresAttributes, .revision, .status, .registeredAt, .registeredBy, .enableFaultInjection, .deregisteredAt)' \
             task-def-raw.json > task-def.json
-          
+
           echo "=== Current task definition summary ==="
           echo "Execution Role: $(jq -r '.executionRoleArn' task-def.json)"
           echo "Task Role: $(jq -r '.taskRoleArn' task-def.json)"
           echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def.json)"
           echo "Container image (before): $(jq -r '.containerDefinitions[0].image' task-def.json)"
+          echo "Health check: $(jq -c '.containerDefinitions[0].healthCheck // null' task-def.json)"
 
-      - name: Update image in task definition
+      - name: Update image + health check in task definition
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
-          # Manually update ONLY the image using jq
           NEW_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          
-          jq --arg IMAGE "$NEW_IMAGE" \
-            '.containerDefinitions[0].image = $IMAGE' \
-            task-def.json > task-def-updated.json
-          
+
+          # Update image, stamp IMAGE_SHA, and ensure a container healthCheck that
+          # matches ALB (/health on 8080) with a generous startPeriod so cold starts
+          # do not trip the deployment circuit breaker.
+          jq \
+            --arg IMAGE "$NEW_IMAGE" \
+            --arg NAME "$CONTAINER_NAME" \
+            --arg SHA "$IMAGE_TAG" \
+            '
+            (.containerDefinitions | map(.name == $NAME) | index(true)) as $idx
+            | ($idx // 0) as $i
+            | .containerDefinitions[$i].image = $IMAGE
+            | .containerDefinitions[$i].healthCheck = {
+                command: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"],
+                interval: 30,
+                timeout: 5,
+                retries: 3,
+                startPeriod: 90
+              }
+            | (.containerDefinitions[$i].environment //= [])
+            | .containerDefinitions[$i].environment |= (
+                map(select(.name != "IMAGE_SHA" and .name != "PORT" and .name != "HOST" and .name != "NODE_ENV"))
+                + [
+                  {name: "IMAGE_SHA", value: $SHA},
+                  {name: "PORT", value: "8080"},
+                  {name: "HOST", value: "0.0.0.0"},
+                  {name: "NODE_ENV", value: "production"}
+                ]
+              )
+            ' task-def.json > task-def-final.json
+
           echo "=== Updated task definition summary ==="
-          echo "Execution Role: $(jq -r '.executionRoleArn' task-def-updated.json)"
-          echo "Task Role: $(jq -r '.taskRoleArn' task-def-updated.json)"
-          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-updated.json)"
-          echo "Container image (after): $(jq -r '.containerDefinitions[0].image' task-def-updated.json)"
-          
-          # Save for deployment
-          mv task-def-updated.json task-def-final.json
+          echo "Execution Role: $(jq -r '.executionRoleArn' task-def-final.json)"
+          echo "Task Role: $(jq -r '.taskRoleArn' task-def-final.json)"
+          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-final.json)"
+          echo "Container image (after): $(jq -r --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .image' task-def-final.json)"
+          echo "Health check: $(jq -c --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .healthCheck' task-def-final.json)"
+          echo "Env PORT/HOST/NODE_ENV/IMAGE_SHA: $(jq -c --arg N "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$N) | .environment[] | select(.name=="PORT" or .name=="HOST" or .name=="NODE_ENV" or .name=="IMAGE_SHA")]' task-def-final.json)"
 
       - name: Register new task definition
         run: |
           aws ecs register-task-definition \
             --cli-input-json file://task-def-final.json \
             --region ${{ env.AWS_REGION }} > new-task-def.json
-          
+
           NEW_TASK_DEF_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' new-task-def.json)
           echo "New task definition: $NEW_TASK_DEF_ARN"
           echo "task-definition-arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
@@ -100,13 +126,52 @@ jobs:
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
             --task-definition ${{ steps.register-task-def.outputs.task-definition-arn }} \
+            --health-check-grace-period-seconds 180 \
             --force-new-deployment \
+            --region ${{ env.AWS_REGION }} > /dev/null
+
+          echo "Service update initiated with 180s health-check grace period."
+          echo "Events: https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/events"
+          echo "Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Fnhit-backend"
+
+      - name: Wait for service stability
+        run: |
+          set +e
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
             --region ${{ env.AWS_REGION }}
-          
-          echo "✅ Service update initiated successfully!"
-          echo ""
-          echo "Monitor deployment progress:"
-          echo "https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/events"
-          echo ""
-          echo "Check logs:"
-          echo "https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Fnhit-backend"
+          WAIT_RC=$?
+          set -e
+
+          echo "=== Recent service events ==="
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].events[0:15].[createdAt,message]' \
+            --output table
+
+          if [ "$WAIT_RC" -ne 0 ]; then
+            echo "::error::ECS service did not stabilize (circuit breaker / health check failure)."
+            echo "=== Running / stopped tasks ==="
+            aws ecs list-tasks \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service-name ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
+              --desired-status STOPPED \
+              --query 'taskArns[0:5]' \
+              --output text | tr '\t' '\n' | while read -r TASK; do
+                [ -z "$TASK" ] && continue
+                echo "--- $TASK ---"
+                aws ecs describe-tasks \
+                  --cluster ${{ env.ECS_CLUSTER }} \
+                  --tasks "$TASK" \
+                  --region ${{ env.AWS_REGION }} \
+                  --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[*].{name:name,reason:reason,exitCode:exitCode,lastStatus:lastStatus}}' \
+                  --output json
+              done
+            exit 1
+          fi
+
+          echo "ECS service is stable."

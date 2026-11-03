@@ -34,6 +34,44 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const uploadDir = path.resolve(__dirname, '../upload')
 
+/**
+ * Register /health BEFORE helmet/cors/body parsers/routers.
+ * ECS/ALB circuit breakers only need a fast 200 here — keep it unreachable by auth.
+ */
+app.get(['/health', '/api/health'], (_req, res) => {
+  let pointcloud = null
+  try {
+    pointcloud = getPointcloudViewerHealthSnapshot()
+  } catch (e) {
+    pointcloud = { ok: false, error: e.message || String(e) }
+  }
+  if (isProduction()) {
+    return res.status(200).json({
+      ok: true,
+      configured: Boolean(pointcloud?.configured),
+      localConvert: Boolean(pointcloud?.localConvert),
+      mysqlConfigured: Boolean(
+        process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE
+      ),
+      // ok stays true so ECS/ALB health passes; jwtOk false means set JWT_SECRET.
+      jwtOk: !isAuthConfigBlocked(),
+      imageSha: String(process.env.IMAGE_SHA || '').slice(0, 12) || undefined,
+      pointcloud,
+    })
+  }
+  res.status(200).json({
+    ok: true,
+    service: 'bms-backend',
+    storage: storageStatus(),
+    configured: Boolean(pointcloud?.configured),
+    localConvert: Boolean(pointcloud?.localConvert),
+    converter: pointcloud?.converter || null,
+    viewerOrigin: pointcloud?.viewerOrigin || null,
+    mode: pointcloud?.mode || 'integrated',
+    pointcloud,
+  })
+})
+
 /** Resolve a safe path under upload/ (blocks path traversal). */
 function resolveUploadFile(urlPath) {
   const rel = decodeURIComponent(String(urlPath || '').replace(/^\/+/, ''))
@@ -201,40 +239,6 @@ function uploadSensitiveGuard(req, res, next) {
 }
 
 app.use('/upload', uploadSensitiveGuard, uploadS3Fallback, uploadStaticGuard, express.static(uploadDir))
-
-app.get(['/health', '/api/health'], (_req, res) => {
-  let pointcloud = null
-  try {
-    pointcloud = getPointcloudViewerHealthSnapshot()
-  } catch (e) {
-    pointcloud = { ok: false, error: e.message || String(e) }
-  }
-  if (isProduction()) {
-    return res.json({
-      ok: true,
-      // Fields the embedded Potree manager expects from the former viewer /api/health.
-      configured: Boolean(pointcloud?.configured),
-      localConvert: Boolean(pointcloud?.localConvert),
-      mysqlConfigured: Boolean(
-        process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE
-      ),
-      // ok stays true so ECS/ALB health passes; jwtOk false means set JWT_SECRET.
-      jwtOk: !isAuthConfigBlocked(),
-      pointcloud,
-    })
-  }
-  res.json({
-    ok: true,
-    service: 'bms-backend',
-    storage: storageStatus(),
-    configured: Boolean(pointcloud?.configured),
-    localConvert: Boolean(pointcloud?.localConvert),
-    converter: pointcloud?.converter || null,
-    viewerOrigin: pointcloud?.viewerOrigin || null,
-    mode: pointcloud?.mode || 'integrated',
-    pointcloud,
-  })
-})
 
 /** Former pointcloud-viewer APIs (clouds, upload, LAS, bulk, local convert, viewer state). */
 app.use(createPointcloudViewerRouter())
