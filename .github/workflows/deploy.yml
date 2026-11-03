@@ -131,7 +131,14 @@ jobs:
 
           if [ "$WAIT_RC" -ne 0 ]; then
             echo "::error::ECS service did not stabilize (circuit breaker / health check failure)."
-            echo "=== Running / stopped tasks ==="
+            EVENTS=$(aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'services[0].events[0:8].message' \
+              --output text 2>/dev/null | tr '\t' ' | ' | head -c 800)
+            echo "::error::ECS events::${EVENTS}"
+
             aws ecs list-tasks \
               --cluster ${{ env.ECS_CLUSTER }} \
               --service-name ${{ env.ECS_SERVICE }} \
@@ -140,13 +147,13 @@ jobs:
               --query 'taskArns[0:5]' \
               --output text | tr '\t' '\n' | while read -r TASK; do
                 [ -z "$TASK" ] && continue
-                echo "--- $TASK ---"
-                aws ecs describe-tasks \
+                DETAIL=$(aws ecs describe-tasks \
                   --cluster ${{ env.ECS_CLUSTER }} \
                   --tasks "$TASK" \
                   --region ${{ env.AWS_REGION }} \
-                  --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[*].{name:name,reason:reason,exitCode:exitCode,lastStatus:lastStatus}}' \
-                  --output json
+                  --query 'tasks[0].{stoppedReason:stoppedReason,stopCode:stopCode,containers:containers[*].{name:name,reason:reason,exitCode:exitCode}}' \
+                  --output json 2>/dev/null | head -c 700)
+                echo "::error::Stopped task::${DETAIL}"
               done
             exit 1
           fi
