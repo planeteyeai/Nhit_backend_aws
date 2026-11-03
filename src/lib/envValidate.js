@@ -16,6 +16,20 @@ export function isProduction() {
   return String(process.env.NODE_ENV || '').toLowerCase() === 'production'
 }
 
+/** True when production JWT_SECRET is missing/weak — auth must refuse, but process stays up for health checks. */
+let authConfigBlocked = false
+
+export function isAuthConfigBlocked() {
+  return authConfigBlocked
+}
+
+export function isJwtSecretConfigured() {
+  const jwt = String(process.env.JWT_SECRET || '').trim()
+  if (!jwt) return false
+  if (isProduction() && isWeakJwtSecret(jwt)) return false
+  return true
+}
+
 /** Public HTTPS URL for logs / docs (Railway sets RAILWAY_PUBLIC_DOMAIN). */
 export function resolvePublicApiBase() {
   const explicit = String(
@@ -39,8 +53,9 @@ export function resolvePublicApiBase() {
 }
 
 /**
- * Warn about missing production configuration. Does NOT exit — lets the
- * server start so /api/diag/db can be used to debug connectivity issues.
+ * Validate production configuration.
+ * Never process.exit — ECS circuit breaker needs /health to stay up.
+ * Weak/missing JWT_SECRET blocks auth (503) until operators set a strong secret.
  */
 export function assertProductionConfig() {
   if (!isProduction()) return
@@ -56,8 +71,11 @@ export function assertProductionConfig() {
 
   const jwt = String(process.env.JWT_SECRET || '').trim()
   if (isWeakJwtSecret(jwt)) {
-    console.error('[FATAL] JWT_SECRET is missing or weak — refusing insecure auth config')
-    process.exit(1)
+    authConfigBlocked = true
+    console.error(
+      '[FATAL] JWT_SECRET is missing or weak — login/API auth disabled (503). ' +
+        'Set a strong JWT_SECRET (≥16 chars, not a placeholder) in the ECS task env/secrets, then redeploy.'
+    )
   }
 
   const cors = String(process.env.CORS_ORIGIN || '').trim()

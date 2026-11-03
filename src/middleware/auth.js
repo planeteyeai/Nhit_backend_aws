@@ -1,31 +1,18 @@
 import jwt from 'jsonwebtoken'
 import { pool } from '../config/db.js'
 import { isAdminOrBmcRole, normalizeAppRole } from '../lib/roles.js'
-
-const WEAK_JWT_SECRETS = new Set([
-  'bms-dev-secret-change-in-production',
-  'change-me-in-production',
-  'change-me-in-development-only',
-])
+import { isAuthConfigBlocked, isJwtSecretConfigured } from '../lib/envValidate.js'
 
 const JWT_VERIFY_OPTS = { algorithms: ['HS256'] }
 
-function isWeakJwtSecret(value) {
-  const s = String(value || '').trim()
-  if (!s || s.length < 16) return true
-  if (WEAK_JWT_SECRETS.has(s)) return true
-  if (/change.?me|your.?jwt|placeholder|secret.?from.?production/i.test(s)) return true
-  return false
-}
-
 /** Resolve JWT secret — never falls back to a hardcoded value. */
 export function getJwtSecret() {
+  if (isAuthConfigBlocked() || !isJwtSecretConfigured()) {
+    throw new Error('JWT_SECRET is missing or too weak for production')
+  }
   const s = String(process.env.JWT_SECRET || '').trim()
   if (!s) {
     throw new Error('JWT_SECRET is not configured')
-  }
-  if (String(process.env.NODE_ENV || '').toLowerCase() === 'production' && isWeakJwtSecret(s)) {
-    throw new Error('JWT_SECRET is missing or too weak for production')
   }
   return s
 }
@@ -59,6 +46,11 @@ export function optionalAuth(req, res, next) {
 }
 
 export function requireAuth(req, res, next) {
+  if (isAuthConfigBlocked() || !isJwtSecretConfigured()) {
+    return res.status(503).json({
+      message: 'Authentication is misconfigured — set a strong JWT_SECRET in the service environment',
+    })
+  }
   const token = extractBearer(req)
   if (!token) {
     return res.status(401).json({ message: 'Unauthorized' })

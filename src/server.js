@@ -12,7 +12,12 @@ import diagnosticsRoutes from './routes/index.js'
 import bmsRoutes from './routes/bmsRoutes.js'
 import { diagGuard } from './middleware/diagGuard.js'
 import { requireAuth } from './middleware/auth.js'
-import { assertProductionConfig, isProduction, resolvePublicApiBase } from './lib/envValidate.js'
+import {
+  assertProductionConfig,
+  isAuthConfigBlocked,
+  isProduction,
+  resolvePublicApiBase,
+} from './lib/envValidate.js'
 import {
   createPointcloudViewerRouter,
   getPointcloudViewerHealthSnapshot,
@@ -213,6 +218,8 @@ app.get(['/health', '/api/health'], (_req, res) => {
       mysqlConfigured: Boolean(
         process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE
       ),
+      // ok stays true so ECS/ALB health passes; jwtOk false means set JWT_SECRET.
+      jwtOk: !isAuthConfigBlocked(),
       pointcloud,
     })
   }
