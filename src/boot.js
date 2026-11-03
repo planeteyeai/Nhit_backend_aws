@@ -15,7 +15,8 @@ const HOST = '0.0.0.0'
 
 const app = express()
 
-app.get(['/health', '/api/health'], (_req, res) => {
+/** Cover common ALB/TG probe paths — many target groups default to `/`, not `/health`. */
+function sendHealth(_req, res) {
   const body = {
     ok: true,
     ready: bootState.ready,
@@ -32,7 +33,9 @@ app.get(['/health', '/api/health'], (_req, res) => {
     }
   }
   res.status(200).json(body)
-})
+}
+
+app.get(['/', '/health', '/api/health', '/healthz', '/ready', '/api', '/ping'], sendHealth)
 
 const server = app.listen(PORT, HOST, () => {
   const mode = String(process.env.NODE_ENV || 'development')

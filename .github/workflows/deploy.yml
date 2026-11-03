@@ -99,15 +99,18 @@ jobs:
 
       - name: Update ECS service
         run: |
+          # Temporary: disable circuit-breaker rollback so a booting task is not
+          # killed before /health can answer; grace period covers cold import.
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
             --task-definition ${{ steps.register-task-def.outputs.task-definition-arn }} \
-            --health-check-grace-period-seconds 180 \
+            --health-check-grace-period-seconds 300 \
+            --deployment-configuration "deploymentCircuitBreaker={enable=false,rollback=false},maximumPercent=200,minimumHealthyPercent=50" \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }} > /dev/null
 
-          echo "Service update initiated with 180s health-check grace period."
+          echo "Service update initiated (grace=300s, circuit-breaker off for this deploy)."
           echo "Events: https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/events"
           echo "Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Fnhit-backend"
 
@@ -152,8 +155,9 @@ jobs:
                   --tasks "$TASK" \
                   --region ${{ env.AWS_REGION }} \
                   --query 'tasks[0].{stoppedReason:stoppedReason,stopCode:stopCode,containers:containers[*].{name:name,reason:reason,exitCode:exitCode}}' \
-                  --output json 2>/dev/null | head -c 700)
-                echo "::error::Stopped task::${DETAIL}"
+                  --output json 2>/dev/null | jq -c . | head -c 900)
+                # Single-line annotation so GitHub API exposes the full reason.
+                echo "::error title=Stopped task::${DETAIL}"
               done
             exit 1
           fi
