@@ -63,57 +63,23 @@ jobs:
           echo "Container image (before): $(jq -r '.containerDefinitions[0].image' task-def.json)"
           echo "Health check: $(jq -c '.containerDefinitions[0].healthCheck // null' task-def.json)"
 
-      - name: Update image + health check in task definition
+      - name: Update image in task definition
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
+          # Manually update ONLY the image using jq (same as last known-good deploy).
           NEW_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-          # Update image, stamp IMAGE_SHA, and ensure a container healthCheck that
-          # matches ALB (/health on 8080) with a generous startPeriod so cold starts
-          # do not trip the deployment circuit breaker.
-          jq \
-            --arg IMAGE "$NEW_IMAGE" \
-            --arg NAME "$CONTAINER_NAME" \
-            --arg SHA "$IMAGE_TAG" \
-            '
-            (.containerDefinitions | map(.name == $NAME) | index(true) // 0) as $i
-            | .containerDefinitions[$i].image = $IMAGE
-            | .containerDefinitions[$i].healthCheck = {
-                command: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"],
-                interval: 30,
-                timeout: 5,
-                retries: 3,
-                startPeriod: 90
-              }
-            | .containerDefinitions[$i].environment = (
-                ((.containerDefinitions[$i].environment // [])
-                  | map(select(
-                      .name != "IMAGE_SHA"
-                      and .name != "PORT"
-                      and .name != "HOST"
-                      and .name != "NODE_ENV"
-                    )))
-                + [
-                  {name: "IMAGE_SHA", value: $SHA},
-                  {name: "PORT", value: "8080"},
-                  {name: "HOST", value: "0.0.0.0"},
-                  {name: "NODE_ENV", value: "production"}
-                ]
-              )
-            ' task-def.json > task-def-final.json
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-def.json > task-def-final.json
 
           echo "=== Updated task definition summary ==="
-          jq empty task-def-final.json
-          test "$(jq -r '.family // empty' task-def-final.json)" = "nhit-task"
           echo "Execution Role: $(jq -r '.executionRoleArn' task-def-final.json)"
           echo "Task Role: $(jq -r '.taskRoleArn' task-def-final.json)"
-          echo "Secrets count: $(jq --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .secrets // [] | length' task-def-final.json)"
-          echo "Container image (after): $(jq -r --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .image' task-def-final.json)"
-          echo "Health check: $(jq -c --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .healthCheck' task-def-final.json)"
-          echo "Env PORT/HOST/NODE_ENV/IMAGE_SHA: $(jq -c --arg N "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$N) | .environment[] | select(.name=="PORT" or .name=="HOST" or .name=="NODE_ENV" or .name=="IMAGE_SHA")]' task-def-final.json)"
+          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-final.json)"
+          echo "Container image (after): $(jq -r '.containerDefinitions[0].image' task-def-final.json)"
 
       - name: Register new task definition
         run: |
@@ -122,8 +88,7 @@ jobs:
             --region ${{ env.AWS_REGION }} > new-task-def.json 2>register-err.txt; then
             echo "::error::register-task-definition failed"
             cat register-err.txt
-            echo "=== task-def-final.json keys ==="
-            jq 'keys' task-def-final.json
+            jq 'keys' task-def-final.json || true
             exit 1
           fi
 
