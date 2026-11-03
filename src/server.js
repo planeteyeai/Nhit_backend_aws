@@ -173,7 +173,7 @@ app.use(
     optionsSuccessStatus: 204,
   })
 )
-app.options('*', cors())
+// Preflight uses the same origin allowlist as above — never a bare cors() that reflects *.
 app.use(express.json({ limit: '64mb' }))
 app.use(express.urlencoded({ extended: true, limit: '64mb' }))
 /** Block direct static access to signatures and PDFs without login. */

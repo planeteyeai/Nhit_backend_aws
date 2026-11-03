@@ -61,7 +61,6 @@ function isPublicRoute(req) {
   if (isPublicBridgeImageRead(req)) return true
   if (isPublicShmPdfRead(req)) return true
   if (isPublicPotreeRead(req)) return true
-  if (isPublicPointCloudDataWrite(req)) return true
   if (isPublicInsarWorkbook(req)) return true
 
   // Static BOQ / form dropdown constants (no sensitive data).
@@ -75,23 +74,9 @@ function isPublicRoute(req) {
   return false
 }
 
-/** Point-cloud measurement/image sync from Potree iframe (Bearer preferred; optionalAuth on route). */
-function isPublicPointCloudDataWrite(req) {
-  const path = String(req.path || '').replace(/\/+$/, '') || '/'
-  const byBridge = /^\/bridges\/\d+\/point-cloud-data(?:\/images(?:\/[^/]+)?)?$/.test(path)
-  const byCloud = path === '/point-cloud-data' || path.startsWith('/point-cloud-data/images')
-  if (!byBridge && !byCloud) return false
-  return (
-    req.method === 'GET' ||
-    req.method === 'PUT' ||
-    req.method === 'PATCH' ||
-    req.method === 'OPTIONS'
-  )
-}
-
 /**
  * Require JWT for all BMS API routes except explicitly public login/logout paths.
- * Applies in every environment so local/dev cannot expose bridge / user data anonymously.
+ * Point-cloud measurement writes are authenticated (no anonymous PUT/PATCH).
  */
 export function productionRouteGuard(req, res, next) {
   if (isPublicRoute(req)) return next()

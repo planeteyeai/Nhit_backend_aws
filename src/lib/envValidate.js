@@ -4,6 +4,14 @@ const WEAK_JWT_SECRETS = new Set([
   'change-me-in-development-only',
 ])
 
+function isWeakJwtSecret(value) {
+  const s = String(value || '').trim()
+  if (!s || s.length < 16) return true
+  if (WEAK_JWT_SECRETS.has(s)) return true
+  if (/change.?me|your.?jwt|placeholder|secret.?from.?production/i.test(s)) return true
+  return false
+}
+
 export function isProduction() {
   return String(process.env.NODE_ENV || '').toLowerCase() === 'production'
 }
@@ -47,8 +55,9 @@ export function assertProductionConfig() {
   }
 
   const jwt = String(process.env.JWT_SECRET || '').trim()
-  if (!jwt || WEAK_JWT_SECRETS.has(jwt) || jwt.length < 16) {
-    console.warn('[WARN] JWT_SECRET is missing or weak — authentication will fail')
+  if (isWeakJwtSecret(jwt)) {
+    console.error('[FATAL] JWT_SECRET is missing or weak — refusing insecure auth config')
+    process.exit(1)
   }
 
   const cors = String(process.env.CORS_ORIGIN || '').trim()

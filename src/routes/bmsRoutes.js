@@ -7,16 +7,49 @@ import { fileURLToPath } from 'url'
 import PDFDocument from 'pdfkit'
 import ExcelJS from 'exceljs'
 import { pool } from '../config/db.js'
-import { normalizeAppRole } from '../lib/roles.js'
-import { verifyPassword, md5Hex } from '../lib/password.js'
-import { signToken, requireAuth, optionalAuth } from '../middleware/auth.js'
+import {
+  normalizeAppRole,
+  isAdminOrBmcRole,
+  coerceDbUserRole,
+  DEFAULT_DB_USER_ROLE,
+} from '../lib/roles.js'
+import { verifyPassword, hashPassword, needsPasswordUpgrade, assertPasswordPolicy } from '../lib/password.js'
+import {
+  signToken,
+  requireAuth,
+  optionalAuth,
+  requireUserAdmin,
+  attachDbUserRole,
+} from '../middleware/auth.js'
 import { productionRouteGuard } from '../middleware/routeGuard.js'
 import {
   getLoginLockStatus,
   recordLoginFailure,
   clearLoginFailures,
   loginLockMessage,
+  getPasswordChangeLockStatus,
+  recordPasswordChangeFailure,
+  clearPasswordChangeFailures,
+  passwordChangeLockMessage,
 } from '../lib/loginRateLimit.js'
+import { createFixedWindowRateLimit, clientIp } from '../lib/rateLimit.js'
+
+/** Cap login POSTs per IP (stops bcrypt CPU burn / flood even before lockout). */
+const loginRequestLimit = createFixedWindowRateLimit({
+  name: 'login-req',
+  max: 40,
+  windowMs: 60 * 1000,
+  keyFn: (req) => clientIp(req),
+  message: 'Too many login requests. Please wait a minute and try again.',
+})
+
+const changePasswordRequestLimit = createFixedWindowRateLimit({
+  name: 'pwd-change-req',
+  max: 20,
+  windowMs: 60 * 1000,
+  keyFn: (req) => `${clientIp(req)}:${req.user?.uid || 0}`,
+  message: 'Too many password-change requests. Please wait a minute and try again.',
+})
 import { INSPECTION_DROPDOWNS } from '../config/inspectionDropdowns.js'
 import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
@@ -301,12 +334,49 @@ const uploadStorage = multer.diskStorage({
     cb(null, `${Date.now()}-${Math.floor(Math.random() * 1e6)}-${safe || `upload${ext}`}`)
   },
 })
-const upload = multer({ storage: uploadStorage, limits: { fileSize: 10 * 1024 * 1024 } })
+function imageUploadFilter(_req, file, cb) {
+  const name = String(file.originalname || '').toLowerCase()
+  const mime = String(file.mimetype || '').toLowerCase()
+  const okExt = /\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(name)
+  const okMime = mime.startsWith('image/') || mime === 'application/octet-stream'
+  if (okExt && okMime) return cb(null, true)
+  return cb(new Error('Only image uploads are allowed (jpg, png, gif, webp)'))
+}
+
+function asset3dUploadFilter(_req, file, cb) {
+  const name = String(file.originalname || '').toLowerCase()
+  if (/\.(glb|gltf|bin|json|obj|mtl|fbx|zip)$/i.test(name)) return cb(null, true)
+  return cb(new Error('Only 3D asset files are allowed (glb, gltf, obj, zip, …)'))
+}
+
+function pdfUploadFilter(_req, file, cb) {
+  const name = String(file.originalname || '').toLowerCase()
+  const mime = String(file.mimetype || '').toLowerCase()
+  if (name.endsWith('.pdf') || mime === 'application/pdf') return cb(null, true)
+  return cb(new Error('Only PDF uploads are allowed'))
+}
+
+const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    // Signatures + site photos are images; PDFs use dedicated routes with pdfUploadFilter.
+    if (String(req.path || '').includes('upload_lidar_pdf') || String(req.path || '').includes('upload_sar_pdf')) {
+      return pdfUploadFilter(req, file, cb)
+    }
+    return imageUploadFilter(req, file, cb)
+  },
+})
 /** GLB / large 3D assets (default upload limit is too small for many bridge models). */
-const upload3d = multer({ storage: uploadStorage, limits: { fileSize: 150 * 1024 * 1024 } })
+const upload3d = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 150 * 1024 * 1024 },
+  fileFilter: asset3dUploadFilter,
+})
 const uploadPanoramaMem = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: imageUploadFilter,
 })
 const uploadPanoramaMarkerImage = multer({
   storage: multer.diskStorage({
@@ -323,6 +393,7 @@ const uploadPanoramaMarkerImage = multer({
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: imageUploadFilter,
 })
 
 const uploadLasTemp = multer({
@@ -926,7 +997,7 @@ async function handleLogin(req, res) {
     [username]
   )
   const user = rows[0]
-  if (!user || !verifyPassword(user.pass, password)) {
+  if (!user || !(await verifyPassword(user.pass, password))) {
     const afterFail = recordLoginFailure(req, username)
     if (afterFail.locked) {
       res.setHeader('Retry-After', String(afterFail.retryAfterSec))
@@ -943,8 +1014,23 @@ async function handleLogin(req, res) {
   }
 
   clearLoginFailures(req, username)
-  const role = normalizeAppRole(user.user_role)
-  const token = signToken({ uid: user.uid, username: user.username, role })
+  // Upgrade legacy MD5 hashes to bcrypt after a successful login.
+  if (await needsPasswordUpgrade(user.pass)) {
+    try {
+      const upgraded = await hashPassword(password)
+      await pool.query('UPDATE users SET pass = ? WHERE uid = ?', [upgraded, user.uid])
+    } catch (e) {
+      console.error('[auth] password upgrade failed:', e.message)
+    }
+  }
+  const rawRole = String(user.user_role || '').trim()
+  const role = normalizeAppRole(rawRole)
+  const token = signToken({
+    uid: user.uid,
+    username: user.username,
+    role,
+    user_role: rawRole || role,
+  })
   return res.json({
     token,
     userid: user.uid,
@@ -957,7 +1043,7 @@ async function handleLogin(req, res) {
   })
 }
 
-router.post('/login', optionalAuth, async (req, res) => {
+router.post('/login', loginRequestLimit, optionalAuth, async (req, res) => {
   try {
     await handleLogin(req, res)
   } catch (e) {
@@ -969,7 +1055,7 @@ router.post('/login', optionalAuth, async (req, res) => {
   }
 })
 
-router.post('/login_con/check_login', uploadNone, optionalAuth, async (req, res) => {
+router.post('/login_con/check_login', loginRequestLimit, uploadNone, optionalAuth, async (req, res) => {
   try {
     req.body = { ...req.body, username: req.body.username, password: req.body.password }
     await handleLogin(req, res)
@@ -986,25 +1072,55 @@ router.post('/logout', (_req, res) => {
   res.json({ success: true })
 })
 
-router.post('/login_con/change_password', requireAuth, async (req, res) => {
-  try {
-    const { old_pwd: oldPwd, new_pwd: newPwd, confirm_pwd: confirmPwd } = req.body || {}
-    if (!oldPwd || !newPwd || newPwd !== confirmPwd) {
-      return res.status(400).json({ message: 'Invalid password fields' })
+router.post(
+  '/login_con/change_password',
+  requireAuth,
+  changePasswordRequestLimit,
+  async (req, res) => {
+    try {
+      const { old_pwd: oldPwd, new_pwd: newPwd, confirm_pwd: confirmPwd } = req.body || {}
+      if (!oldPwd || !newPwd || newPwd !== confirmPwd) {
+        return res.status(400).json({ message: 'Invalid password fields' })
+      }
+      const policy = assertPasswordPolicy(newPwd)
+      if (!policy.ok) return res.status(400).json({ message: policy.message })
+      const uid = req.user.uid
+      const lock = getPasswordChangeLockStatus(req, uid)
+      if (lock.locked) {
+        res.setHeader('Retry-After', String(lock.retryAfterSec))
+        return res.status(429).json({
+          message: passwordChangeLockMessage(lock.retryAfterSec),
+          retry_after_seconds: lock.retryAfterSec,
+          locked: true,
+        })
+      }
+      const [rows] = await pool.query('SELECT pass FROM users WHERE uid = ? LIMIT 1', [uid])
+      const u = rows[0]
+      if (!u || !(await verifyPassword(u.pass, oldPwd))) {
+        const afterFail = recordPasswordChangeFailure(req, uid)
+        if (afterFail.locked) {
+          res.setHeader('Retry-After', String(afterFail.retryAfterSec))
+          return res.status(429).json({
+            message: passwordChangeLockMessage(afterFail.retryAfterSec),
+            retry_after_seconds: afterFail.retryAfterSec,
+            locked: true,
+          })
+        }
+        return res.status(400).json({
+          message: 'Old password is incorrect!',
+          attempts_remaining: afterFail.remaining,
+        })
+      }
+      const hashed = await hashPassword(newPwd)
+      await pool.query('UPDATE users SET pass = ? WHERE uid = ?', [hashed, uid])
+      clearPasswordChangeFailures(uid)
+      res.json({ success: true, message: 'Password changed successfully' })
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ message: 'Could not change password' })
     }
-    const uid = req.user.uid
-    const [rows] = await pool.query('SELECT pass FROM users WHERE uid = ? LIMIT 1', [uid])
-    const u = rows[0]
-    if (!u || !verifyPassword(u.pass, oldPwd)) {
-      return res.status(400).json({ message: 'Old password is incorrect!' })
-    }
-    await pool.query('UPDATE users SET pass = ? WHERE uid = ?', [md5Hex(newPwd), uid])
-    res.json({ success: true, message: 'Password changed successfully' })
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ message: 'Could not change password' })
   }
-})
+)
 
 router.get('/states', async (_req, res) => {
   try {
@@ -1016,7 +1132,16 @@ router.get('/states', async (_req, res) => {
   }
 })
 
-router.get('/users', async (req, res) => {
+const USER_SELF_WRITABLE = new Set([
+  'first_name',
+  'last_name',
+  'email',
+  'phone_number',
+  'address',
+  'sign',
+])
+
+router.get('/users', requireUserAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10))
@@ -1051,12 +1176,19 @@ router.get('/users', async (req, res) => {
     })
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to list users' })
   }
 })
 
-router.get('/users/:userId', async (req, res) => {
+router.get('/users/:userId', requireAuth, async (req, res) => {
   try {
+    const targetId = Number(req.params.userId || 0)
+    const selfId = Number(req.user?.uid || 0)
+    const dbUser = await attachDbUserRole(req)
+    if (!dbUser) return res.status(403).json({ message: 'Forbidden' })
+    if (!isAdminOrBmcRole(dbUser.user_role) && targetId !== selfId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
     const [rows] = await pool.query(
       `SELECT uid, username, first_name, last_name, email, phone_number, address, state_id, user_role, user_status, sign
        FROM users WHERE uid = ? LIMIT 1`,
@@ -1066,44 +1198,58 @@ router.get('/users/:userId', async (req, res) => {
     res.json(stripPassword(rows[0]))
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to load user' })
   }
 })
 
-router.post('/users', requireAuth, async (req, res) => {
+router.post('/users', requireUserAdmin, async (req, res) => {
   try {
     const b = req.body || {}
-    if (!b.username || !b.pass && !b.password) {
+    if (!b.username || (!b.pass && !b.password)) {
       return res.status(400).json({ message: 'username and password required' })
     }
     const plain = b.pass || b.password
+    const policy = assertPasswordPolicy(plain)
+    if (!policy.ok) return res.status(400).json({ message: policy.message })
+    const hashed = await hashPassword(plain)
+    // Whitelist ENUM roles; never silently create Admin via typo / "Site Engineer".
+    const role = coerceDbUserRole(b.user_role, DEFAULT_DB_USER_ROLE)
+    const status = String(b.user_status || b.status || 'Active').trim() === 'Inactive' ? 'Inactive' : 'Active'
     const [r] = await pool.query(
       `INSERT INTO users (username, pass, first_name, last_name, email, phone_number, address, state_id, user_role, user_status)
        VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [
         b.username.trim(),
-        md5Hex(plain),
+        hashed,
         b.first_name || b.firstName || '',
         b.last_name || b.lastName || '',
         b.email || '',
         b.phone_number || b.phoneNumber || '',
         b.address || '',
         b.state_id || null,
-        b.user_role || 'Admin',
-        b.user_status || b.status || 'Active',
+        role,
+        status,
       ]
     )
-    res.status(201).json({ uid: r.insertId, id: r.insertId })
+    res.status(201).json({ uid: r.insertId, id: r.insertId, user_role: role })
   } catch (e) {
     console.error(e)
     if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Username already exists' })
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to create user' })
   }
 })
 
 router.put('/users/:userId', requireAuth, async (req, res) => {
   try {
-    const id = req.params.userId
+    const id = Number(req.params.userId || 0)
+    const selfId = Number(req.user?.uid || 0)
+    // Prefer DB role over JWT claims (blocks forged Admin tokens).
+    const dbUser = await attachDbUserRole(req)
+    if (!dbUser) return res.status(403).json({ message: 'Forbidden' })
+    const admin = isAdminOrBmcRole(dbUser.user_role)
+    if (!admin && id !== selfId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
     const b = req.body || {}
     const fields = []
     const vals = []
@@ -1115,19 +1261,32 @@ router.put('/users/:userId', requireAuth, async (req, res) => {
       phone_number: b.phone_number ?? b.phoneNumber,
       address: b.address,
       state_id: b.state_id,
-      user_role: b.user_role,
+      user_role: b.user_role !== undefined ? coerceDbUserRole(b.user_role) : undefined,
       user_status: b.user_status ?? b.status,
       sign: b.sign,
     }
+    let privilegedAttempt = false
     for (const [k, v] of Object.entries(map)) {
-      if (v !== undefined && USER_WRITABLE.has(k)) {
-        fields.push(`${k} = ?`)
-        vals.push(v)
+      if (v === undefined || !USER_WRITABLE.has(k)) continue
+      if (!admin && !USER_SELF_WRITABLE.has(k)) {
+        privilegedAttempt = true
+        continue
       }
+      fields.push(`${k} = ?`)
+      vals.push(v)
     }
+    // Password reset via this endpoint is admin-only; users use /login_con/change_password.
     if (b.pass || b.password) {
+      if (!admin) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+      const policy = assertPasswordPolicy(b.pass || b.password)
+      if (!policy.ok) return res.status(400).json({ message: policy.message })
       fields.push('pass = ?')
-      vals.push(md5Hex(b.pass || b.password))
+      vals.push(await hashPassword(b.pass || b.password))
+    }
+    if (privilegedAttempt && !admin) {
+      return res.status(403).json({ message: 'Forbidden' })
     }
     if (!fields.length) return res.json({ success: true })
     vals.push(id)
@@ -1135,33 +1294,47 @@ router.put('/users/:userId', requireAuth, async (req, res) => {
     res.json({ success: true })
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to update user' })
   }
 })
 
-router.delete('/users/:userId', requireAuth, async (req, res) => {
+router.delete('/users/:userId', requireUserAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM users WHERE uid = ?', [req.params.userId])
     res.json({ success: true })
   } catch (e) {
     console.error(e)
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to delete user' })
   }
 })
 
 router.post('/users/:userId/signature', requireAuth, upload.single('sign'), async (req, res) => {
   try {
+    const targetId = Number(req.params.userId || 0)
+    const selfId = Number(req.user?.uid || 0)
+    const dbUser = await attachDbUserRole(req)
+    if (!dbUser) return res.status(403).json({ message: 'Forbidden' })
+    if (!isAdminOrBmcRole(dbUser.user_role) && targetId !== selfId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
     if (!req.file) return res.status(400).json({ message: 'No signature file uploaded' })
     await mirrorUploadRelPath(`upload/sign/${req.file.filename}`, uploadRoot)
     await pool.query('UPDATE users SET sign = ? WHERE uid = ?', [req.file.filename, req.params.userId])
     res.json({ success: true, filename: req.file.filename })
   } catch (e) {
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to upload signature' })
   }
 })
 
 router.get('/users/:userId/signature/download', requireAuth, async (req, res) => {
   try {
+    const targetId = Number(req.params.userId || 0)
+    const selfId = Number(req.user?.uid || 0)
+    const dbUser = await attachDbUserRole(req)
+    if (!dbUser) return res.status(403).json({ message: 'Forbidden' })
+    if (!isAdminOrBmcRole(dbUser.user_role) && targetId !== selfId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
     const [rows] = await pool.query('SELECT sign FROM users WHERE uid = ? LIMIT 1', [req.params.userId])
     const file = rows[0]?.sign
     if (!file) return res.status(404).json({ message: 'No signature file' })
@@ -1169,7 +1342,7 @@ router.get('/users/:userId/signature/download', requireAuth, async (req, res) =>
     if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'File not found' })
     res.download(filePath)
   } catch (e) {
-    res.status(500).json({ message: e.message })
+    res.status(500).json({ message: 'Failed to download signature' })
   }
 })
 
@@ -5692,7 +5865,7 @@ router.get('/bridges/:bridgeId/point-cloud-data/images/:imageId', optionalAuth, 
   }
 })
 
-router.put('/bridges/:bridgeId/point-cloud-data', optionalAuth, async (req, res) => {
+router.put('/bridges/:bridgeId/point-cloud-data', requireAuth, async (req, res) => {
   try {
     await ensurePointCloudDataSchema(pool)
     const bridgeId = Number(req.params.bridgeId || 0)
@@ -5784,8 +5957,8 @@ async function handlePointCloudPatch(req, res, pointCloudIdFromPath) {
   }
 }
 
-router.patch('/bridges/:bridgeId/point-cloud-data', optionalAuth, (req, res) => handlePointCloudPatch(req, res))
-router.patch('/bridges/:bridgeId/point-cloud-data/:pointCloudId', optionalAuth, (req, res) => {
+router.patch('/bridges/:bridgeId/point-cloud-data', requireAuth, (req, res) => handlePointCloudPatch(req, res))
+router.patch('/bridges/:bridgeId/point-cloud-data/:pointCloudId', requireAuth, (req, res) => {
   handlePointCloudPatch(req, res, req.params.pointCloudId)
 })
 
@@ -5857,7 +6030,7 @@ router.get('/point-cloud-data/images/:imageId', optionalAuth, async (req, res) =
   }
 })
 
-router.put('/point-cloud-data', optionalAuth, async (req, res) => {
+router.put('/point-cloud-data', requireAuth, async (req, res) => {
   try {
     await ensurePointCloudDataSchema(pool)
     const body = req.body && typeof req.body === 'object' ? req.body : {}
@@ -5915,7 +6088,7 @@ router.put('/point-cloud-data', optionalAuth, async (req, res) => {
   }
 })
 
-router.patch('/point-cloud-data', optionalAuth, async (req, res) => {
+router.patch('/point-cloud-data', requireAuth, async (req, res) => {
   try {
     await ensurePointCloudDataSchema(pool)
     const body = req.body && typeof req.body === 'object' ? req.body : {}

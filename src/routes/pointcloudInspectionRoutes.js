@@ -1,21 +1,12 @@
 /**
  * Object Removal + Distress Highlighter persistence for the embedded Potree viewer.
  *
- *   GET    /api/pointcloud-inspection?projectId=…                 project + distress records
- *   GET    /api/pointcloud-inspection?action=removals&projectId=…  removal journal
- *   GET    /api/pointcloud-inspection?action=csv&projectId=…       distress CSV export
- *   GET    /api/pointcloud-inspection?action=list                  all inspected clouds
- *   POST   /api/pointcloud-inspection?action=project               create/update project meta
- *   POST   /api/pointcloud-inspection?action=removals              save removal journal
- *   POST   /api/pointcloud-inspection                              save a distress record
- *   PUT    /api/pointcloud-inspection                              update a distress record
- *   DELETE /api/pointcloud-inspection?projectId=…&distressId=…     delete a distress record
- *
  * Every route requires a valid BMS JWT (same Bearer token the rest of the API uses).
+ * Full catalog list is Admin/BMC only. Deletes require owner or Admin/BMC.
  */
 import { createRequire } from 'module'
 import express from 'express'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, attachDbUserRole, isUserManager } from '../middleware/auth.js'
 
 const require = createRequire(import.meta.url)
 const store = require('../pointcloudViewer/lib/inspectionStore.js')
@@ -31,14 +22,53 @@ function fail(res, err) {
   res.status(status).json({ error: status >= 500 ? 'Server error' : err.message || 'Request failed' })
 }
 
+async function refreshActor(req) {
+  try {
+    await attachDbUserRole(req)
+  } catch {
+    /* keep JWT claims if DB briefly unavailable */
+  }
+}
+
+function sameActor(a, b) {
+  if (a == null || b == null) return false
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase()
+}
+
+/** Deletes: Admin/BMC, or original createdBy. Legacy null createdBy → managers only. */
+async function assertCanDeleteProject(req, projectId) {
+  await refreshActor(req)
+  if (isUserManager(req.user)) return true
+  const project = await store.getProject(projectId).catch(() => null)
+  const owner = project?.createdBy
+  if (!owner) {
+    const err = new Error('Forbidden')
+    err.status = 403
+    throw err
+  }
+  if (!sameActor(owner, actor(req))) {
+    const err = new Error('Forbidden')
+    err.status = 403
+    throw err
+  }
+  return true
+}
+
 export function createPointcloudInspectionRouter() {
   const router = express.Router()
   router.use(requireAuth)
 
   router.get('/', async (req, res) => {
     try {
+      await refreshActor(req)
       const { projectId, action } = req.query
-      if (action === 'list') return res.json(await store.listProjects())
+      // Full catalog enumeration is admin/BMC only — stops IDOR reconnaissance.
+      if (action === 'list' || (!projectId && !action)) {
+        if (!isUserManager(req.user)) {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
+        return res.json(await store.listProjects())
+      }
       if (action === 'csv') {
         if (!projectId) return res.status(400).json({ error: 'projectId required' })
         const csv = await store.exportCsv(projectId)
@@ -52,7 +82,7 @@ export function createPointcloudInspectionRouter() {
         return res.json({ projectId, removals: await store.getRemovals(projectId) })
       }
       if (projectId) return res.json(await store.getProject(projectId))
-      return res.json(await store.listProjects())
+      return res.status(400).json({ error: 'projectId required' })
     } catch (err) {
       fail(res, err)
     }
@@ -60,6 +90,7 @@ export function createPointcloudInspectionRouter() {
 
   router.post('/', async (req, res) => {
     try {
+      await refreshActor(req)
       const body = req.body || {}
       const action = req.query.action || body.action
       if (action === 'project') return res.json(await store.createOrUpdateProject(body, actor(req)))
@@ -77,6 +108,7 @@ export function createPointcloudInspectionRouter() {
 
   router.put('/', async (req, res) => {
     try {
+      await refreshActor(req)
       const body = req.body || {}
       if (!body.projectId || !(body.distress?.id || body.id)) {
         return res.status(400).json({ error: 'projectId and distress.id required' })
@@ -91,6 +123,7 @@ export function createPointcloudInspectionRouter() {
     try {
       const { projectId, distressId } = req.query
       if (!projectId || !distressId) return res.status(400).json({ error: 'projectId and distressId required' })
+      await assertCanDeleteProject(req, projectId)
       return res.json(await store.deleteDistress(projectId, distressId))
     } catch (err) {
       fail(res, err)

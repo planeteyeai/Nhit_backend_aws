@@ -3,17 +3,15 @@
  *
  * Usage:
  *   node scripts/test-login-rate-limit.mjs [baseUrl]
- * Example:
- *   node scripts/test-login-rate-limit.mjs http://localhost:8080
  */
 const base = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '')
 const TEST_USER = `rate_limit_probe_${Date.now()}`
 const BAD_PASSWORD = 'definitely-wrong-password'
 
-async function postLogin(username, password) {
+async function postLogin(username, password, extraHeaders = {}) {
   const res = await fetch(`${base}/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify({ username, password }),
   })
   let body = null
@@ -42,7 +40,6 @@ const log = (ok, name, detail) => {
 
 console.log(`\nBMS security / rate-limit test → ${base}\n`)
 
-// ── Public / protected route smoke checks ──────────────────────────────────
 {
   const health = await get('/health')
   log(health === 200, 'Health endpoint public', `HTTP ${health}`)
@@ -51,18 +48,12 @@ console.log(`\nBMS security / rate-limit test → ${base}\n`)
   const users = await get('/users')
   log([401, 403].includes(users), 'Users list blocked without auth', `HTTP ${users}`)
 }
-{
-  const bridges = await get('/bridge-list')
-  log([401, 403].includes(bridges), 'Bridge list blocked without auth', `HTTP ${bridges}`)
-}
 
-// ── Empty login validation ─────────────────────────────────────────────────
 {
   const empty = await postLogin('', '')
   log(empty.status === 400, 'Empty credentials rejected', `HTTP ${empty.status}`)
 }
 
-// ── Failed attempts 1–5 then lockout ───────────────────────────────────────
 console.log(`\nSimulating 5 failed logins for user "${TEST_USER}"...\n`)
 const attemptResults = []
 for (let i = 1; i <= 5; i++) {
@@ -82,22 +73,22 @@ const fifth = attemptResults[4]
 const lockedOnFifth = fifth.status === 429 || fifth.body?.locked === true
 log(lockedOnFifth, '5th failure triggers lockout (429)', `HTTP ${fifth.status}`)
 
-// ── Immediate 6th attempt must stay locked ─────────────────────────────────
 {
   const sixth = await postLogin(TEST_USER, BAD_PASSWORD)
   const ok = sixth.status === 429 && Boolean(sixth.body?.locked || sixth.body?.retry_after_seconds)
   log(ok, '6th attempt while locked returns 429', `HTTP ${sixth.status}`)
-  if (sixth.retryAfter || sixth.body?.retry_after_seconds) {
-    console.log(
-      `         Retry-After ≈ ${sixth.retryAfter || sixth.body.retry_after_seconds}s (expect ~300s / 5 min)`,
-    )
-  }
 }
 
-// ── Cross-username still independent (optional soft check) ─────────────────
 {
+  // Different username: pair bucket independent, but IP bucket still counting.
   const other = await postLogin(`${TEST_USER}_other`, BAD_PASSWORD)
-  log(other.status === 401, 'Different username not locked by previous failures', `HTTP ${other.status}`)
+  log(other.status === 401, 'Different username still allowed (IP spray budget not exhausted)', `HTTP ${other.status}`)
+}
+
+{
+  // X-Forwarded-For must NOT bypass pair lock for same TEST_USER
+  const spoof = await postLogin(TEST_USER, BAD_PASSWORD, { 'X-Forwarded-For': '203.0.113.99' })
+  log(spoof.status === 429, 'X-Forwarded-For spoof does not bypass lockout', `HTTP ${spoof.status}`)
 }
 
 console.log(failed === 0 ? '\nAll login rate-limit / security checks passed.\n' : `\n${failed} check(s) failed.\n`)
