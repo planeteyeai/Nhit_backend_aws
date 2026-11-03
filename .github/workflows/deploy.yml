@@ -79,8 +79,7 @@ jobs:
             --arg NAME "$CONTAINER_NAME" \
             --arg SHA "$IMAGE_TAG" \
             '
-            (.containerDefinitions | map(.name == $NAME) | index(true)) as $idx
-            | ($idx // 0) as $i
+            (.containerDefinitions | map(.name == $NAME) | index(true) // 0) as $i
             | .containerDefinitions[$i].image = $IMAGE
             | .containerDefinitions[$i].healthCheck = {
                 command: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"],
@@ -89,9 +88,14 @@ jobs:
                 retries: 3,
                 startPeriod: 90
               }
-            | (.containerDefinitions[$i].environment //= [])
-            | .containerDefinitions[$i].environment |= (
-                map(select(.name != "IMAGE_SHA" and .name != "PORT" and .name != "HOST" and .name != "NODE_ENV"))
+            | .containerDefinitions[$i].environment = (
+                ((.containerDefinitions[$i].environment // [])
+                  | map(select(
+                      .name != "IMAGE_SHA"
+                      and .name != "PORT"
+                      and .name != "HOST"
+                      and .name != "NODE_ENV"
+                    )))
                 + [
                   {name: "IMAGE_SHA", value: $SHA},
                   {name: "PORT", value: "8080"},
@@ -102,18 +106,26 @@ jobs:
             ' task-def.json > task-def-final.json
 
           echo "=== Updated task definition summary ==="
+          jq empty task-def-final.json
+          test "$(jq -r '.family // empty' task-def-final.json)" = "nhit-task"
           echo "Execution Role: $(jq -r '.executionRoleArn' task-def-final.json)"
           echo "Task Role: $(jq -r '.taskRoleArn' task-def-final.json)"
-          echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-final.json)"
+          echo "Secrets count: $(jq --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .secrets // [] | length' task-def-final.json)"
           echo "Container image (after): $(jq -r --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .image' task-def-final.json)"
           echo "Health check: $(jq -c --arg N "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$N) | .healthCheck' task-def-final.json)"
           echo "Env PORT/HOST/NODE_ENV/IMAGE_SHA: $(jq -c --arg N "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$N) | .environment[] | select(.name=="PORT" or .name=="HOST" or .name=="NODE_ENV" or .name=="IMAGE_SHA")]' task-def-final.json)"
 
       - name: Register new task definition
         run: |
-          aws ecs register-task-definition \
+          if ! aws ecs register-task-definition \
             --cli-input-json file://task-def-final.json \
-            --region ${{ env.AWS_REGION }} > new-task-def.json
+            --region ${{ env.AWS_REGION }} > new-task-def.json 2>register-err.txt; then
+            echo "::error::register-task-definition failed"
+            cat register-err.txt
+            echo "=== task-def-final.json keys ==="
+            jq 'keys' task-def-final.json
+            exit 1
+          fi
 
           NEW_TASK_DEF_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' new-task-def.json)
           echo "New task definition: $NEW_TASK_DEF_ARN"
