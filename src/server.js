@@ -155,6 +155,10 @@ app.use(
   })
 )
 
+// Disable Express ETags on JSON/API responses. Conditional GETs were returning 304 with an
+// empty body, which breaks browser fetch + JSON parsing on the BMS dashboard.
+app.set('etag', false)
+
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -168,7 +172,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'Cache-Control', 'Pragma'],
     exposedHeaders: ['Content-Disposition', 'Content-Range', 'Accept-Ranges', 'Content-Length'],
     optionsSuccessStatus: 204,
   })
@@ -176,6 +180,13 @@ app.use(
 // Preflight uses the same origin allowlist as above — never a bare cors() that reflects *.
 app.use(express.json({ limit: '64mb' }))
 app.use(express.urlencoded({ extended: true, limit: '64mb' }))
+
+/** Default: do not HTTP-cache authenticated API JSON (static /upload may override). */
+app.use((req, res, next) => {
+  if (req.path.startsWith('/upload') || req.path.startsWith('/potree-models')) return next()
+  res.setHeader('Cache-Control', 'no-store')
+  next()
+})
 /** Block direct static access to signatures and PDFs without login. */
 function uploadSensitiveGuard(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next()
