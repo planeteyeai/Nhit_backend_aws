@@ -68,18 +68,45 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Manually update ONLY the image using jq (same as last known-good deploy).
           NEW_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-          jq --arg IMAGE "$NEW_IMAGE" \
-            '.containerDefinitions[0].image = $IMAGE' \
-            task-def.json > task-def-final.json
+          # Live /health showed jwtPresent:false — JWT_SECRET was never mapped into the
+          # container. If missing, derive ValueFrom from MYSQL_HOST (same Secrets Manager secret).
+          HAS_JWT=$(jq '[.containerDefinitions[0].secrets // [] | .[] | select(.name=="JWT_SECRET")] | length' task-def.json)
+          MYSQL_FROM=$(jq -r '[.containerDefinitions[0].secrets // [] | .[] | select(.name=="MYSQL_HOST") | .valueFrom][0] // empty' task-def.json)
+
+          if [ "$HAS_JWT" = "0" ]; then
+            if [ -z "$MYSQL_FROM" ]; then
+              echo "::error::JWT_SECRET missing from task definition secrets, and MYSQL_HOST ValueFrom not found to derive it."
+              jq -c '.containerDefinitions[0].secrets // []' task-def.json
+              exit 1
+            fi
+            JWT_FROM=$(echo "$MYSQL_FROM" | sed 's/:MYSQL_HOST::/:JWT_SECRET::/')
+            if [ "$JWT_FROM" = "$MYSQL_FROM" ]; then
+              echo "::error::Could not derive JWT_SECRET ValueFrom from MYSQL_HOST=$MYSQL_FROM"
+              exit 1
+            fi
+            echo "Injecting missing JWT_SECRET secret → $JWT_FROM"
+            jq --arg IMAGE "$NEW_IMAGE" --arg JWT_FROM "$JWT_FROM" \
+              '.containerDefinitions[0].image = $IMAGE
+               | .containerDefinitions[0].secrets = ((.containerDefinitions[0].secrets // []) + [{name:"JWT_SECRET", valueFrom:$JWT_FROM}])' \
+              task-def.json > task-def-final.json
+          else
+            echo "JWT_SECRET already present in task definition secrets."
+            jq --arg IMAGE "$NEW_IMAGE" \
+              '.containerDefinitions[0].image = $IMAGE' \
+              task-def.json > task-def-final.json
+          fi
 
           echo "=== Updated task definition summary ==="
           echo "Execution Role: $(jq -r '.executionRoleArn' task-def-final.json)"
           echo "Task Role: $(jq -r '.taskRoleArn' task-def-final.json)"
           echo "Secrets count: $(jq '.containerDefinitions[0].secrets // [] | length' task-def-final.json)"
+          echo "Secret names: $(jq -c '[.containerDefinitions[0].secrets // [] | .[].name]' task-def-final.json)"
           echo "Container image (after): $(jq -r '.containerDefinitions[0].image' task-def-final.json)"
+
+          # Fail deploy early if JWT still missing after inject attempt.
+          test "$(jq '[.containerDefinitions[0].secrets // [] | .[] | select(.name=="JWT_SECRET")] | length' task-def-final.json)" -gt 0
 
       - name: Register new task definition
         run: |
