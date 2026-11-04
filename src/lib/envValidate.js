@@ -5,11 +5,32 @@ const WEAK_JWT_SECRETS = new Set([
 ])
 
 function isWeakJwtSecret(value) {
+  return jwtWeakReason(value) !== null
+}
+
+/** Why JWT is unusable — never returns the secret itself. */
+export function jwtWeakReason(value) {
   const s = String(value || '').trim()
-  if (!s || s.length < 16) return true
-  if (WEAK_JWT_SECRETS.has(s)) return true
-  if (/change.?me|your.?jwt|placeholder|secret.?from.?production/i.test(s)) return true
-  return false
+  if (!s) return 'missing'
+  if (s.length < 16) return 'too_short'
+  if (WEAK_JWT_SECRETS.has(s)) return 'known_dev_default'
+  if (/change.?me|your.?jwt|placeholder|secret.?from.?production/i.test(s)) {
+    return 'placeholder_pattern'
+  }
+  return null
+}
+
+/** Safe status for /health (no secret leakage). */
+export function getJwtHealthStatus() {
+  const raw = process.env.JWT_SECRET
+  const present = raw !== undefined && String(raw).trim() !== ''
+  const reason = jwtWeakReason(raw)
+  return {
+    jwtOk: !authConfigBlocked && reason === null && present,
+    jwtPresent: present,
+    jwtLen: present ? String(raw).trim().length : 0,
+    jwtReason: authConfigBlocked ? reason || 'blocked' : reason || 'ok',
+  }
 }
 
 export function isProduction() {
@@ -70,11 +91,12 @@ export function assertProductionConfig() {
   }
 
   const jwt = String(process.env.JWT_SECRET || '').trim()
-  if (isWeakJwtSecret(jwt)) {
+  const reason = jwtWeakReason(jwt)
+  if (reason) {
     authConfigBlocked = true
     console.error(
-      '[FATAL] JWT_SECRET is missing or weak — login/API auth disabled (503). ' +
-        'Set a strong JWT_SECRET (≥16 chars, not a placeholder) in the ECS task env/secrets, then redeploy.'
+      `[FATAL] JWT_SECRET ${reason} — login/API auth disabled (503). ` +
+        'Set a strong JWT_SECRET (≥16 chars, not a placeholder) in ECS task Secrets, then Force new deployment.'
     )
   }
 

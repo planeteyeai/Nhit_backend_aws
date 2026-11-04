@@ -13,7 +13,7 @@ import { diagGuard } from './middleware/diagGuard.js'
 import { requireAuth } from './middleware/auth.js'
 import {
   assertProductionConfig,
-  isAuthConfigBlocked,
+  getJwtHealthStatus,
   isProduction,
   resolvePublicApiBase,
 } from './lib/envValidate.js'
@@ -50,7 +50,7 @@ export async function attachBmsApp(app) {
         mysqlConfigured: Boolean(
           process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE
         ),
-        jwtOk: !isAuthConfigBlocked(),
+        ...getJwtHealthStatus(),
         pointcloud,
       }
     }
