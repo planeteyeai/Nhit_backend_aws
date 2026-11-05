@@ -5510,14 +5510,17 @@ router.post('/inspection/save_non_structural', requireAuth, async (req, res) => 
       })
     }
     const numeric = (v) => {
+      if (v === '' || v == null) return 0
       const n = Number(v)
       return Number.isFinite(n) ? n : 0
     }
+    // Prefer distress_nos; do not treat missing nos_value alias as "empty".
     const nos = (() => {
-      if (b.distress_nos === '' || b.nos_value === '' || b.distress_nos == null || b.nos_value == null) return null
-      const n = Number(b.distress_nos ?? b.nos_value)
+      const raw = b.distress_nos !== undefined ? b.distress_nos : b.nos_value
+      if (raw === '' || raw == null) return null
+      const n = Number(raw)
       if (!Number.isFinite(n) || n < 0) return null
-      return Math.floor(n)
+      return Math.min(4294967295, Math.floor(n))
     })()
     const [[mx]] = await pool.query(
       'SELECT COALESCE(MAX(id), 0) AS mx FROM bridge_inspection_distress'
@@ -5608,14 +5611,17 @@ router.put('/inspection/non_structural/:id', requireAuth, async (req, res) => {
       })
     }
     const numeric = (v) => {
+      if (v === '' || v == null) return 0
       const n = Number(v)
       return Number.isFinite(n) ? n : 0
     }
+    // Prefer distress_nos; do not treat missing nos_value alias as "empty".
     const nos = (() => {
-      if (b.distress_nos === '' || b.nos_value === '' || b.distress_nos == null || b.nos_value == null) return null
-      const n = Number(b.distress_nos ?? b.nos_value)
+      const raw = b.distress_nos !== undefined ? b.distress_nos : b.nos_value
+      if (raw === '' || raw == null) return null
+      const n = Number(raw)
       if (!Number.isFinite(n) || n < 0) return null
-      return Math.floor(n)
+      return Math.min(4294967295, Math.floor(n))
     })()
     const imagesPayload = Array.isArray(b.images)
       ? b.images.filter(Boolean).map((x) => String(x).trim()).join(',')
