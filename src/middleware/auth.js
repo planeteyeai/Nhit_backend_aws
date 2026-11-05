@@ -17,8 +17,16 @@ export function getJwtSecret() {
   return s
 }
 
+/** Access-token lifetime. Override with JWT_EXPIRES_IN (e.g. 8h, 12h). Default 8h. */
+export function getJwtExpiresIn() {
+  const raw = String(process.env.JWT_EXPIRES_IN || '8h').trim()
+  return raw || '8h'
+}
+
 export function signToken(payload) {
-  return jwt.sign(payload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '7d' })
+  // Drop prior exp/iat so refresh issues a clean sliding window.
+  const { exp: _exp, iat: _iat, ...claims } = payload || {}
+  return jwt.sign(claims, getJwtSecret(), { algorithm: 'HS256', expiresIn: getJwtExpiresIn() })
 }
 
 function extractBearer(req) {

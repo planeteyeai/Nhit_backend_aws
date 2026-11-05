@@ -1072,6 +1072,43 @@ router.post('/logout', (_req, res) => {
   res.json({ success: true })
 })
 
+/** Sliding session: active clients exchange a still-valid JWT for a fresh one. */
+const refreshTokenLimit = createFixedWindowRateLimit({
+  name: 'token-refresh',
+  max: 60,
+  windowMs: 60 * 1000,
+  keyFn: (req) => `${clientIp(req)}:${req.user?.uid || 0}`,
+  message: 'Too many session refresh requests. Please wait a minute.',
+})
+
+router.post('/auth/refresh', requireAuth, refreshTokenLimit, async (req, res) => {
+  try {
+    const row = await attachDbUserRole(req)
+    if (!row) {
+      return res.status(401).json({ message: 'User inactive or not found' })
+    }
+    const role = normalizeAppRole(row.user_role)
+    const rawRole = String(row.user_role || '').trim()
+    const token = signToken({
+      uid: row.uid,
+      username: row.username,
+      role,
+      user_role: rawRole || role,
+    })
+    return res.json({
+      token,
+      userid: row.uid,
+      uid: row.uid,
+      username: row.username,
+      userrole: role,
+      user_role: role,
+    })
+  } catch (e) {
+    console.error('[auth] refresh:', e.message)
+    return res.status(500).json({ message: 'Session refresh failed' })
+  }
+})
+
 router.post(
   '/login_con/change_password',
   requireAuth,
