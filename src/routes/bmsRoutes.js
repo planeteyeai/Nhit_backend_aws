@@ -4907,13 +4907,35 @@ router.get('/inspection/:inspectionId/ratings', async (req, res) => {
 router.get('/inspection/:inspectionId/rating/:componentType', async (req, res) => {
   try {
     const { inspectionId, componentType } = req.params
-    const componentId = req.query.component_id || null
+    const componentId = Number(req.query.component_id || 0)
+    const normalizedType = String(componentType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
     const params = [inspectionId, componentType]
     let sql =
       'SELECT * FROM inspection_component_rating WHERE bridge_inspection_id = ? AND component_type = ? AND status = "Active"'
-    if (componentId) {
-      sql += ' AND (foundation_id = ? OR superstructure_id = ? OR expansion_joint_id = ?)'
-      params.push(componentId, componentId, componentId)
+    if (componentId > 0) {
+      if (normalizedType === 'foundation') {
+        sql += ' AND foundation_id = ?'
+        params.push(componentId)
+      } else if (normalizedType === 'superstructure') {
+        sql += ' AND superstructure_id = ?'
+        params.push(componentId)
+      } else if (normalizedType === 'expansion' || normalizedType === 'expansion_joint') {
+        sql += ' AND expansion_joint_id = ?'
+        params.push(componentId)
+      } else if (normalizedType === 'wearing_coat') {
+        // Wearing-coat row id is stored in form_no (no dedicated wearing_coat_id column).
+        // Prefer exact form_no match; fall back to legacy form_no=0 rows.
+        sql += ' AND (form_no = ? OR form_no = 0)'
+        params.push(componentId)
+        sql += ' ORDER BY CASE WHEN form_no = ? THEN 0 ELSE 1 END, id DESC LIMIT 1'
+        params.push(componentId)
+        const [rows] = await pool.query(sql, params)
+        return res.json(rows[0] || null)
+      }
+      // approaches / subways / others: component_id is not used for lookup
     }
     sql += ' ORDER BY id DESC LIMIT 1'
     const [rows] = await pool.query(sql, params)
@@ -5317,10 +5339,15 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
     if (!ratingId || !componentType) {
       return res.status(400).json({ message: 'rating_id and component_type are required' })
     }
-    const normalizedType = componentType.toLowerCase()
+    const normalizedType = componentType.toLowerCase().replace(/\s+/g, '_')
     const foundationId = Number(body.foundation_id || 0)
     const superstructureId = Number(body.superstructure_id || 0)
-    const expansionJointId = Number(body.expansion_joint_id || body.component_id || 0)
+    const expansionJointId = Number(body.expansion_joint_id || 0)
+    const wearingCoatId = Number(body.wearing_coat_id || body.component_id || 0)
+    const formNo =
+      normalizedType === 'wearing_coat'
+        ? Number(body.form_no || wearingCoatId || 0)
+        : Number(body.form_no || 0)
     let scopedWhere = ''
     const scopedParams = []
     if (normalizedType === 'foundation' && foundationId > 0) {
@@ -5332,20 +5359,32 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
     } else if ((normalizedType === 'expansion' || normalizedType === 'expansion_joint') && expansionJointId > 0) {
       scopedWhere = ' AND expansion_joint_id = ?'
       scopedParams.push(expansionJointId)
+    } else if (normalizedType === 'wearing_coat' && formNo > 0) {
+      scopedWhere = ' AND (form_no = ? OR form_no = 0)'
+      scopedParams.push(formNo)
     }
+    const preferFormNo = normalizedType === 'wearing_coat' && formNo > 0
     const [existing] = await pool.query(
-      `SELECT id FROM inspection_component_rating
+      `SELECT id, form_no FROM inspection_component_rating
        WHERE bridge_inspection_id = ? AND component_type = ? AND status = 'Active'
        ${scopedWhere}
-       ORDER BY id DESC LIMIT 1`,
-      [inspectionId, componentType, ...scopedParams]
+       ${preferFormNo ? 'ORDER BY CASE WHEN form_no = ? THEN 0 ELSE 1 END, id DESC' : 'ORDER BY id DESC'}
+       LIMIT 1`,
+      preferFormNo
+        ? [inspectionId, componentType, ...scopedParams, formNo]
+        : [inspectionId, componentType, ...scopedParams]
     )
     if (existing[0]) {
       await pool.query(
         `UPDATE inspection_component_rating
-         SET rating_id = ?, updated_by = ?, updated_on = NOW()
+         SET rating_id = ?, form_no = ?, updated_by = ?, updated_on = NOW()
          WHERE id = ?`,
-        [ratingId, req.user?.uid || 0, existing[0].id]
+        [
+          ratingId,
+          normalizedType === 'wearing_coat' && formNo > 0 ? formNo : Number(existing[0].form_no || formNo || 0),
+          req.user?.uid || 0,
+          existing[0].id,
+        ]
       )
       return res.json({ success: true, id: existing[0].id, updated: true })
     }
@@ -5361,10 +5400,10 @@ router.post('/inspection/:inspectionId/rating', optionalAuth, async (req, res) =
         body.bearing_and_pedestal_name || '',
         body.bearing_type || '',
         body.component_name || componentType,
-        Number(body.foundation_id || req.query?.component_id || 0),
-        Number(body.superstructure_id || req.query?.component_id || 0),
-        Number(body.expansion_joint_id || body.component_id || req.query?.component_id || 0),
-        Number(body.form_no || 0),
+        foundationId,
+        superstructureId,
+        expansionJointId,
+        formNo,
         'Active',
         req.user?.uid || 0,
         req.user?.uid || 0,
