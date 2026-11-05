@@ -67,20 +67,25 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-          # Prefer repo secret JWT_SECRET if set; otherwise generate a strong value for this revision.
           JWT_SECRET_INPUT: ${{ secrets.JWT_SECRET }}
         run: |
           set -euo pipefail
           NEW_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-          # Deploy IAM cannot write Secrets Manager (AccessDenied). Put JWT_SECRET on the
-          # container as a plain environment variable so login works. Move to Secrets Manager later.
-          if [ -n "${JWT_SECRET_INPUT:-}" ]; then
+          # Prefer order (do NOT rotate on every deploy — that logs everyone out):
+          # 1) existing task-def env JWT_SECRET
+          # 2) GitHub Actions secret JWT_SECRET
+          # 3) generate once for first-time bootstrap
+          EXISTING_JWT=$(jq -r '[.containerDefinitions[0].environment // [] | .[] | select(.name=="JWT_SECRET") | .value][0] // empty' task-def.json)
+          if [ -n "$EXISTING_JWT" ]; then
+            NEW_JWT="$EXISTING_JWT"
+            echo "Keeping existing task-definition JWT_SECRET."
+          elif [ -n "${JWT_SECRET_INPUT:-}" ]; then
             NEW_JWT="$JWT_SECRET_INPUT"
             echo "Using JWT_SECRET from GitHub Actions repository secret."
           else
             NEW_JWT=$(openssl rand -base64 32)
-            echo "Generated JWT_SECRET for this task definition revision (not printed)."
+            echo "Generated JWT_SECRET for first-time bootstrap (not printed)."
           fi
 
           if [ "${#NEW_JWT}" -lt 16 ] || echo "$NEW_JWT" | grep -Eiq 'change.?me|your.?jwt|placeholder|secret.?from.?production'; then
@@ -88,7 +93,7 @@ jobs:
             exit 1
           fi
 
-          # ECS forbids the same key in both secrets + environment — drop JWT from secrets if present.
+          # ECS forbids the same key in both secrets + environment — keep env mapping.
           jq --arg IMAGE "$NEW_IMAGE" --arg JWT "$NEW_JWT" '
             .containerDefinitions[0].image = $IMAGE
             | .containerDefinitions[0].secrets = (
@@ -123,17 +128,16 @@ jobs:
 
       - name: Update ECS service
         run: |
-          # Circuit breaker off for this rollout so JWT mapping can land; grace covers cold start.
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
             --task-definition ${{ steps.register-task-def.outputs.task-definition-arn }} \
             --health-check-grace-period-seconds 300 \
-            --deployment-configuration "deploymentCircuitBreaker={enable=false,rollback=false},maximumPercent=200,minimumHealthyPercent=50" \
+            --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=200,minimumHealthyPercent=50" \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }} > /dev/null
 
-          echo "Service update initiated (grace=300s, circuit-breaker off)."
+          echo "Service update initiated (grace=300s, circuit-breaker on)."
           echo "Events: https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/events"
           echo "Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Fnhit-backend"
 

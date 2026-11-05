@@ -7,7 +7,7 @@ const classifyRunner = require("./classifyRunner");
 const PACKAGE_ROOT = path.join(__dirname, "..", "..", "..");
 const ROOT = PACKAGE_ROOT;
 const TMP_ROOT = path.join(ROOT, "tmp", "convert");
-const DEFAULT_CONVERTER = path.join(PACKAGE_ROOT, "tools", "PotreeConverter", "PotreeConverter.exe");
+const CONVERTER_DIR = path.join(PACKAGE_ROOT, "tools", "PotreeConverter");
 
 /** @type {Map<string, object>} */
 const jobs = new Map();
@@ -17,19 +17,38 @@ function stripQuotes(value) {
 	return String(value).trim().replace(/^["']|["']$/g, "");
 }
 
+function defaultConverterCandidates() {
+	const win = path.join(CONVERTER_DIR, "PotreeConverter.exe");
+	const nix = path.join(CONVERTER_DIR, "PotreeConverter");
+	if (process.platform === "win32") return [win, nix];
+	// Linux/mac containers must not report .exe as "ok" just because the file exists.
+	return [nix, win];
+}
+
 function getConverterPath() {
 	const configured = stripQuotes(process.env.POTREE_CONVERTER_PATH);
-	const p = configured
-		? (path.isAbsolute(configured) ? configured : path.join(ROOT, configured))
-		: DEFAULT_CONVERTER;
-	return p;
+	if (configured) {
+		return path.isAbsolute(configured) ? configured : path.join(ROOT, configured);
+	}
+	for (const candidate of defaultConverterCandidates()) {
+		if (fs.existsSync(candidate)) {
+			if (process.platform !== "win32" && candidate.endsWith(".exe")) continue;
+			return candidate;
+		}
+	}
+	return defaultConverterCandidates()[0];
 }
 
 function converterStatus() {
 	const converterPath = getConverterPath();
+	const exists = fs.existsSync(converterPath);
+	const runnable =
+		exists &&
+		(process.platform === "win32" || !converterPath.toLowerCase().endsWith(".exe"));
 	return {
-		ok: fs.existsSync(converterPath),
-		path: converterPath
+		ok: runnable,
+		path: converterPath,
+		platform: process.platform,
 	};
 }
 
