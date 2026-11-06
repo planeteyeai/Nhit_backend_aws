@@ -11,15 +11,17 @@
  */
 import { clientIp } from './rateLimit.js'
 
+// Same IP + username: 5 wrong passwords → 15 min lock
 const PAIR_MAX = 5
-const PAIR_LOCK_MS = 5 * 60 * 1000
-const PAIR_WINDOW_MS = 5 * 60 * 1000
+const PAIR_LOCK_MS = 15 * 60 * 1000
+const PAIR_WINDOW_MS = 15 * 60 * 1000
 
 const IP_MAX = 25
 const IP_LOCK_MS = 15 * 60 * 1000
 const IP_WINDOW_MS = 15 * 60 * 1000
 
-const USER_MAX = 15
+// Same username (any IP): 5 wrong passwords → 15 min lock
+const USER_MAX = 5
 const USER_LOCK_MS = 15 * 60 * 1000
 const USER_WINDOW_MS = 15 * 60 * 1000
 
@@ -155,7 +157,7 @@ export function clearPasswordChangeFailures(uid) {
 
 export function loginLockMessage(retryAfterSec) {
   const mins = Math.max(1, Math.ceil(Number(retryAfterSec || 0) / 60))
-  return `Too many failed login attempts. Please wait ${mins} minute${mins === 1 ? '' : 's'} before trying again.`
+  return `Too many failed login attempts for this username. Please wait ${mins} minute${mins === 1 ? '' : 's'} before trying again.`
 }
 
 export function passwordChangeLockMessage(retryAfterSec) {

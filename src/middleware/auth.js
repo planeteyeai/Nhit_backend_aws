@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import { pool } from '../config/db.js'
 import { isAdminOrBmcRole, normalizeAppRole } from '../lib/roles.js'
 import { isAuthConfigBlocked, isJwtSecretConfigured } from '../lib/envValidate.js'
+import { assertJwtSessionMatchesDb } from '../lib/userSession.js'
 
 const JWT_VERIFY_OPTS = { algorithms: ['HS256'] }
 
@@ -17,10 +18,10 @@ export function getJwtSecret() {
   return s
 }
 
-/** Access-token lifetime. Override with JWT_EXPIRES_IN (e.g. 8h, 12h). Default 8h. */
+/** Access-token lifetime. Override with JWT_EXPIRES_IN (e.g. 30m, 1h). Default 30m. */
 export function getJwtExpiresIn() {
-  const raw = String(process.env.JWT_EXPIRES_IN || '8h').trim()
-  return raw || '8h'
+  const raw = String(process.env.JWT_EXPIRES_IN || '30m').trim()
+  return raw || '30m'
 }
 
 export function signToken(payload) {
@@ -63,15 +64,32 @@ export function requireAuth(req, res, next) {
   if (!token) {
     return res.status(401).json({ message: 'Unauthorized' })
   }
+  let decoded
   try {
-    req.user = verifyAccessToken(token)
-    next()
+    decoded = verifyAccessToken(token)
   } catch (e) {
     if (String(e?.message || '').includes('JWT_SECRET')) {
       return res.status(503).json({ message: 'Authentication is misconfigured' })
     }
     return res.status(401).json({ message: 'Invalid or expired token' })
   }
+  req.user = decoded
+  // Single-session: JWT must match the active DB session_id.
+  Promise.resolve()
+    .then(async () => {
+      const ok = await assertJwtSessionMatchesDb(decoded)
+      if (!ok) {
+        return res.status(401).json({
+          message: 'Session ended. Please login again.',
+          code: 'SESSION_INVALID',
+        })
+      }
+      return next()
+    })
+    .catch((e) => {
+      console.error('[auth] session check failed:', e.message)
+      return res.status(500).json({ message: 'Authorization failed' })
+    })
 }
 
 /**

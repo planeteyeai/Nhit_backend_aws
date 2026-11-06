@@ -21,6 +21,14 @@ import {
   requireUserAdmin,
   attachDbUserRole,
 } from '../middleware/auth.js'
+import {
+  clearUserSession,
+  getUserSessionRow,
+  isSessionActive,
+  newSessionId,
+  startUserSession,
+  touchUserSession,
+} from '../lib/userSession.js'
 import { productionRouteGuard } from '../middleware/routeGuard.js'
 import {
   getLoginLockStatus,
@@ -1007,13 +1015,40 @@ async function handleLogin(req, res) {
         locked: true,
       })
     }
+    const remaining = Number(afterFail.remaining || 0)
     return res.status(401).json({
-      message: 'Username or Password is incorrect!',
-      attempts_remaining: afterFail.remaining,
+      message:
+        remaining > 0
+          ? `Incorrect username or password. ${remaining} attempt${remaining === 1 ? '' : 's'} left for this username before a 15-minute lock.`
+          : 'Incorrect username or password.',
+      attempts_remaining: remaining,
     })
   }
 
   clearLoginFailures(req, username)
+
+  const forceRaw = req.body?.force ?? req.body?.force_login ?? req.query?.force
+  const forceLogin =
+    forceRaw === true ||
+    forceRaw === 1 ||
+    String(forceRaw || '')
+      .trim()
+      .toLowerCase() === '1' ||
+    String(forceRaw || '')
+      .trim()
+      .toLowerCase() === 'true'
+
+  // Single active session: block a second login unless force=true (ends the other session).
+  const existingSession = await getUserSessionRow(user.uid)
+  if (isSessionActive(existingSession) && !forceLogin) {
+    return res.status(409).json({
+      message:
+        'This user is already logged in on another tab or device. Logout there first, or use Force login.',
+      code: 'SESSION_ACTIVE',
+      can_force: true,
+    })
+  }
+
   // Upgrade legacy MD5 hashes to bcrypt after a successful login.
   if (await needsPasswordUpgrade(user.pass)) {
     try {
@@ -1023,6 +1058,8 @@ async function handleLogin(req, res) {
       console.error('[auth] password upgrade failed:', e.message)
     }
   }
+  const sessionId = newSessionId()
+  await startUserSession(user.uid, { sessionId })
   const rawRole = String(user.user_role || '').trim()
   const role = normalizeAppRole(rawRole)
   const token = signToken({
@@ -1030,6 +1067,7 @@ async function handleLogin(req, res) {
     username: user.username,
     role,
     user_role: rawRole || role,
+    sid: sessionId,
   })
   return res.json({
     token,
@@ -1068,8 +1106,17 @@ router.post('/login_con/check_login', loginRequestLimit, uploadNone, optionalAut
   }
 })
 
-router.post('/logout', (_req, res) => {
-  res.json({ success: true })
+router.post('/logout', optionalAuth, async (req, res) => {
+  try {
+    const uid = Number(req.user?.uid || 0)
+    const sid = String(req.user?.sid || '').trim()
+    if (uid) {
+      await clearUserSession(uid, sid || null)
+    }
+  } catch (e) {
+    console.error('[auth] logout session clear:', e.message)
+  }
+  return res.json({ success: true })
 })
 
 /** Sliding session: active clients exchange a still-valid JWT for a fresh one. */
@@ -1087,6 +1134,10 @@ router.post('/auth/refresh', requireAuth, refreshTokenLimit, async (req, res) =>
     if (!row) {
       return res.status(401).json({ message: 'User inactive or not found' })
     }
+    const sid = String(req.user?.sid || '').trim()
+    if (sid) {
+      await touchUserSession(row.uid, sid)
+    }
     const role = normalizeAppRole(row.user_role)
     const rawRole = String(row.user_role || '').trim()
     const token = signToken({
@@ -1094,6 +1145,7 @@ router.post('/auth/refresh', requireAuth, refreshTokenLimit, async (req, res) =>
       username: row.username,
       role,
       user_role: rawRole || role,
+      sid,
     })
     return res.json({
       token,
@@ -2083,6 +2135,13 @@ router.get('/bridge/options/:key', async (req, res) => {
       structural_form: { table: 'structural_form', code: 'structural_form_code', label: 'structural_form_description' },
       loading_icr: { table: 'loading_icr', code: 'loading_code', label: 'allowed_loading' },
       hydraluic_tone_weightage: { table: 'hydraluic_tone_weightage', code: 'hydraluic_tone_code', label: 'hydraluic_tone_rating' },
+      traffic_lane_on_bridge: {
+        table: 'traffic_lane_on_bridge',
+        code: 'traffic_lane_code',
+        label: 'traffic_lane_desc',
+        idColumn: 'traffic_lane_id',
+        orderBy: 'traffic_lane_code',
+      },
       structural_crossing_feature: {
         table: 'structural_crossing_feature',
         code: 'structural_crossing_feature_code',
