@@ -2,7 +2,7 @@
  * Object Removal + Distress Highlighter persistence for the embedded Potree viewer.
  *
  * Every route requires a valid BMS JWT (same Bearer token the rest of the API uses).
- * Full catalog list is Admin/BMC only. Deletes require owner or Admin/BMC.
+ * Full catalog list is Site Engineer/BMC/Super Admin. Deletes require owner or those roles.
  */
 import { createRequire } from 'module'
 import express from 'express'

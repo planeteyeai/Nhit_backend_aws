@@ -1301,7 +1301,7 @@ router.post('/users', requireUserAdmin, async (req, res) => {
     const policy = assertPasswordPolicy(plain)
     if (!policy.ok) return res.status(400).json({ message: policy.message })
     const hashed = await hashPassword(plain)
-    // Whitelist ENUM roles; never silently create Admin via typo / "Site Engineer".
+    // Whitelist ENUM roles; "Admin" / "Site Engineer" both store as Site Engineer.
     const role = coerceDbUserRole(b.user_role, DEFAULT_DB_USER_ROLE)
     const status = String(b.user_status || b.status || 'Active').trim() === 'Inactive' ? 'Inactive' : 'Active'
     const [r] = await pool.query(
@@ -1332,7 +1332,7 @@ router.put('/users/:userId', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.userId || 0)
     const selfId = Number(req.user?.uid || 0)
-    // Prefer DB role over JWT claims (blocks forged Admin tokens).
+    // Prefer DB role over JWT claims.
     const dbUser = await attachDbUserRole(req)
     if (!dbUser) return res.status(403).json({ message: 'Forbidden' })
     const admin = isAdminOrBmcRole(dbUser.user_role)

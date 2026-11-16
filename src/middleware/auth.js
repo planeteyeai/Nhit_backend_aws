@@ -123,7 +123,7 @@ export async function attachDbUserRole(req) {
   return row
 }
 
-/** Admin / BMC may manage users — role checked from DB, not JWT claims. */
+/** Site Engineer / BMC / Super Admin may manage users — role checked from DB, not JWT claims. */
 export function requireUserAdmin(req, res, next) {
   return requireAuth(req, res, () => {
     Promise.resolve()
@@ -146,5 +146,15 @@ export function isUserManager(user) {
   const raw = String(user.user_role || user.role || user.userrole || '')
     .trim()
     .toLowerCase()
-  return raw.includes('admin') || raw.includes('bmc')
+  return (
+    raw.includes('bmc') ||
+    raw === 'superadmin' ||
+    raw === 'super admin' ||
+    (raw.includes('super') && raw.includes('admin')) ||
+    raw === 'admin' ||
+    raw === 'siteengg' ||
+    raw === 'siteengineer' ||
+    raw === 'site engineer' ||
+    raw === 'site_engineer'
+  )
 }

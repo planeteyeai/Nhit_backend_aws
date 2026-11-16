@@ -1627,7 +1627,7 @@ CREATE TABLE `users` (
   `phone_number` varchar(12) NOT NULL,
   `address` tinytext NOT NULL,
   `state_id` int NOT NULL,
-  `user_role` enum('Admin','BMC','Sales','Purchase','QC','Logistics','Accounts','Stores','Super Admin') NOT NULL,
+  `user_role` enum('Site Engineer','BMC','Sales','Purchase','QC','Logistics','Accounts','Stores','Super Admin') NOT NULL,
   `user_status` enum('Active','In-Active') NOT NULL DEFAULT 'Active',
   `sign` varchar(200) NOT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1;
