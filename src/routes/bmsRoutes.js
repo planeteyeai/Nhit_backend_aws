@@ -130,6 +130,11 @@ import {
   streamSarPdf,
 } from '../lib/sarReports.js'
 import {
+  getSarRowdataDownloadUrl,
+  listSarRowdataCatalog,
+  streamSarRowdataFile,
+} from '../lib/sarRowdata.js'
+import {
   findLidarReportByChainage,
   listLidarReportFiles,
   streamLidarPdf,
@@ -6332,6 +6337,56 @@ router.get('/sar-reports/file', optionalAuth, async (req, res) => {
   } catch (e) {
     console.error('sar-reports file error:', e)
     if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to serve SAR PDF' })
+  }
+})
+
+function canAccessSarRowdata(req) {
+  const role = normalizeAppRole(req.user?.role || req.user?.user_role || req.user?.userrole)
+  return role === 'bmcuser' || role === 'superadmin'
+}
+
+/** Zip archives from s3://nhitbucket/upload/download/SAR Rowdata/{project}/ */
+router.get('/sar-rowdata', requireAuth, async (req, res) => {
+  try {
+    if (!canAccessSarRowdata(req)) return res.status(403).json({ message: 'Forbidden' })
+    const catalog = await listSarRowdataCatalog()
+    res.json({
+      status: 'success',
+      data: catalog.files,
+      projects: catalog.projects,
+      prefix: catalog.prefix,
+      count: catalog.files.length,
+    })
+  } catch (e) {
+    console.error('sar-rowdata list error:', e)
+    res.status(500).json({ message: e.message || 'Failed to list SAR raw data' })
+  }
+})
+
+router.get('/sar-rowdata/file-url', requireAuth, async (req, res) => {
+  try {
+    if (!canAccessSarRowdata(req)) return res.status(403).json({ message: 'Forbidden' })
+    const name = String(req.query.name || '').trim()
+    if (!name) return res.status(400).json({ message: 'Missing name' })
+    const data = await getSarRowdataDownloadUrl(name)
+    if (!data) return res.status(404).json({ message: 'File not found' })
+    res.json({ status: 'success', data })
+  } catch (e) {
+    console.error('sar-rowdata url error:', e)
+    res.status(500).json({ message: e.message || 'Failed to create download URL' })
+  }
+})
+
+router.get('/sar-rowdata/file', requireAuth, async (req, res) => {
+  try {
+    if (!canAccessSarRowdata(req)) return res.status(403).json({ message: 'Forbidden' })
+    const name = String(req.query.name || '').trim()
+    if (!name) return res.status(400).json({ message: 'Missing name' })
+    const ok = await streamSarRowdataFile(res, name)
+    if (!ok) return res.status(404).json({ message: 'File not found' })
+  } catch (e) {
+    console.error('sar-rowdata file error:', e)
+    if (!res.headersSent) res.status(500).json({ message: e.message || 'Failed to download file' })
   }
 })
 

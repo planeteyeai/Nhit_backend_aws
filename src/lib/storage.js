@@ -186,6 +186,32 @@ export async function listBucketObjectsUnderPrefix(prefix) {
   return objects
 }
 
+/** Immediate child "folders" (CommonPrefixes) under a prefix. */
+export async function listBucketCommonPrefixes(prefix) {
+  const client = getClient()
+  const p = String(prefix || '').replace(/^\/+/, '')
+  if (!client || !p) return []
+
+  const prefixes = []
+  let continuationToken
+  do {
+    const out = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName(),
+        Prefix: p.endsWith('/') ? p : `${p}/`,
+        Delimiter: '/',
+        ContinuationToken: continuationToken,
+      })
+    )
+    for (const item of out.CommonPrefixes || []) {
+      if (item.Prefix) prefixes.push(item.Prefix)
+    }
+    continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined
+  } while (continuationToken)
+
+  return prefixes
+}
+
 /** Delete one object from the bucket. */
 export async function deleteBucketObject(key) {
   if (!isStorageEnabled()) return false
