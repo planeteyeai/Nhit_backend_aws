@@ -63,6 +63,7 @@ import { createWriteStream } from 'fs'
 import { createGzip } from 'zlib'
 import { STRUCTURAL_RM_OPTIONS, NON_STRUCTURAL_RM_OPTIONS } from '../config/constants/repairOptions.js'
 import { RM_MEASUREMENT_MAP } from '../config/constants/measurementMap.js'
+import { buildBoqExcelBuffer } from '../lib/boqExcelExport.js'
 import { BOQ_Items } from '../config/constants/boqItemsMeta.js'
 import { bearingRatingDesc, componentRatingDesc } from '../config/constants/ratings.js'
 import { processPanoramaUpload, listBridgePanoramas, deleteBridgePanorama } from '../lib/panaroma_3d.js'
@@ -8617,6 +8618,27 @@ for (const step of [
     }
   })
 })()
+
+router.post('/boq/export/:bridgeId', requireAuth, async (req, res) => {
+  try {
+    const bridgeId = Number(req.params.bridgeId || 0)
+    if (!bridgeId) return res.status(400).json({ message: 'Invalid bridge id' })
+    const payload = req.body && typeof req.body === 'object' ? req.body : {}
+    payload.identity =
+      payload.identity ||
+      payload.bridge?.bridge_identity_no ||
+      `Bridge_${bridgeId}`
+    const buf = await buildBoqExcelBuffer(payload)
+    const identity = String(payload.identity || `Bridge_${bridgeId}`).replace(/[^\w\-]+/g, '_')
+    const filename = `BOQ_${identity}_${new Date().toISOString().split('T')[0]}.xlsx`
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    return res.send(buf)
+  } catch (e) {
+    console.error('BOQ excel export:', e)
+    res.status(500).json({ message: e.message || 'Failed to export Excel' })
+  }
+})
 
 router.get('/boq/export/:bridgeId', async (req, res) => {
   try {
