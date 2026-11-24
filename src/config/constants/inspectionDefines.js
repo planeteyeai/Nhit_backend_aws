@@ -29,6 +29,7 @@ export const BANK_PROTECTION_AND_TYPE = {
   'Bank Protected With Boulder Stone': 'Bank Protected With Boulder Stone',
   'Bank protected with cement concrete': 'Bank protected with cement concrete',
   'No Bank Protection provided': 'No Bank Protection provided',
+  NA: 'NA',
 };
 
 export const FLOOR_TYPE = {
@@ -36,9 +37,10 @@ export const FLOOR_TYPE = {
   'Floor protected with Stone': 'Floor protected with Stone',
   'Floor Protected with Cement concrete': 'Floor Protected with Cement concrete',
   'No floor protection provided': 'No floor protection provided',
+  NA: 'NA',
 };
 
-export const IS_THE_BRIDGE_LOCATED_IN_THE_BACK_WATER = { Yes: 'Yes', No: 'No' };
+export const IS_THE_BRIDGE_LOCATED_IN_THE_BACK_WATER = { Yes: 'Yes', No: 'No', NA: 'NA' };
 
 export const WHETHER_GUARD_RAIL_CASH_BARRIER = {
   'Guard rail': 'Guard rail',
@@ -204,6 +206,7 @@ export const TYPE_BRIDGE = {
   'Isolated Foundation': 'Isolated Foundation',
   'Foundation is not visible, Data to be referred from design document/as-built drawing':
     'Foundation is not visible, Data to be referred from design document/as-built drawing',
+  NA: 'NA',
 };
 
 export const FOUNDATION_MATERIAL = {
@@ -212,6 +215,7 @@ export const FOUNDATION_MATERIAL = {
   RCC: 'RCC',
   'Foundation is not visible, Data to be referred from design document/as-built drawing':
     'Foundation is not visible, Data to be referred from design document/as-built drawing',
+  NA: 'NA',
 };
 
 export const CONDITION_OF_FOUNDATION = {
