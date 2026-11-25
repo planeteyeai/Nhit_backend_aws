@@ -146,6 +146,7 @@ import {
   INSPECTION_SECTION_FLAGS,
   INSPECTION_COMPONENT_FLAGS,
   resetInspectionSectionFlags,
+  blankBoqFields,
   markInspectionSectionYes,
   markBridgeStepYes,
   refreshBridgeFormFilled,
@@ -2315,6 +2316,21 @@ async function inspectionList(req, res, mode) {
     const inspectionIdCol = iIdRows.length ? 'bridge_inspection_id' : 'inspection_id'
     const [ircFkRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection_rejection_comment LIKE 'bridge_inspection_id'`)
     const rejectionCommentFkCol = ircFkRows.length ? 'bridge_inspection_id' : 'inspection_id'
+    await ensureInspectionSeasonColumns()
+    const [snColRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'schedule_notification_id'`)
+    const [typeColRows] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'inspecion_type'`)
+    const hasScheduleNotifFk = snColRows.length > 0
+    const hasInspecionType = typeColRows.length > 0
+    const typeSelect = hasScheduleNotifFk
+      ? hasInspecionType
+        ? `COALESCE(NULLIF(TRIM(i.inspecion_type), ''), sinn.inspecion_type, '') AS inspection_type`
+        : `COALESCE(sinn.inspecion_type, '') AS inspection_type`
+      : hasInspecionType
+        ? `COALESCE(i.inspecion_type, '') AS inspection_type`
+        : `'' AS inspection_type`
+    const typeJoin = hasScheduleNotifFk
+      ? `LEFT JOIN schedule_inspecion_notification sinn ON sinn.notification_id = i.schedule_notification_id`
+      : ''
 
     if (req.query.project_name) {
       where += ' AND b.project_name = ?'
@@ -2357,12 +2373,17 @@ async function inspectionList(req, res, mode) {
               b.direction_of_inventory_start, b.direction_of_inventory_end,
               COALESCE(s_i.state_name, s_b.state_name) AS state_name,
               COALESCE(z_i.zone_name, z_b.zone_name, NULLIF(TRIM(b.zone), '')) AS zone_name,
-              irc.comment AS rejection_comment, irc.comment_on AS rejection_date
+              irc.comment AS rejection_comment, irc.comment_on AS rejection_date,
+              sreg.pre_month AS pre_monsoon,
+              sreg.post_month AS post_monsoon,
+              sadh.adhoc_inspecion_date AS adhoc_date,
+              ${typeSelect}
        ${fromSql}
        LEFT JOIN state s_i ON s_i.state_id = i.state_id
        LEFT JOIN state s_b ON s_b.state_code = TRIM(CAST(b.state_id AS CHAR)) AND TRIM(CAST(b.state_id AS CHAR)) <> ''
        LEFT JOIN zone z_i ON z_i.zone_id = i.zone_id
        LEFT JOIN zone z_b ON z_b.zone_code = TRIM(b.zone) AND TRIM(b.zone) <> ''
+       ${typeJoin}
        LEFT JOIN (
          SELECT rc1.*
          FROM bridge_inspection_rejection_comment rc1
@@ -2372,6 +2393,24 @@ async function inspectionList(req, res, mode) {
            GROUP BY \`${rejectionCommentFkCol}\`
          ) rmx ON rmx.inspection_fk = rc1.\`${rejectionCommentFkCol}\` AND rmx.mx_rejection_id = rc1.rejection_id
        ) irc ON irc.\`${rejectionCommentFkCol}\` = i.\`${inspectionIdCol}\`
+       LEFT JOIN (
+         SELECT si1.bridge_id, si1.pre_month, si1.post_month
+         FROM schedule_inspecion si1
+         INNER JOIN (
+           SELECT bridge_id, MAX(si_id) AS mx_si
+           FROM schedule_inspecion
+           GROUP BY bridge_id
+         ) zr ON zr.bridge_id = si1.bridge_id AND zr.mx_si = si1.si_id
+       ) sreg ON sreg.bridge_id = b.bridge_id
+       LEFT JOIN (
+         SELECT a1.bridge_id, a1.adhoc_inspecion_date
+         FROM schedule_adhoc_inspecion a1
+         INNER JOIN (
+           SELECT bridge_id, MAX(adhoc_inspecion_id) AS mx_ad
+           FROM schedule_adhoc_inspecion
+           GROUP BY bridge_id
+         ) za ON za.bridge_id = a1.bridge_id AND za.mx_ad = a1.adhoc_inspecion_id
+       ) sadh ON sadh.bridge_id = b.bridge_id
        WHERE ${where}
        ORDER BY i.created_on DESC, i.\`${inspectionIdCol}\` DESC
        LIMIT ? OFFSET ?`,
@@ -7425,6 +7464,7 @@ router.post('/inspections', requireAuth, async (req, res) => {
     // Do not inherit Yes flags from template row; keep only flags the client explicitly sent.
     const keepFlags = INSPECTION_SECTION_FLAGS.filter((f) => fromClient[f] != null && String(fromClient[f]).trim() !== '')
     resetInspectionSectionFlags(payload, { keep: keepFlags })
+    blankBoqFields(payload)
     // Structure Data create → mark bridge_inspection complete for future checklist use.
     if (payloadHasStructureDataFields(fromClient) || String(fromClient.bridge_inspection || '').toLowerCase() === 'yes') {
       payload.bridge_inspection = 'Yes'
@@ -7682,7 +7722,30 @@ router.post('/bridge/schedule_adhoc_inspecion/:bridgeId', requireAuth, async (re
   }
 })
 
+let _inspectionSeasonColsReady = false
+async function ensureInspectionSeasonColumns() {
+  if (_inspectionSeasonColsReady) return
+  try {
+    const [sn] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'schedule_notification_id'`)
+    if (!sn.length) {
+      await pool.query(
+        `ALTER TABLE bridge_inspection ADD COLUMN schedule_notification_id INT NULL DEFAULT NULL`,
+      )
+    }
+    const [it] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'inspecion_type'`)
+    if (!it.length) {
+      await pool.query(
+        `ALTER TABLE bridge_inspection ADD COLUMN inspecion_type VARCHAR(255) NULL DEFAULT NULL`,
+      )
+    }
+    _inspectionSeasonColsReady = true
+  } catch (e) {
+    console.warn('ensureInspectionSeasonColumns:', e.message)
+  }
+}
+
 async function insertBridgeInspectionFromBridge(req, bridge, extraFields = {}) {
+  await ensureInspectionSeasonColumns()
   const bridgeId = Number(bridge.bridge_id)
   const [stateRows] = await pool.query('SELECT state_id FROM state WHERE state_code = ? OR state_id = ? LIMIT 1', [
     bridge.state_id,
@@ -7723,6 +7786,7 @@ async function insertBridgeInspectionFromBridge(req, bridge, extraFields = {}) {
     (f) => extraFields[f] != null && String(extraFields[f]).trim() !== '',
   )
   resetInspectionSectionFlags(payload, { keep: keepFlags })
+  blankBoqFields(payload)
 
   const [metaRows] = await pool.query(
     `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE
@@ -7782,10 +7846,10 @@ router.post('/schedule-inspecion-notification/:notificationId/start', requireAut
       return res.status(403).json({ message: 'You do not have access to this bridge (another project).' })
     }
 
-    const [notifCols] = await pool.query(`SHOW COLUMNS FROM bridge_inspection LIKE 'schedule_notification_id'`)
-    const extraFields = {}
-    if (notifCols.length) {
-      extraFields.schedule_notification_id = notificationId
+    await ensureInspectionSeasonColumns()
+    const extraFields = {
+      schedule_notification_id: notificationId,
+      inspecion_type: String(notification.inspecion_type || notification.inspection_type || '').trim() || null,
     }
 
     const inspectionId = await insertBridgeInspectionFromBridge(req, bridge, extraFields)
@@ -7834,6 +7898,7 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
     const tpl = tplRows[0] || {}
     delete tpl.bridge_inspection_id
 
+    await ensureInspectionSeasonColumns()
     const payload = {
       ...tpl,
       bridge_id: bridgeId,
@@ -7850,6 +7915,7 @@ router.post('/schedule-inspecion/:siId/start', requireAuth, async (req, res) => 
       upadted_on: new Date(),
     }
     resetInspectionSectionFlags(payload)
+    blankBoqFields(payload)
 
     // Fill any remaining NOT NULL columns without defaults (dump schema is strict).
     const [metaRows] = await pool.query(
@@ -7928,6 +7994,7 @@ router.post('/schedule-adhoc-inspecion/:adhocId/start', requireAuth, async (req,
     ])
     const zoneId = Number(zoneRows[0]?.zone_id || 0)
 
+    await ensureInspectionSeasonColumns()
     const [tplRows] = await pool.query('SELECT * FROM bridge_inspection LIMIT 1')
     const tpl = tplRows[0] || {}
     delete tpl.bridge_inspection_id
@@ -7949,8 +8016,10 @@ router.post('/schedule-adhoc-inspecion/:adhocId/start', requireAuth, async (req,
       updated_by: req.user?.uid || 0,
       created_on: new Date(),
       upadted_on: new Date(),
+      inspecion_type: 'Adhoc Inspecion Date',
     }
     resetInspectionSectionFlags(payload)
+    blankBoqFields(payload)
 
     const [metaRows] = await pool.query(
       `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE

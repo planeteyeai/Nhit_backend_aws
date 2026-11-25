@@ -47,6 +47,13 @@ function toRestBody(contents, config) {
     if (config.responseSchema) body.generationConfig.responseSchema = config.responseSchema
     if (config.temperature != null) body.generationConfig.temperature = config.temperature
     if (!Object.keys(body.generationConfig).length) delete body.generationConfig
+
+    const sys = config.systemInstruction || config.system_instruction
+    if (typeof sys === 'string' && sys.trim()) {
+      body.systemInstruction = { parts: [{ text: sys.trim() }] }
+    } else if (sys && typeof sys === 'object') {
+      body.systemInstruction = sys
+    }
   }
   return body
 }

@@ -98,6 +98,24 @@ export function resetInspectionSectionFlags(payload, { keep = [] } = {}) {
   return payload
 }
 
+/** Clear draft-report / BOQ narrative fields so a new inspection never inherits prior season text. */
+export const BOQ_INSPECTION_FIELDS = [
+  'boq_structure_layout_images',
+  'boq_conclusion_report',
+  'boq_causes_of_distress',
+  'boq_remedial_measures',
+  'boq_repair_methodology',
+]
+
+export function blankBoqFields(payload) {
+  if (!payload || typeof payload !== 'object') return payload
+  for (const key of BOQ_INSPECTION_FIELDS) {
+    if (key === 'boq_structure_layout_images') payload[key] = '[]'
+    else payload[key] = ''
+  }
+  return payload
+}
+
 /** SET one inspection section flag to Yes (no-op if column missing). */
 export async function markInspectionSectionYes(pool, inspectionId, flagCol, userId = 0) {
   const id = Number(inspectionId || 0)
