@@ -102,7 +102,10 @@ function resolvePotreeProjectFolder(nameOrKey) {
 		{ name: "Chithorgarh+to+Kota", ranges: [[891.929, 1052.429]] },
 		{ name: "Agra Bypass", ranges: [[0, 32.8]] },
 		{ name: "BKRP", ranges: [[36.6, 175]] },
-		{ name: "Chichra+-+Kharagpur", ranges: [[129, 185.15], [16.13, 72.25]] }
+		{ name: "Chichra+-+Kharagpur", ranges: [[129, 185.15], [16.13, 72.25]] },
+		{ name: "Rewa-Katni-Jabalpur-Lakhnadon-NH-30", ranges: [[656, 891.78]] },
+		{ name: "Rewa-Katni-Jabalpur-Lakhnadon-NH-34", ranges: [[1358, 1428.557]] },
+		{ name: "RKGL", ranges: [[656, 891.78], [1358, 1428.557]] }
 	];
 	for (const project of projects) {
 		for (const [lo, hi] of project.ranges) {

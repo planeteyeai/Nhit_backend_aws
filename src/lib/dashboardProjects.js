@@ -277,6 +277,39 @@ export const DASHBOARD_PROJECT_CATALOG = [
     chainageMin: 1305.087,
     chainageMax: 1380.387,
   },
+  {
+    id: 'rewa-katni-jabalpur-nh30',
+    shortLabel: 'Rewa – Katni – Jabalpur – Lakhnadon (NH-30)',
+    shortNames: ['Rewa-Katni-Jabalpur-Lakhnadon NH-30', 'Rewa Katni Jabalpur Lakhnadon NH-30'],
+    fullName:
+      'Tolling, Operation, Maintenance & Transfer of Rewa-Katni-Jabalpur-Lakhnadon Section from Km 656+000 to 891+780 of NH-30 in the State of Madhya Pradesh',
+    highway: 'NH-30',
+    state: 'Madhya Pradesh',
+    chainageMin: 656,
+    chainageMax: 891.78,
+  },
+  {
+    id: 'rewa-katni-jabalpur-nh34',
+    shortLabel: 'Rewa – Katni – Jabalpur – Lakhnadon (NH-34)',
+    shortNames: ['Rewa-Katni-Jabalpur-Lakhnadon NH-34', 'Rewa Katni Jabalpur Lakhnadon NH-34'],
+    fullName:
+      'Tolling, Operation, Maintenance & Transfer of Rewa-Katni-Jabalpur-Lakhnadon Section from Km 1358+000 to 1428+557 of NH-34 in the State of Madhya Pradesh',
+    highway: 'NH-34',
+    state: 'Madhya Pradesh',
+    chainageMin: 1358,
+    chainageMax: 1428.557,
+  },
+  {
+    id: 'orai-bara',
+    shortLabel: 'Orai – Barah',
+    shortNames: ['Orai to Bara', 'Orai-Barah', 'Orai Bara'],
+    fullName:
+      'Tolling, Operation, Maintenance & Transfer of Orai to Bara Section (From km 1515+713 To km 1578+872 on LHS & From km. 1578+360 to km. 1515+713 on RHS) of NH25 in the State of Uttar Pradesh',
+    highway: 'NH-25',
+    state: 'Uttar Pradesh',
+    chainageMin: 1515.713,
+    chainageMax: 1578.872,
+  },
 ]
 
 export function chainageKeyToKm(key) {

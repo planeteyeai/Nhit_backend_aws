@@ -12,6 +12,10 @@ export const POTREE_PROJECTS = [
   { name: 'Agra Bypass', ranges: [[0, 32.8]] },
   { name: 'BKRP', ranges: [[36.6, 175]] },
   { name: 'Chichra+-+Kharagpur', ranges: [[129, 185.15], [16.13, 72.25]] },
+  { name: 'Rewa-Katni-Jabalpur-Lakhnadon-NH-30', ranges: [[656, 891.78]] },
+  { name: 'Rewa-Katni-Jabalpur-Lakhnadon-NH-34', ranges: [[1358, 1428.557]] },
+  // S3 shorthand folder used under upload/model_3d/RKGL (Rewa corridor)
+  { name: 'RKGL', ranges: [[656, 891.78], [1358, 1428.557]] },
 ]
 
 /** Known top-level project directory names (model_3d + potree). */
@@ -24,12 +28,17 @@ export const EXISTING_PROJECT_DIRS = new Set([
   'Kalijhar to Patacharkuchi',
   'Kochugaon to Kalijhar',
   'Shivpuri jhansi',
+  'Rewa-Katni-Jabalpur-Lakhnadon-NH-30',
+  'Rewa-Katni-Jabalpur-Lakhnadon-NH-34',
+  'RKGL',
   // legacy potree names (pre-align)
   'Abu Road-Swaroopganj',
   'Chichra-Kharagpur',
   'Khaljhar-Pattacharkuchi',
   'Kochugaon-Khaljhar',
   'Shivpuri-Jhansi',
+  'Rewa Katni Jabalpur Lakhnadon NH-30',
+  'Rewa Katni Jabalpur Lakhnadon NH-34',
 ])
 
 export function chainageKeyToKm(key) {

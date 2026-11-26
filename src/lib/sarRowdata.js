@@ -30,6 +30,8 @@ const PROJECT_ALIASES = [
   [/kochugaon|kalijhar|kaljhar/i, 'Kochugaon to Kalijhar'],
   [/patacharkuchi|pattacharkuchi|khaljhar/i, 'Kalijhar to Patacharkuchi'],
   [/chichra|kharagpur/i, 'Chichra-Kharagpur'],
+  [/rewa.*nh[-\s]?30|nh[-\s]?30.*rewa|656\+000|891\+780/i, 'Rewa-Katni-Jabalpur-Lakhnadon (NH-30)'],
+  [/rewa.*nh[-\s]?34|nh[-\s]?34.*rewa|1358\+000|1428\+557/i, 'Rewa-Katni-Jabalpur-Lakhnadon (NH-34)'],
 ]
 
 let catalogCache = { at: 0, files: [], projects: [], prefix: SAR_ROWDATA_PREFIX }

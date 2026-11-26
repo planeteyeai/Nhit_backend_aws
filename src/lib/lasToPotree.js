@@ -152,7 +152,12 @@ export async function convertLasFileFromS3(s3Key, options = {}) {
   const fileName = path.basename(s3Key)
   const modelFolder = lasFileToPotreeFolderName(fileName)
   const chainageKey = extractChainageKey(fileName)
-  const project = resolvePotreeProject(chainageKeyToKm(chainageKey))
+  // Prefer source project folder from upload/model_3d/{Project}/file.las when present
+  const relative = String(s3Key || '').replace(/^upload\/model_3d\//i, '')
+  const sourceProject = relative.includes('/') ? relative.split('/')[0].trim() : ''
+  const project =
+    resolvePotreeProject(chainageKeyToKm(chainageKey), { alreadyUnderProject: sourceProject }) ||
+    resolvePotreeProject(chainageKeyToKm(chainageKey))
   const folderName = project ? `${project}/${modelFolder}` : modelFolder
   const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bms-potree-'))
   const localLas = path.join(workRoot, fileName)

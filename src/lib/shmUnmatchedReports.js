@@ -177,6 +177,8 @@ const SAR_S3_PROJECT_ALIASES = [
   [/borkhedi|bhorkhedi|wadner/i, 'Bhorkhedi-Wadner-Deodhari-Kelapur'],
   [/chittorgarh|kota/i, 'Chittorgarh Bypass to Kota'],
   [/agra\s*bypass/i, 'Agra Bypass'],
+  [/rewa.*nh[-\s]?30|nh[-\s]?30.*rewa|656\+000|891\+780/i, 'Rewa-Katni-Jabalpur-Lakhnadon (NH-30)'],
+  [/rewa.*nh[-\s]?34|nh[-\s]?34.*rewa|1358\+000|1428\+557/i, 'Rewa-Katni-Jabalpur-Lakhnadon (NH-34)'],
 ]
 
 function normalizeProjectLabel(name) {

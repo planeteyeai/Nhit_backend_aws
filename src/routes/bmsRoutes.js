@@ -728,6 +728,26 @@ function stripPassword(row) {
   return rest
 }
 
+/** Single `project_name` or multi `project_names` (pipe-separated) for round filters. */
+function appendProjectNameFilter(where, params, query = {}, alias = 'b') {
+  const single = String(query.project_name || '').trim()
+  const multi = String(query.project_names || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (single) {
+    where += ` AND ${alias}.project_name = ?`
+    params.push(single)
+  } else if (multi.length === 1) {
+    where += ` AND ${alias}.project_name = ?`
+    params.push(multi[0])
+  } else if (multi.length > 1) {
+    where += ` AND ${alias}.project_name IN (${multi.map(() => '?').join(',')})`
+    params.push(...multi)
+  }
+  return where
+}
+
 function normalizeBridgePayload(body = {}) {
   const b = body || {}
   const out = {
@@ -1556,10 +1576,7 @@ router.get('/bridge-list', async (req, res) => {
       where += ' AND b.bmc_status = ?'
       params.push(req.query.bmc_status)
     }
-    if (req.query.project_name) {
-      where += ' AND b.project_name = ?'
-      params.push(req.query.project_name)
-    }
+    where = appendProjectNameFilter(where, params, req.query, 'b')
     const structureType = String(
       req.query.structure_type || req.query.type_of_structure || req.query.type_of_bridge || '',
     ).trim()
@@ -2332,10 +2349,7 @@ async function inspectionList(req, res, mode) {
       ? `LEFT JOIN schedule_inspecion_notification sinn ON sinn.notification_id = i.schedule_notification_id`
       : ''
 
-    if (req.query.project_name) {
-      where += ' AND b.project_name = ?'
-      params.push(String(req.query.project_name).trim())
-    }
+    where = appendProjectNameFilter(where, params, req.query, 'b')
     const structureType = String(req.query.structure_type || req.query.type_of_bridge || '').trim()
     if (structureType) {
       where += ' AND b.type_of_bridge = ?'
