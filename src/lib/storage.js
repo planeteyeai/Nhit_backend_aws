@@ -78,11 +78,16 @@ function getClient() {
     try {
       const { NodeHttpHandler } = require('@smithy/node-http-handler')
       const maxSockets = Math.max(50, Number(process.env.AWS_S3_MAX_SOCKETS || 250) || 250)
+      // Large LAS downloads can stall briefly; keep idle timeout high (default 120s was tight).
+      const requestTimeout = Math.max(
+        120_000,
+        Number(process.env.AWS_S3_REQUEST_TIMEOUT_MS || 600_000) || 600_000,
+      )
       requestHandler = new NodeHttpHandler({
         httpsAgent: new https.Agent({ keepAlive: true, maxSockets }),
         httpAgent: new http.Agent({ keepAlive: true, maxSockets }),
-        connectionTimeout: 10_000,
-        requestTimeout: 120_000,
+        connectionTimeout: 30_000,
+        requestTimeout,
       })
     } catch {
       requestHandler = undefined
@@ -487,15 +492,60 @@ export async function readObjectText(key, encoding = 'utf8') {
   return buf ? buf.toString(encoding) : null
 }
 
-/** Download bucket object onto local disk (streams — safe for multi‑GB LAS files). */
-export async function downloadObjectToFile(key, localPath) {
-  const body = await getObjectStream(key)
-  if (!body) return false
+/**
+ * Download bucket object onto local disk with Range resume + retries.
+ * Safe for multi‑GB LAS files (network resets mid-transfer are common).
+ */
+export async function downloadObjectToFile(key, localPath, options = {}) {
+  const client = getClient()
+  const k = toObjectKey(key)
+  if (!client || !k) return false
+
+  const maxAttempts = Math.max(1, Number(options.maxAttempts || 12) || 12)
   fs.mkdirSync(path.dirname(localPath), { recursive: true })
-  const nodeStream =
-    typeof body.pipe === 'function' ? body : Readable.fromWeb(body)
-  await pipeline(nodeStream, fs.createWriteStream(localPath))
-  return true
+
+  let totalBytes = 0
+  try {
+    const head = await client.send(new HeadObjectCommand({ Bucket: bucketName(), Key: k }))
+    totalBytes = Number(head.ContentLength) || 0
+  } catch {
+    return false
+  }
+  if (!totalBytes) return false
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const already = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0
+    if (already >= totalBytes) return true
+
+    const range = already > 0 ? `bytes=${already}-${totalBytes - 1}` : undefined
+    try {
+      console.log(
+        `[s3] download ${k} attempt ${attempt}/${maxAttempts}` +
+          (range ? ` resume@${already}` : '') +
+          ` (${Math.round(already / 1e6)}/${Math.round(totalBytes / 1e6)} MB)`,
+      )
+      const out = await client.send(
+        new GetObjectCommand({
+          Bucket: bucketName(),
+          Key: k,
+          ...(range ? { Range: range } : {}),
+        }),
+      )
+      const body = out.Body
+      if (!body) throw new Error('empty body')
+      const nodeStream = typeof body.pipe === 'function' ? body : Readable.fromWeb(body)
+      await pipeline(nodeStream, fs.createWriteStream(localPath, { flags: already > 0 ? 'a' : 'w' }))
+
+      const finalSize = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0
+      if (finalSize >= totalBytes) return true
+      console.warn(`[s3] incomplete download ${finalSize}/${totalBytes}, will retry`)
+    } catch (e) {
+      console.warn(`[s3] download interrupted (${e.code || e.name || 'error'}): ${e.message}`)
+      if (attempt >= maxAttempts) throw e
+      await new Promise((r) => setTimeout(r, Math.min(30_000, 1500 * attempt)))
+    }
+  }
+  return false
 }
 
 export function guessContentType(key) {
